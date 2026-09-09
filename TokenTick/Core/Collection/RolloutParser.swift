@@ -29,9 +29,50 @@ struct RolloutParser {
             state.session = session
             return nil
         case .turn(let turn):
+            let sameTurn = turn.turn_id != nil && turn.turn_id == state.turnID
+            let source = UsageContextEvidence(eventType: "turn_context", fileName: identity.fileName,
+                rolloutID: identity.rolloutID.uuidString.lowercased(), line: line, ordinal: event.ordinal,
+                threadID: state.session?.id, turnID: turn.turn_id, model: turn.model, serviceTier: turn.service_tier)
+            state.contextTurnID = turn.turn_id
+            state.contextModel = turn.model
+            if !sameTurn {
+                state.serviceTier = nil
+                state.serviceTierSource = nil
+                state.activeSettings = nil
+                state.turnStartedLine = nil
+            }
             state.turnID = turn.turn_id
             state.model = turn.model
-            state.serviceTier = turn.service_tier
+            state.modelSource = turn.model == nil ? nil : source
+            state.modelCandidates = nil
+            if turn.hasServiceTier {
+                state.serviceTier = turn.service_tier
+                state.serviceTierSource = source
+            }
+            return nil
+        case .settings(let settings):
+            guard let session = state.session,
+                  settings.thread_id == nil || settings.thread_id?.lowercased() == session.id.lowercased(),
+                  try !isInherited(event, session: session) else { return nil }
+            // 持久设置的更改不直接改变正在执行的轮次，等下一次开始事件绑定。
+            state.settings = UsageContextEvidence(eventType: "thread_settings_applied", fileName: identity.fileName,
+                rolloutID: identity.rolloutID.uuidString.lowercased(), line: line, ordinal: event.ordinal,
+                threadID: settings.thread_id, turnID: nil, model: settings.thread_settings.model,
+                serviceTier: settings.thread_settings.service_tier, provider: settings.thread_settings.model_provider_id)
+            return nil
+        case .started(let started):
+            guard let session = state.session, try !isInherited(event, session: session) else { return nil }
+            state.turnID = started.turn_id
+            state.activeSettings = state.settings
+            state.turnStartedLine = line
+            state.serviceTier = state.settings?.serviceTier
+            state.serviceTierSource = state.settings
+            let model = state.settings?.model
+            // 前置压缩可能使用上一模型；两者不同时，直到本轮上下文出现前都不能任选一个。
+            let ambiguous = model != nil && (state.contextModel.map { $0 != model } ?? (session.forked_from_id != nil))
+            state.model = ambiguous ? nil : model
+            state.modelSource = state.model == nil ? nil : state.settings
+            state.modelCandidates = ambiguous ? [state.contextModel, model].compactMap { $0 } : nil
             return nil
         case .other: return nil
         case .count(let count):
@@ -64,7 +105,7 @@ struct RolloutParser {
             // 相同事实会随归档、fork 或 revert 被复制；路径、行号和 ordinal 都不能充当请求 ID。
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
-            let signature = LegacySignature(thread: session.id.lowercased(), turn: state.turnID,
+            let signature = LegacySignature(thread: session.id.lowercased(), turn: state.contextTurnID,
                                             timestamp: evidence.timestamp, cumulative: info.total_token_usage, usage: usage)
             let key = "legacy:" + SHA256.hash(data: try encoder.encode(signature)).map { String(format: "%02x", $0) }.joined()
             state.fallbackKey = key
@@ -109,8 +150,12 @@ struct RolloutParser {
     private func evidence(_ event: RolloutEvent, type: String, cumulative: TokenUsage,
                           record: RolloutEvent.Record? = nil) throws -> UsageEvidence {
         guard let timestamp = event.timestamp, Self.parseDate(timestamp) != nil else { throw ParseError.missingTimestamp }
+        let sameTurn = record == nil || record?.turn_id == state.turnID
         return UsageEvidence(fileName: identity.fileName, timestamp: timestamp, ordinal: event.ordinal,
-                             eventType: type, serviceTier: state.serviceTier, cumulative: cumulative, record: record)
+            eventType: type, serviceTier: sameTurn ? state.serviceTier : nil, cumulative: cumulative, record: record,
+            modelSource: sameTurn ? state.modelSource : nil, serviceTierSource: sameTurn ? state.serviceTierSource : nil,
+            threadSettings: sameTurn ? state.activeSettings : nil, turnStartedLine: sameTurn ? state.turnStartedLine : nil,
+            modelCandidates: sameTurn ? state.modelCandidates : nil)
     }
 
     private func makeUsage(key: String, replaces: String?, event: RolloutEvent, usage: TokenUsage,

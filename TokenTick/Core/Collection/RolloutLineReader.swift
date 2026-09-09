@@ -93,7 +93,7 @@ final class RolloutLineReader {
     private static let ignoredEnvelope = try? NSRegularExpression(pattern:
         #"^\s*\{\s*"timestamp"\s*:\s*"[^"\\]*"\s*,\s*(?:"ordinal"\s*:\s*\d+\s*,\s*)?"type"\s*:\s*"(?:response_item|compacted|world_state|retained_context|inter_agent_communication|inter_agent_communication_metadata|security_risk_score|realtime_item)"\s*,\s*"payload"\s*:"#)
     private static let ignoredEvent = try? NSRegularExpression(pattern:
-        #"^\s*\{\s*"timestamp"\s*:\s*"[^"\\]*"\s*,\s*(?:"ordinal"\s*:\s*\d+\s*,\s*)?"type"\s*:\s*"event_msg"\s*,\s*"payload"\s*:\s*\{\s*"type"\s*:\s*"(?!token_count")[^"]+""#)
+        #"^\s*\{\s*"timestamp"\s*:\s*"[^"\\]*"\s*,\s*(?:"ordinal"\s*:\s*\d+\s*,\s*)?"type"\s*:\s*"event_msg"\s*,\s*"payload"\s*:\s*\{\s*"type"\s*:\s*"(?!(?:token_count|thread_settings_applied|task_started|turn_started)")[^"]+""#)
 
     private static func isIrrelevant(_ data: Data) -> Bool {
         let prefix = String(decoding: data.prefix(512), as: UTF8.self)

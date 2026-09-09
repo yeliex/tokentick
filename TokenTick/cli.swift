@@ -16,7 +16,7 @@ struct TokenTickCommand {
                 if options.json { try printJSON(report) }
                 else {
                     print("发现 \(report.discoveredFiles) 个文件；扫描 \(report.scannedFiles)，未变化 \(report.unchangedFiles)。")
-                    print("新增 \(report.insertedRequests) 个请求，补齐标识 \(report.upgradedRequests)，重复 \(report.duplicateRequests)，继承事件 \(report.inheritedEvents)。")
+                    print("新增 \(report.insertedRequests) 个请求，补齐标识／归属 \(report.upgradedRequests)，重复 \(report.duplicateRequests)，继承事件 \(report.inheritedEvents)。")
                     for issue in report.issues {
                         print("\(issue.fileName)\(issue.line.map { ":\($0)" } ?? "")：\(issue.message)")
                     }
