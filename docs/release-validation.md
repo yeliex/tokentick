@@ -80,3 +80,11 @@ App 与 CLI 的 Gatekeeper 评估均返回退出码 3、`source=Unnotarized Deve
 证据：`.build/logs/developer-id-package.log` 保留首次提示错误，`.build/logs/developer-id-package-verified.log` 记录完整成功流程；`.build/audit/developer-id-pqkg49ud/verification.json` 及同目录保存解压后的签名、Gatekeeper 输出和 CLI 帮助。
 
 默认不传参数的 ad-hoc 打包也重新执行通过，日志为 `.build/logs/adhoc-package-regression.log`；额外检查缺少证书参数、未知选项、ad-hoc 标记及 Apple Development 名称共 4 组无效输入，均在构建前返回退出码 2，不把开发证书冒充 Developer ID 分发证书。
+
+## 新 CLI 进程与未提交写事务
+
+使用干净源码 `ffaa27b` 的 Developer ID Release CLI，在独立数据库中验证新读进程。Python 写者持有与 App／CLI 相同的 `usage.sqlite.write.lock`，并通过 SQLite `BEGIN IMMEDIATE` 保持写事务；每次查询都从 `/tmp` 启动新的 CLI 进程，单次等待上限为 3 秒。
+
+测试数据明确为隔离输入：先保存 13 tokens 并生成统计缓存，持扫描锁再提交 7 tokens，使旧缓存过期；随后追加 11 tokens 但暂不提交。新 CLI 返回 20 tokens，耗时 0.0110 秒，既不返回过期缓存的 13，也不读取未提交后的 31。提交待写事务但继续持有扫描锁时，再启动的 CLI 返回 31 tokens，耗时 0.0111 秒；释放扫描锁后查询仍为 31，耗时 0.0102 秒。耗时包含进程启动，数据规模很小，不作为全历史查询性能基准；数据库完整性检查为 `ok`。
+
+这补充了现有单进程持锁测试，验证新 CLI 在真正的跨进程扫描锁与 SQLite 写事务并存时仍可读取已提交快照。没有修改真实 Codex 日志或产品默认数据库。脚本位于 `.build/audit/wal-reader-benchmark.py`，原始 CLI 输出及计时位于 `.build/audit/wal-reader-nvwwtqab/verification.json` 和同目录文件。
