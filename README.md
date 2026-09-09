@@ -27,6 +27,8 @@ TokenTick 从本地 Codex 日志采集统计数据，记录每个任务、每天
 
 默认采用「起始色收敛」配色，浅色、深色与菜单栏资源已保存到 [assets/icons](assets/icons/README.md)。
 
+App 已通过 Icon Composer 资源接入系统级明暗图标，保留原始定稿；包内引用和导出预览已验证，Dock／Finder 实际切换及 macOS 26 真机验收仍待完成。详见 [系统级应用图标](docs/app-icon.md)。
+
 ## 本地开发
 
 使用带 macOS 26 或更新 SDK 的 Xcode，打开 `TokenTick.xcodeproj`。当前在 Xcode 27 / macOS 27 上验证构建和进程启动，macOS 26 真机交互仍待验收。

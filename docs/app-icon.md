@@ -1,39 +1,47 @@
 # 系统级应用图标
 
-核对日期：2026-09-10。App 当前仍使用已定稿的浅色 ICNS；内容区明暗品牌图和菜单模板已接入。下述 `.icon` 仅为隔离验证，尚未替换产品资源，也未完成 Dock／Finder 验收。
+核对日期：2026-09-10。App 已接入 `TokenTick/Resources/TokenTick.icon`，由 Xcode 编译系统级明暗图标。Debug／通用 Release 构建、包内资源及导出预览已验证；Dock／Finder 的实际切换和 macOS 26 真机仍待验收。
 
-## 原生方案与既有设计
+## 资源与布局
 
-macOS 26 的系统级多外观图标采用 Icon Composer `.icon` 文件，由 Xcode 编译为图标资源。App target 的 `ASSETCATALOG_COMPILER_APPICON_NAME` 与文件名一致，编译器生成 `CFBundleIconName` 和对应 ICNS。不能把内容区 `BrandIcon.imageset` 的明暗选择当作系统图标切换已经完成。
+`.icon/Assets` 直接保存已定稿的 `app-light.png` 和 `app-dark.png`，与 `assets/icons/default/` 中的原图逐字节相同。`image-name-specializations` 为默认外观选择浅色图，为 dark 选择深色图。原有标记、三段渐变、52% 中间色位置和 SVG／PNG／ICNS 原始资源均未修改。
 
-Apple 建议在导出图层时移除画布遮罩，将背景与图形分离，系统负责外形裁切。TokenTick 保留「用量环 · 分格」的轮廓和已定稿的暖白琥珀／石墨薄荷配色；后续原生资源应让背景、主体环和琥珀／薄荷分格分别承担可调整的颜色层，不重新设计标记。系统图标外观选择由系统负责，不能仅在 App 运行时更换 Dock 图片来代替 Finder 和未运行状态的资源支持。
+原图是 1024px 画布，底板从 48px 延伸至 976px，实际宽度为 928px。图层布局使用 `1024 / 928`，即约 `1.103448275862069` 的等比缩放，并保持居中，将透明边距移出系统图标的有效裁切范围。背景为透明，关闭图层玻璃效果、额外阴影和半透明处理；系统继续负责自己的外框、尺寸与外观渲染。
 
-来源：[Apple Icon Composer 文档](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer)、[官方 Landmarks 示例](https://developer.apple.com/documentation/swiftui/landmarks-building-an-app-with-liquid-glass)、[Asset Catalog 图标说明](https://developer.apple.com/documentation/xcode/configuring-your-app-icon)。文档与示例留存在 `.build/research/icon-composer/`，示例代码仅用于核对资源结构，没有复制进产品。
+最初不带布局调整的原型出现额外浅色外框和重复圆角。后续导出确认，补偿现有透明边距即可消除该问题，背景分层并非必要条件。原生线性渐变仅支持两个颜色，而原设计使用三个停止点；保留原图能避免为迁就背景配置改变定稿渐变。
 
-## 本次编译与视觉结果
+内容区仍使用 `BrandIcon.imageset` 的明暗图片，菜单栏仍为单色模板。没有加入运行时更换 Dock 图标的代码。
 
-在 Xcode 27 beta／macOS 27 上，以 `--platform macosx --minimum-deployment-target 26.0` 编译隔离的 `TokenTick.icon`。直接复用现有 `app-light.png` 和 `app-dark.png`，源图片逐字节相同，关闭图层玻璃效果与额外阴影，通过 `image-name-specializations` 选择深色图片。
+## Xcode 接入
 
-编译成功，`assetutil --info` 确认：
+- App target 将 `.icon` 作为 `folder.iconcomposer.icon` 资源参与编译；Debug 和 Release 的 `ASSETCATALOG_COMPILER_APPICON_NAME` 均为 `TokenTick`。
+- 移除旧的显式 `CFBundleIconFile=app-light`，由编译器生成 `CFBundleIconName=TokenTick` 和 `CFBundleIconFile=TokenTick`。
+- 编译后的 `Assets.car` 包含分别引用 `TokenTick_Assets/app-light` 和 `TokenTick_Assets/app-dark` 的 Aqua／DarkAqua 图标组，以及对应图标栈；产品中存在 `TokenTick.icns`，旧 `app-light.icns` 已不再打包。
+- `.icon` 内使用官方示例的 `supported-platforms.squares=shared` 编码；App 的实际编译平台与最低系统仍为 macOS／26.0，不增加其他平台 target。
 
-| 外观 | 实际引用 |
-| --- | --- |
-| `NSAppearanceNameAqua` | `TokenTick_Assets/app-light` |
-| `NSAppearanceNameDarkAqua` | `TokenTick_Assets/app-dark` |
+来源：[Apple Icon Composer 文档](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer)、[官方 Landmarks 示例](https://developer.apple.com/documentation/swiftui/landmarks-building-an-app-with-liquid-glass)、[Asset Catalog 图标说明](https://developer.apple.com/documentation/xcode/configuring-your-app-icon)。示例只用于核对资源结构，没有复制进产品。
 
-编译器生成 `Assets.car` 和 `TokenTick.icns`，Info plist 的 `CFBundleIconName`／`CFBundleIconFile` 均为 `TokenTick`。这证明资源变体能被编译和区分，不能证明系统运行时已验收。
+## 验证与复现
 
-导出的 256px 默认图标出现额外浅色外框及重复圆角：原图已带边距与圆角底板，作为整张前景叠入系统图标后产生不合适的嵌套。该方案未通过视觉检查，因此没有加入 Xcode 工程，也没有修改现有图标或应用行为。后续应按原设计拆分背景与标记后重新预览，不能仅以编译成功作为图标接入完成的证据。
+本机为 Xcode 27 beta／macOS 27。Icon Composer 自带的 `ictool` 可在不操作编辑器界面的情况下导出预览；它与 `xcrun ictool` 是不同入口，后者不接受 `--export-image`。例如，从仓库根目录执行：
 
-两个试验限制也已确认：`supported-platforms.squares` 的 `macOS` 字符串被编译器拒绝，使用官方示例中的 `shared` 编码后成功；本机 `ictool` 不接受尝试的 `--help`／`--usage`，最终使用 Xcode 现有构建命令中的 `actool` 参数完成隔离编译，没有引入产品运行时私有 API。
+```sh
+ICON_TOOL="$(xcode-select -p)/../Applications/Icon Composer.app/Contents/Executables/ictool"
+"$ICON_TOOL" TokenTick/Resources/TokenTick.icon --export-image \
+  --output-file /tmp/tokentick-light-26.png --platform macOS --rendition Default \
+  --width 256 --height 256 --scale 1 --design-generation 26
+```
 
-本机证据：`.build/research/icon-composer/verification.json`、`compile.log`、`compiled-info.plist`、`catalog-info.json` 和 `compiled.iconset/icon_128x128@2x.png`。这些仅是开发验证产物，不进入分发包。
+将 `--rendition` 改为 `Dark` 可导出深色预览。本次分别检查了 26／27 渲染代际、Default／Dark、32px／256px 的八张导出图，均保留可辨认的环形与分格，没有此前原型的额外底板。它们是渲染器预览，不能当作对应真实系统已运行的证据。
+
+Debug 和通用 Release 构建成功，分别核对生成的 Info plist、Aqua／DarkAqua 图标组、最低系统和 `codesign --verify --deep --strict`。本次只变更图标资源与工程配置，不修改 Core、数据库或数据采集行为。
+
+证据位于 `.build/research/icon-composer/app-verification.json`、`app-debug-catalog.json`、`app-release-catalog.json` 和 `app-<default|dark>-<26|27>-<32|256>.png`；构建日志为 `.build/logs/native-icon-app-build.log`、`.build/logs/native-icon-release-build.log`。原型及官方资料也保留在该研究目录，不进入分发包。
 
 ## 剩余验收
 
-1. 在 Icon Composer 中按原设计准备分层资源，核对浅色、深色及小尺寸下的轮廓、颜色和边距，消除重复外框。
-2. 加入 App target，移除旧的显式浅色图标配置，确认生成 Info plist、编译目录及包签名；检查实际引用，而非仅检查文件是否存在。
-3. 在系统中检查 Dock 和 Finder 的浅深外观、App 启动／退出后的图标及各常用尺寸。系统选择其他图标样式时尊重系统偏好。
-4. macOS 26 真机另行验收。本机 macOS 27 的编译与导出不能替代最低系统运行验证。
+1. 在系统中检查 Dock 和 Finder 的浅深外观、App 启动／退出后的图标和常用尺寸，尊重系统图标样式偏好。
+2. 在 macOS 26 真机完成同样检查，不能以 macOS 27 宿主机的 26 代际导出替代。
+3. 后续更新图标时，同时更新原始定稿、内容区图片和 `.icon/Assets`，再核对原图一致性、导出和包内外观引用。
 
-本次 Computer Use 返回 Mac 锁定，Icon Composer 原生配置和系统交互检查仍需用户手动解锁后继续；已有解锁请求待响应。
+最近一次 Computer Use 返回 Mac 锁定，系统交互检查仍需用户手动解锁后继续；已有解锁请求待响应。
