@@ -5,6 +5,16 @@
 	"objectVersion" = "56";
 	"archiveVersion" = "1";
 	"objects" = {
+		"958778895F030AAA42825BFF" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "TokenTick/UI/UsageRecordsView.swift";
+			"sourceTree" = "<group>";
+		};
+		"12F57F06E90963792A0B7A4F" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "958778895F030AAA42825BFF";
+		};
 		"36FF4A1297DA65346F5C2790" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -124,6 +134,7 @@
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
 			"files" = (
+				"12F57F06E90963792A0B7A4F",
 				"C8E280922E18F966DE4902FA",
 				"57927CA37D38559EC007898D",
 				"316C050AB7340885F4408286",
@@ -386,6 +397,7 @@
 			"isa" = "PBXGroup";
 			"name" = "UI";
 			"children" = (
+				"958778895F030AAA42825BFF",
 				"36FF4A1297DA65346F5C2790",
 				"0460BF9724C2EF9D32A54C46",
 				"7993302792420E8B4D8D2146",

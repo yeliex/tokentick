@@ -3,8 +3,14 @@ import TokenTickCore
 
 struct UsageSummaryInspector: View {
     let row: UsageDisplayRow
+    let query: UsageQuery
+    let scope: UsageRecordScope
+    @State private var showingRecords = false
     var body: some View {
         Form {
+            Section {
+                Button("查看用量明细") { showingRecords = true }
+            }
             Section("归属") {
                 Text(row.title).font(.headline).textSelection(.enabled)
                 if let thread = row.thread {
@@ -31,5 +37,8 @@ struct UsageSummaryInspector: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
         }.formStyle(.grouped).textSelection(.enabled)
+            .sheet(isPresented: $showingRecords) {
+                UsageRecordsView(title: row.title, query: query, scope: scope)
+            }
     }
 }

@@ -43,6 +43,10 @@ struct TokenTickCommand {
                         print("\(item.group ?? (options.grouping == .total ? "总计" : "未知"))\t\(item.records)\t\(item.totalTokens)\t\(amount)\t\(item.unpricedTokens)")
                     }
                 }
+            case "records":
+                try printJSON(UsageStore(databaseURL: options.database).usageRecords(UsageQuery(
+                    timezone: options.timezone, fromDate: options.fromDate, throughDate: options.throughDate,
+                    account: options.account, limit: options.limit, offset: options.offset), scope: options.recordScope))
             case "rebuild":
                 try printJSON(UsageStore(databaseURL: options.database).rebuildStatistics(timezone: options.timezone))
             case "prices":
@@ -115,6 +119,7 @@ struct TokenTickCommand {
         var codexExecutable: URL?
         var grouping = UsageGrouping.day
         var scope = SynchronizationScope.all
+        var recordScope = UsageRecordScope.all
         var timezone: String?
         var fromDate: String?
         var throughDate: String?
@@ -127,7 +132,7 @@ struct TokenTickCommand {
             command = arguments.first ?? "help"
             if ["--help", "-h"].contains(command) { command = "help" }
             if command == "--version" { command = "version" }
-            guard ["help", "version", "scan", "sync", "usage", "status", "prices", "sync-prices", "reprice", "sync-api", "limits", "api-usage", "rebuild"].contains(command) else {
+            guard ["help", "version", "scan", "sync", "usage", "status", "prices", "sync-prices", "reprice", "sync-api", "limits", "api-usage", "rebuild", "records"].contains(command) else {
                 throw CommandError.invalid("不支持的命令：\(command)。")
             }
             var index = 1
@@ -135,9 +140,19 @@ struct TokenTickCommand {
                 let option = arguments[index]
                 index += 1
                 if option == "--json" { json = true; continue }
-                if option == "--unknown-account", command == "usage" {
+                if option == "--unknown-account", ["usage", "records"].contains(command) {
                     guard account == .all else { throw CommandError.invalid("账号筛选参数不能重复。") }
                     account = .unknown
+                    continue
+                }
+                if command == "records", ["--unknown-thread", "--unknown-project", "--unknown-model", "--unknown-date"].contains(option) {
+                    guard recordScope == .all else { throw CommandError.invalid("明细归属筛选不能重复。") }
+                    switch option {
+                    case "--unknown-thread": recordScope = .thread(nil)
+                    case "--unknown-project": recordScope = .project(nil)
+                    case "--unknown-model": recordScope = .model(nil)
+                    default: recordScope = .day(nil)
+                    }
                     continue
                 }
                 guard index < arguments.count else { throw CommandError.invalid("\(option) 缺少参数。") }
@@ -152,21 +167,29 @@ struct TokenTickCommand {
                 case "--scope" where command == "sync":
                     guard let scope = SynchronizationScope(rawValue: value) else { throw CommandError.invalid("同步范围为 all、local、prices 或 api。") }
                     self.scope = scope
+                case let flag where command == "records" && ["--thread", "--project", "--model", "--day"].contains(flag):
+                    guard recordScope == .all else { throw CommandError.invalid("明细归属筛选不能重复。") }
+                    switch option {
+                    case "--thread": recordScope = .thread(value)
+                    case "--project": recordScope = .project(value)
+                    case "--model": recordScope = .model(value)
+                    default: recordScope = .day(value)
+                    }
                 case "--group" where command == "usage":
                     guard let group = UsageGrouping(rawValue: value) else { throw CommandError.invalid("无效的统计维度。") }
                     grouping = group
-                case "--timezone" where command == "usage" || command == "rebuild":
+                case "--timezone" where ["usage", "records", "rebuild"].contains(command):
                     guard TimeZone(identifier: value) != nil else { throw CommandError.invalid("无效的 IANA 时区。") }
                     timezone = value
-                case "--from" where command == "usage": fromDate = value
-                case "--through" where command == "usage": throughDate = value
-                case "--account" where command == "usage":
+                case "--from" where ["usage", "records"].contains(command): fromDate = value
+                case "--through" where ["usage", "records"].contains(command): throughDate = value
+                case "--account" where ["usage", "records"].contains(command):
                     guard account == .all, !value.isEmpty else { throw CommandError.invalid("账号筛选参数不能重复或为空。") }
                     account = .account(value)
-                case "--offset" where command == "usage":
+                case "--offset" where ["usage", "records"].contains(command):
                     guard let count = Int(value), count >= 0 else { throw CommandError.invalid("offset 不能为负数。") }
                     offset = count
-                case "--limit" where ["usage", "prices", "limits", "api-usage"].contains(command):
+                case "--limit" where ["usage", "records", "prices", "limits", "api-usage"].contains(command):
                     guard let count = Int(value), (1...10_000).contains(count) else { throw CommandError.invalid("limit 必须为 1–10000。") }
                     limit = count
                 default: throw CommandError.invalid("不支持的参数：\(option)。")
@@ -183,6 +206,7 @@ struct TokenTickCommand {
       scan       增量采集 sessions 与 archived_sessions（含 .jsonl.zst）
       sync       采集、价格、API 与统计缓存；--scope all|local|prices|api
       usage      查询用量；--group total|day|thread|project|model，--limit 100
+      records    分页查看用量明细与证据（JSON），--thread/--project/--model/--day 选一
       rebuild    从事实表重建统计缓存；--timezone Asia/Shanghai
       prices     查看历史价格快照（JSON），--limit 100
       sync-prices 从 models.dev 同步当天价格（每天成功一次）
@@ -197,8 +221,9 @@ struct TokenTickCommand {
     通用参数：--database <SQLite 路径>，--json
     scan／sync-api／sync 参数：--codex-home <Codex 数据目录>
     sync-api／sync 参数：--codex-bin <Codex 可执行文件路径>
-    usage 参数：--from YYYY-MM-DD --through YYYY-MM-DD（含首尾日期）
+    usage／records 参数：--from YYYY-MM-DD --through YYYY-MM-DD（含首尾日期）
                 --timezone <IANA 时区> --offset 0 --account <账号 ID> 或 --unknown-account
+    records 未知归属：--unknown-thread／--unknown-project／--unknown-model／--unknown-date 选一
     scan 存在解析问题时返回 1；参数错误返回 2。
     缺失价格和模式保持未知，金额单位为 nanoUSD（1 USD = 10^9 nanoUSD）。
     """

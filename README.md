@@ -6,7 +6,7 @@ TokenTick 从本地 Codex 日志采集统计数据，记录每个任务、每天
 
 ## 项目状态
 
-已建立面向 **macOS 26.0+** 的原生 Xcode 工程，包含 SwiftUI App 和共享 Core 源码的 CLI。已实现本地 JSONL／Zstandard 增量采集、迁移、任务名称缓存、历史计价、服务端日桶／额度观测、统计缓存及共享同步流程。SwiftUI 已接入总览、每日趋势与表格、任务／项目分页、汇总检查器、额度和数据状态；搜索、排序、交叉筛选、请求级证据等交互仍在完善。API 差额口径和正式发布验收尚未完成。
+已建立面向 **macOS 26.0+** 的原生 Xcode 工程，包含 SwiftUI App 和共享 Core 源码的 CLI。已实现本地 JSONL／Zstandard 增量采集、迁移、任务名称缓存、历史计价、服务端日桶／额度观测、统计缓存及共享同步流程。SwiftUI 已接入总览、每日趋势与表格、任务／项目分页、汇总检查器、请求级分页与证据、额度和数据状态；搜索、排序、交叉筛选等交互仍在完善。API 差额口径和正式发布验收尚未完成。
 
 - [需求与技术方案](docs/requirements.md)
 - [实现计划](docs/implementation-plan.md)
@@ -73,6 +73,15 @@ xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
 ```
 
 `--group` 支持 `total|day|thread|project|model`，日期范围包含首尾两天；`--account <ID>` 与 `--unknown-account` 用于账号筛选。临时指定时区不会改变 App 的默认时区。缓存失效时自动重建；扫描者持锁时，已有连接直接查询已提交事实。只有日日期而无精确时间的数据，在不能换算的时区归到未知日期；范围查询排除它，并单独返回 `unknownDateTokens`。JSON 中 `records` 是统计记录数，API 日差额记录不被称为实际请求。`status` 显示缓存版本、时区和来源状态。
+
+请求级明细与证据：
+
+```sh
+.build/DerivedData/Build/Products/Debug/tokentick records --database .build/audit/usage.sqlite \
+  --day 2026-09-09 --timezone Asia/Shanghai --limit 100 --offset 0
+```
+
+`records` 与 App 检查器共用查询，按发生时间降序、记录 ID 降序分页，返回 `hasMore`。支持日期／账号条件，以及任务、项目、模型或单日中的一个归属条件；未知归属使用 `--unknown-thread`、`--unknown-project`、`--unknown-model` 或 `--unknown-date`，不会与名称恰好为 `unknown` 的项目混淆。输出包含 Fast／长上下文、分项 tokens、实际十进制费率字符串、纳美元金额、最新任务名称与项目，以及统计证据和最近扫描位置。未知字段在 JSON 中显式为 `null`；`statisticalDate` 是所选时区日期，`usageDate` 是计价 UTC 日期。查询不会重建统计缓存或读取对话正文。
 
 价格同步与重算：
 

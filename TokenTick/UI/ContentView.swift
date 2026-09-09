@@ -67,7 +67,12 @@ struct ContentView: View {
         }
         .inspector(isPresented: Binding(get: { selectedRow != nil }, set: { if !$0 { selectedRow = nil } })) {
             if let row = dashboard.rows.first(where: { $0.id == selectedRow }) {
-                UsageSummaryInspector(row: row).inspectorColumnWidth(min: 280, ideal: 320, max: 360)
+                let timezone = app.status?.timezone ?? "UTC"
+                let dates = period.dates(timezone: TimeZone(identifier: timezone) ?? .gmt)
+                let scope: UsageRecordScope = section == .threads ? .thread(row.summary.group)
+                    : section == .projects ? .project(row.summary.group) : .day(row.summary.group)
+                UsageSummaryInspector(row: row, query: UsageQuery(timezone: timezone, fromDate: dates.0, throughDate: dates.1), scope: scope)
+                    .id(row.id).inspectorColumnWidth(min: 280, ideal: 320, max: 360)
             }
         }
         .frame(minWidth: 860, minHeight: 580)

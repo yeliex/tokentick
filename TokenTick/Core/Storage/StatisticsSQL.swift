@@ -4,6 +4,13 @@ import GRDB
 enum StatisticsSQL {
     static let unknownDate = "unknown"
 
+    // 汇总和明细共用日期口径；只有 UTC 日日期的事实不能在其他时区猜测归属。
+    static let dayExpression = """
+        CASE WHEN u.occurred_at IS NOT NULL THEN COALESCE(tokentick_day(u.occurred_at), 'unknown')
+             WHEN :timezone IN ('UTC', 'GMT') THEN COALESCE(u.usage_date, 'unknown')
+             ELSE 'unknown' END
+        """
+
     static func prepare(_ db: Database, timezone: TimeZone) {
         let style = Date.ISO8601FormatStyle(timeZone: timezone).year().month().day().dateSeparator(.dash)
         db.add(function: DatabaseFunction("tokentick_day", argumentCount: 1, pure: true) { values in
@@ -32,9 +39,7 @@ enum StatisticsSQL {
     /// 先在 SQLite 中合并同日、同任务、同模型的请求，再展开四个维度，避免放大全部明细。
     static let aggregate = """
         WITH facts AS (
-            SELECT CASE WHEN u.occurred_at IS NOT NULL THEN COALESCE(tokentick_day(u.occurred_at), 'unknown')
-                        WHEN :timezone IN ('UTC', 'GMT') THEN COALESCE(u.usage_date, 'unknown')
-                        ELSE 'unknown' END AS day,
+            SELECT \(dayExpression) AS day,
                 u.account_id, u.thread_id, t.project_name, u.model, u.total_tokens,
                 u.input_tokens, u.output_tokens, u.cache_read_tokens, u.cache_write_tokens, u.reasoning_tokens,
                 u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount,
