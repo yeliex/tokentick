@@ -1,8 +1,8 @@
-# TailX 需求与技术方案
+# TokenTick 需求与技术方案
 
 日期：2026-09-09
 
-状态：需求基线草案，尚未实施。项目名 TailX，CLI 为 `tailx`。
+状态：需求基线草案，尚未实施。项目名 TokenTick，CLI 为 `tokentick`。
 
 ## 1. 定位与边界
 
@@ -22,8 +22,8 @@
 App 与 CLI 位于同一工程，共享业务源码，以两个 target 编译。CLI 入口是 App 目录下的 `cli.swift`，无需先拆独立 Swift Package。
 
 ```text
-TailX/
-  TailXApp.swift       # 仅 App target
+TokenTick/
+  TokenTickApp.swift       # 仅 App target
   cli.swift                # 仅 CLI target
   Core/
     Collection/            # 文件发现、日志解析、API 同步
@@ -258,11 +258,11 @@ SQLite 中 NULL 不自动提供期望的复合唯一性；全局／未知维度�
 
 | 命令 | 能力 |
 | --- | --- |
-| `tailx sync` | 增量扫描、价格及 API 同步，报告各来源结果 |
-| `tailx usage` | 按日期、任务、项目、模型查询用量及金额，支持 JSON |
-| `tailx limits` | 查询已观测周期及可归属用量 |
-| `tailx status` | 数据库、扫描、缺失价格和同步状态 |
-| `tailx rebuild` | 显式重建统计或重算金额，区分是否需要重新解析 |
+| `tokentick sync` | 增量扫描、价格及 API 同步，报告各来源结果 |
+| `tokentick usage` | 按日期、任务、项目、模型查询用量及金额，支持 JSON |
+| `tokentick limits` | 查询已观测周期及可归属用量 |
+| `tokentick status` | 数据库、扫描、缺失价格和同步状态 |
+| `tokentick rebuild` | 显式重建统计或重算金额，区分是否需要重新解析 |
 
 查询默认不触发网络同步。结构化结果保留 NULL、金额单位和统计时区，不能把未知输出成 0。App 与 CLI 同一查询条件得到相同结果。
 
