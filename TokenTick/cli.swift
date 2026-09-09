@@ -5,23 +5,117 @@ import Foundation
 @main
 struct TokenTickCommand {
     static func main() {
-        switch Array(CommandLine.arguments.dropFirst()) {
-        case [], ["--help"], ["-h"]:
-            print("""
-            \(ApplicationInfo.name) — Codex 用量与成本统计
-
-            用法：tokentick [--help | --version]
-
-              --help, -h   显示帮助
-              --version    显示版本
-
-            用量采集与查询命令将在数据层实现后提供。
-            """)
-        case ["--version"]:
-            print("\(ApplicationInfo.name) \(ApplicationInfo.version)")
-        default:
-            FileHandle.standardError.write(Data("不支持的命令。使用 tokentick --help 查看帮助。\n".utf8))
-            exit(2)
+        do {
+            let options = try Options(arguments: Array(CommandLine.arguments.dropFirst()))
+            switch options.command {
+            case "help": print(help)
+            case "version": print("\(ApplicationInfo.name) \(ApplicationInfo.version)")
+            case "scan":
+                let store = try UsageStore(databaseURL: options.database)
+                let report = try LocalUsageScanner(store: store).scan(codexHome: options.codexHome)
+                if options.json { try printJSON(report) }
+                else {
+                    print("发现 \(report.discoveredFiles) 个文件；扫描 \(report.scannedFiles)，未变化 \(report.unchangedFiles)。")
+                    print("新增 \(report.insertedRequests) 个请求，补齐标识 \(report.upgradedRequests)，重复 \(report.duplicateRequests)，继承事件 \(report.inheritedEvents)。")
+                    for issue in report.issues {
+                        print("\(issue.fileName)\(issue.line.map { ":\($0)" } ?? "")：\(issue.message)")
+                    }
+                    if report.issueCount > 0 { print("共 \(report.issueCount) 个问题，最多显示 100 个。") }
+                }
+                if report.issueCount > 0 { exit(1) }
+            case "usage":
+                let summaries = try UsageStore(databaseURL: options.database)
+                    .usageSummaries(grouping: options.grouping, limit: options.limit)
+                if options.json { try printJSON(UsageOutput(grouping: options.grouping.rawValue, rows: summaries)) }
+                else if summaries.isEmpty { print("暂无用量。运行 tokentick scan 采集本地日志。") }
+                else {
+                    print("维度\t请求数\tTokens\t未定价 Tokens")
+                    for item in summaries {
+                        print("\(item.group ?? "未知")\t\(item.requests)\t\(item.totalTokens)\t\(item.unpricedTokens)")
+                    }
+                }
+            case "status": try printJSON(UsageStore(databaseURL: options.database).tableCounts())
+            default: throw CommandError.invalid("不支持的命令。")
+            }
+        } catch {
+            FileHandle.standardError.write(Data("\(error.localizedDescription)\n".utf8))
+            exit(error is CommandError ? 2 : 1)
         }
     }
+
+    private struct UsageOutput: Encodable {
+        let timezone = "UTC"
+        let amountUnit = "nanoUSD"
+        let grouping: String
+        let rows: [UsageSummary]
+    }
+
+    private static func printJSON<T: Encodable>(_ value: T) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        print(String(decoding: try encoder.encode(value), as: UTF8.self))
+    }
+
+    private enum CommandError: LocalizedError {
+        case invalid(String)
+        var errorDescription: String? {
+            switch self { case .invalid(let message): "\(message) 使用 tokentick --help 查看帮助。" }
+        }
+    }
+
+    private struct Options {
+        var command: String
+        var database = UsageStore.defaultDatabaseURL
+        var codexHome = LocalUsageScanner.defaultCodexHome
+        var grouping = UsageGrouping.day
+        var limit = 100
+        var json = false
+
+        init(arguments: [String]) throws {
+            command = arguments.first ?? "help"
+            if ["--help", "-h"].contains(command) { command = "help" }
+            if command == "--version" { command = "version" }
+            guard ["help", "version", "scan", "usage", "status"].contains(command) else {
+                throw CommandError.invalid("不支持的命令：\(command)。")
+            }
+            var index = 1
+            while index < arguments.count {
+                let option = arguments[index]
+                index += 1
+                if option == "--json" { json = true; continue }
+                guard index < arguments.count else { throw CommandError.invalid("\(option) 缺少参数。") }
+                let value = arguments[index]
+                index += 1
+                switch option {
+                case "--database": database = URL(fileURLWithPath: (value as NSString).expandingTildeInPath)
+                case "--codex-home" where command == "scan":
+                    codexHome = URL(fileURLWithPath: (value as NSString).expandingTildeInPath, isDirectory: true)
+                case "--group" where command == "usage":
+                    guard let group = UsageGrouping(rawValue: value) else { throw CommandError.invalid("无效的统计维度。") }
+                    grouping = group
+                case "--limit" where command == "usage":
+                    guard let count = Int(value), (1...10_000).contains(count) else { throw CommandError.invalid("limit 必须为 1–10000。") }
+                    limit = count
+                default: throw CommandError.invalid("不支持的参数：\(option)。")
+                }
+            }
+        }
+    }
+
+    private static let help = """
+    TokenTick — Codex 用量与成本统计
+
+    用法：tokentick <命令> [参数]
+
+      scan       增量采集 sessions 与 archived_sessions（含 .jsonl.zst）
+      usage      查询用量；--group day|thread|project|model，--limit 100
+      status     输出数据库表记录数
+      --version  显示版本
+      --help     显示帮助
+
+    通用参数：--database <SQLite 路径>，--json
+    扫描参数：--codex-home <Codex 数据目录>
+    scan 存在解析问题时返回 1；参数错误返回 2。
+    缺失价格和模式保持未知，金额单位为 nanoUSD（1 USD = 10^9 nanoUSD）。
+    """
 }

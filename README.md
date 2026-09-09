@@ -6,7 +6,7 @@ TokenTick 从本地 Codex 日志采集统计数据，记录每个任务、每天
 
 ## 项目状态
 
-已建立面向 **macOS 26.0+** 的原生 Xcode 工程，包含 SwiftUI App 和共享 Core 源码的 CLI。当前提供窗口／菜单栏骨架、现有图标、CLI 帮助／版本命令，以及 GRDB 存储与迁移基础；日志采集、计价与真实统计仍按计划实现。
+已建立面向 **macOS 26.0+** 的原生 Xcode 工程，包含 SwiftUI App 和共享 Core 源码的 CLI。当前已实现窗口／菜单栏骨架、现有图标、GRDB 存储与迁移、本地 JSONL／Zstandard 增量采集、任务名称缓存和 CLI 用量查询。历史计价、API 对账、统计缓存和客户端数据绑定仍按计划实现。
 
 - [需求与技术方案](docs/requirements.md)
 - [实现计划](docs/implementation-plan.md)
@@ -46,6 +46,19 @@ xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
   -derivedDataPath .build/DerivedData build
 .build/DerivedData/Build/Products/Debug/tokentick --help
 ```
+
+采集和查询（首次运行建议指定独立数据库）：
+
+```sh
+.build/DerivedData/Build/Products/Debug/tokentick scan \
+  --database .build/audit/usage.sqlite --json
+.build/DerivedData/Build/Products/Debug/tokentick usage \
+  --database .build/audit/usage.sqlite --group day --json
+.build/DerivedData/Build/Products/Debug/tokentick status \
+  --database .build/audit/usage.sqlite
+```
+
+也可省略 `--codex-home`，默认读取环境变量 `CODEX_HOME` 或 `~/.codex`。省略 `--database` 时使用 `~/Library/Application Support/TokenTick/usage.sqlite`。`scan` 只读 Codex 数据，写入 TokenTick 自己的数据库；存在解析问题时返回 1，参数错误返回 2。当前日分组为 UTC，缺失价格／模式不会伪造为零金额；`sync`、定价、API 与缓存重建命令将在对应阶段接入。
 
 两个 scheme 都以 macOS 26.0 为最低版本。App 使用本地 ad-hoc 签名，不要求开发者团队；正式分发签名、公证和 CLI 安装在发布阶段实现。Core 由本地 Swift Package 的 TokenTickCore 模块编译，新增 Core 文件自动进入模块；`TokenTickApp.swift` 与 `cli.swift` 分别只加入对应 Xcode target。
 

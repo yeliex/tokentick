@@ -2,7 +2,7 @@
 
 日期：2026-09-09
 
-状态：需求基线与 macOS 工程初始化。产品名 TokenTick，仓库和 CLI 为 `tokentick`，默认分支为 `master`。
+状态：需求基线、macOS 工程与本地采集实现中。产品名 TokenTick，仓库和 CLI 为 `tokentick`，默认分支为 `master`。
 
 第一版最低系统版本确定为 **macOS 26.0**。详细实施顺序见 [实现计划](implementation-plan.md)，客户端布局与交互见 [客户端 UI 方案](client-ui.md)。工程骨架不代表采集、数据库或计价功能已实现。
 
@@ -38,7 +38,7 @@ TokenTick/
 
 Core 不依赖 SwiftUI。两个入口共用同一个默认数据库、解析器、计价逻辑和查询语义。App 状态主要保存统计结果、当前查询结果及同步进度；历史明细保存在数据库中。解析缓冲、当前批次和详情分页结果允许短暂驻留内存。
 
-使用 Foundation 原生 I/O 和网络能力；需要读取 `.jsonl.zst` 时使用原生 Zstandard 库绑定，不依赖用户安装解压命令。最低系统版本固定为 macOS 26.0；GRDB 和 Zstandard 在对应实现阶段通过包管理工具加入，锁定实际验证的版本。GRDB 已通过 Swift Package Manager 锁定为 7.11.1；Zstandard 在压缩采集阶段加入。
+使用 Foundation 原生 I/O 和网络能力；需要读取 `.jsonl.zst` 时使用原生 Zstandard 库绑定，不依赖用户安装解压命令。最低系统版本固定为 macOS 26.0；GRDB 和 Zstandard 在对应实现阶段通过包管理工具加入，锁定实际验证的版本。GRDB 已通过 Swift Package Manager 锁定为 7.11.1；Zstandard 使用官方 facebook/zstd 包的 libzstd 1.5.7，已通过 App／CLI 构建与流式解压测试。
 
 ## 3. 已核实的两个关键契约
 
@@ -331,6 +331,6 @@ SQLite 中 NULL 不自动提供期望的复合唯一性；全局／未知维度�
 - 本机 Codex 服务端接口可用性，以及日桶时区、token 口径、历史覆盖范围。
 - 各代本地日志是否足以恢复请求级 Fast 状态、账号归属及缓存计价语义。
 - 多个 limit bucket 的用量归属依据，不能按模型名称猜测。
-- 最低系统版本已确定为 macOS 26.0；仍需完成 macOS 26 真机验收，以及 Zstandard 绑定和 GRDB 的构建验证。
+- 最低系统版本已确定为 macOS 26.0；GRDB 和 Zstandard 的本机构建已验证，仍需完成 macOS 26 真机验收。
 
 以上事项影响精确程度的部分保持未知，不能在界面或 CLI 中包装成完整统计。它们不阻止本地采集和数据层先落地。

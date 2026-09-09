@@ -137,6 +137,12 @@ enum StoreSchema {
                 );
                 """)
         }
+        migrator.registerMigration("v2.usage-dedup-alias") { db in
+            try db.execute(sql: """
+                CREATE INDEX usage_legacy_alias ON usage(json_extract(evidence_json, '$.legacyKey'))
+                WHERE source = 'local';
+                """)
+        }
         return migrator
     }
 }
