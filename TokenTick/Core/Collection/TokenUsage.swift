@@ -8,6 +8,16 @@ public struct TokenUsage: Codable, Equatable, Sendable {
     public let reasoningOutputTokens: Int64?
     public let totalTokens: Int64
 
+    init(inputTokens: Int64, outputTokens: Int64, cachedInputTokens: Int64?, cacheWriteInputTokens: Int64?,
+         reasoningOutputTokens: Int64?, totalTokens: Int64) {
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cachedInputTokens = cachedInputTokens
+        self.cacheWriteInputTokens = cacheWriteInputTokens
+        self.reasoningOutputTokens = reasoningOutputTokens
+        self.totalTokens = totalTokens
+    }
+
     enum CodingKeys: String, CodingKey {
         case inputTokens = "input_tokens"
         case outputTokens = "output_tokens"

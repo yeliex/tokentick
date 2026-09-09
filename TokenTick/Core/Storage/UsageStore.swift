@@ -25,7 +25,9 @@ public final class UsageStore: Sendable {
             let migrator = StoreSchema.migrator
             if FileManager.default.fileExists(atPath: databaseURL.path) {
                 var readConfiguration = Configuration()
-                readConfiguration.readonly = true
+                // 恢复的 WAL 备份可能没有 sidecar。连接须能创建 SQLite 自身的
+                // WAL/SHM，业务 schema 仍只读检查，确认兼容后才执行迁移。
+                readConfiguration.busyMode = .timeout(5)
                 let previous = try DatabaseQueue(path: databaseURL.path, configuration: readConfiguration)
                 let state = try previous.read { db in
                     (try migrator.hasBeenSuperseded(db), try migrator.hasCompletedMigrations(db))

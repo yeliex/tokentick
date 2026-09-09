@@ -117,11 +117,7 @@ struct RolloutParser {
                            thread: String, turn: String?, response: String?, line: Int,
                            evidence: UsageEvidence) throws -> CollectedUsage {
         guard let timestamp = Self.parseDate(evidence.timestamp) else { throw ParseError.missingTimestamp }
-        let fast: Bool? = switch state.serviceTier {
-        case "priority": true
-        case "default", "standard": false
-        default: nil
-        }
+        let fast = CodexServiceTier.isFast(state.serviceTier)
         return CollectedUsage(dedupKey: key, replacesKey: replaces, threadID: thread.lowercased(),
                               turnID: turn, responseID: response, timestamp: timestamp,
                               model: turn == state.turnID ? state.model : nil, isFast: turn == state.turnID ? fast : nil, tokens: usage,

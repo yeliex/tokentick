@@ -4,7 +4,7 @@ import Foundation
 
 @main
 struct TokenTickCommand {
-    static func main() {
+    static func main() async {
         do {
             let options = try Options(arguments: Array(CommandLine.arguments.dropFirst()))
             switch options.command {
@@ -34,6 +34,13 @@ struct TokenTickCommand {
                         print("\(item.group ?? "未知")\t\(item.requests)\t\(item.totalTokens)\t\(item.unpricedTokens)")
                     }
                 }
+            case "prices":
+                try printJSON(PriceOutput(rows: UsageStore(databaseURL: options.database).priceEntries(limit: options.limit)))
+            case "sync-prices":
+                let store = try UsageStore(databaseURL: options.database)
+                try await printJSON(PriceSynchronizer(store: store).synchronize())
+            case "reprice":
+                try printJSON(UsageStore(databaseURL: options.database).repriceUsage())
             case "status": try printJSON(UsageStore(databaseURL: options.database).tableCounts())
             default: throw CommandError.invalid("不支持的命令。")
             }
@@ -41,6 +48,11 @@ struct TokenTickCommand {
             FileHandle.standardError.write(Data("\(error.localizedDescription)\n".utf8))
             exit(error is CommandError ? 2 : 1)
         }
+    }
+
+    private struct PriceOutput: Encodable {
+        let priceUnit = "USD_per_million_tokens"
+        let rows: [PriceEntry]
     }
 
     private struct UsageOutput: Encodable {
@@ -75,7 +87,7 @@ struct TokenTickCommand {
             command = arguments.first ?? "help"
             if ["--help", "-h"].contains(command) { command = "help" }
             if command == "--version" { command = "version" }
-            guard ["help", "version", "scan", "usage", "status"].contains(command) else {
+            guard ["help", "version", "scan", "usage", "status", "prices", "sync-prices", "reprice"].contains(command) else {
                 throw CommandError.invalid("不支持的命令：\(command)。")
             }
             var index = 1
@@ -93,7 +105,7 @@ struct TokenTickCommand {
                 case "--group" where command == "usage":
                     guard let group = UsageGrouping(rawValue: value) else { throw CommandError.invalid("无效的统计维度。") }
                     grouping = group
-                case "--limit" where command == "usage":
+                case "--limit" where command == "usage" || command == "prices":
                     guard let count = Int(value), (1...10_000).contains(count) else { throw CommandError.invalid("limit 必须为 1–10000。") }
                     limit = count
                 default: throw CommandError.invalid("不支持的参数：\(option)。")
@@ -109,6 +121,9 @@ struct TokenTickCommand {
 
       scan       增量采集 sessions 与 archived_sessions（含 .jsonl.zst）
       usage      查询用量；--group day|thread|project|model，--limit 100
+      prices     查看历史价格快照（JSON），--limit 100
+      sync-prices 从 models.dev 同步当天价格（每天成功一次）
+      reprice    按请求日期的历史价格重算分项金额
       status     输出数据库表记录数
       --version  显示版本
       --help     显示帮助

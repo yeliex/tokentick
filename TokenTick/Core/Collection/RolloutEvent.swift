@@ -108,3 +108,13 @@ struct CollectedUsage {
     let line: Int
     let evidence: UsageEvidence
 }
+
+enum CodexServiceTier {
+    static func isFast(_ value: String?) -> Bool? {
+        switch value {
+        case "priority", "fast": true
+        case "default", "standard": false
+        default: nil
+        }
+    }
+}

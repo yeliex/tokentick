@@ -52,4 +52,25 @@ struct UsageStoreTests {
         #expect(try restored.read { db in try String.fetchOne(db, sql: "SELECT value FROM existing_data") } == "keep")
         #expect(try restored.read { db in try db.tableExists("usage") } == false)
     }
+    @Test func restoredWALDatabaseWithoutSidecarsCanBeOpened() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let original = try UsageStore(databaseURL: root.appendingPathComponent("original.sqlite"))
+        try original.pool.write { db in
+            try db.execute(sql: "INSERT INTO threads(thread_id, title) VALUES ('restored', '保留标题')")
+        }
+        let restoredURL = root.appendingPathComponent("restored.sqlite")
+        let destination = try DatabaseQueue(path: restoredURL.path)
+        try original.pool.backup(to: destination)
+        try destination.close()
+        // 独立备份只需要主文件；恢复不能依赖原始进程残留的 WAL/SHM。
+        for suffix in ["-wal", "-shm"] {
+            let sidecar = URL(fileURLWithPath: restoredURL.path + suffix)
+            if FileManager.default.fileExists(atPath: sidecar.path) { try FileManager.default.removeItem(at: sidecar) }
+        }
+        let restored = try UsageStore(databaseURL: restoredURL)
+        let title = try restored.pool.read { try String.fetchOne($0, sql: "SELECT title FROM threads WHERE thread_id = 'restored'") }
+        #expect(title == "保留标题")
+    }
+
 }

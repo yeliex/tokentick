@@ -118,6 +118,9 @@ extension UsageStore {
                               usage.tokens.cachedInputTokens, usage.tokens.cacheWriteInputTokens,
                               usage.tokens.reasoningOutputTokens, usage.tokens.totalTokens,
                               usage.rolloutID, usage.line, json])
+        if let row = try Row.fetchOne(db, sql: "SELECT * FROM usage WHERE id = ?", arguments: [db.lastInsertedRowID]) {
+            _ = try priceUsage(row, db: db)
+        }
         return .inserted
     }
 

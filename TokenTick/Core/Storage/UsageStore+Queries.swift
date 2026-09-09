@@ -51,7 +51,11 @@ extension UsageStore {
                     SUM(u.total_tokens) AS total_tokens, SUM(u.input_tokens) AS input_tokens,
                     SUM(u.output_tokens) AS output_tokens, SUM(u.cache_read_tokens) AS cache_read_tokens,
                     SUM(u.cache_write_tokens) AS cache_write_tokens, SUM(u.reasoning_tokens) AS reasoning_tokens,
-                    SUM(u.amount) AS amount,
+                    SUM(CASE WHEN u.amount IS NULL AND COALESCE(u.input_amount, 0) = 0
+                        AND COALESCE(u.output_amount, 0) = 0 AND COALESCE(u.cache_read_amount, 0) = 0
+                        AND COALESCE(u.cache_write_amount, 0) = 0 THEN NULL
+                        ELSE COALESCE(u.input_amount, 0) + COALESCE(u.output_amount, 0)
+                            + COALESCE(u.cache_read_amount, 0) + COALESCE(u.cache_write_amount, 0) END) AS amount,
                     SUM(CASE WHEN u.amount IS NULL THEN u.total_tokens ELSE 0 END) AS unpriced_tokens
                 FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id
                 GROUP BY \(dimension)

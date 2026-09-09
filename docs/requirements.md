@@ -72,7 +72,7 @@ rollout-<时间>-<thread_id>_<rollout_id>.jsonl
 
 ### 3.2 models.dev 的 Fast 与上下文阶梯
 
-本次直接请求 `https://models.dev/api.json` 返回 403，未获得新的线上响应。以下结论来自本次读取的 models.dev 上游源码、OpenAI provider 条目和 API 构建代码；不能据此宣称线上部署已经同步。
+2026-09-09 已成功请求 `https://models.dev/api.json`，并通过原生 CLI 同步验证：OpenAI provider 返回 48 个模型，44 个具有 token 价格，4 个图像模型缺少 cost。线上响应已确认包含下列基础价格、上下文 tiers 和 Fast 模式字段；此前 403 的调查结论不再作为当前接口状态。
 
 | 数据 | 上游结构 | 处理要求 |
 | --- | --- | --- |
@@ -95,9 +95,11 @@ GPT-6 Astra 的上游 OpenAI 条目示例，金额单位均为美元／百万 to
 
 前三行来自 provider 条目；最后一行按该模型官方“Fast 为适用费率的两倍”规则计算，并非 models.dev 显式提供的组合行。该模型的长上下文规则为请求输入超过 272,000 tokens，费率作用于整个请求；不是仅对超出部分加价。不能把倍率或边界条件推广到所有模型。
 
+当前已核对官方价格表中的 GPT-6 Astra、GPT-5.6 Sol／Terra／Luna 组合费率；`gpt-5.6` 是 Sol 的官方别名。仅对这些明确支持的模型，在 models.dev 的 Fast 基础费率确实等于普通费率两倍时计算组合，并保存官方来源和核验日期。GPT-5.4／5.5 的组合字段保持未知。
+
 目前模式价格的 schema 没有嵌套的上下文阶梯，因此仅凭 `experimental.modes.fast.cost` 与 `cost.tiers` 不能通用推导组合费率。优先采用来源直接提供的完整价格；仅对已核实模型使用明确的官方组合规则，保存推导依据；无法确认时留空。不能用其他 provider 的同名模型价格替代 OpenAI 价格。
 
-来源：[OpenAI Astra 条目](https://github.com/anomalyco/models.dev/blob/dev/providers/openai/models/gpt-6-astra.toml)、[价格 schema](https://github.com/anomalyco/models.dev/blob/dev/packages/core/src/schema.ts)、[兼容字段生成逻辑](https://github.com/anomalyco/models.dev/blob/dev/packages/core/src/generate.ts)、[API 构建入口](https://github.com/anomalyco/models.dev/blob/dev/packages/web/script/build.ts)、[官方 Astra 定价](https://developers.openai.com/api/docs/models/gpt-6-astra)。
+来源：[OpenAI Astra 条目](https://github.com/anomalyco/models.dev/blob/dev/providers/openai/models/gpt-6-astra.toml)、[价格 schema](https://github.com/anomalyco/models.dev/blob/dev/packages/core/src/schema.ts)、[兼容字段生成逻辑](https://github.com/anomalyco/models.dev/blob/dev/packages/core/src/generate.ts)、[API 构建入口](https://github.com/anomalyco/models.dev/blob/dev/packages/web/script/build.ts)、[官方 Astra 定价](https://developers.openai.com/api/docs/models/gpt-6-astra)、[官方 Fast 价格表](https://developers.openai.com/api/docs/pricing)、[缓存计费公式](https://developers.openai.com/api/docs/guides/prompt-caching#monitor-cache-performance)。
 
 ## 4. 数据结构
 
