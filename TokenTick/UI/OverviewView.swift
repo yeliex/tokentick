@@ -4,6 +4,7 @@ import SwiftUI
 struct OverviewView: View {
     let model: DashboardModel
     let timezone: String
+    var focus: (UsageGrouping, String?) -> Void
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
@@ -12,11 +13,11 @@ struct OverviewView: View {
                     metric("已知金额", value: UsageFormatting.money(model.total?.knownAmountNanoUSD), detail: "按公开价格换算 · USD")
                     metric("未定价 Tokens", value: UsageFormatting.tokens(model.total?.unpricedTokens), detail: "金额或计价依据不完整")
                 }
-                UsageTrendView(days: model.days)
+                UsageTrendView(days: model.days) { focus(.day, $0) }
                     .padding(22).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 18))
                 HStack(alignment: .top, spacing: 28) {
-                    contribution("模型构成", rows: model.models)
-                    contribution("项目贡献", rows: model.projects)
+                    contribution("模型构成", rows: model.models, grouping: .model)
+                    contribution("项目贡献", rows: model.projects, grouping: .project)
                 }
                 if model.unknownDateTokens > 0 {
                     Label("\(model.unknownDateTokens.formatted()) tokens 无法确定日期，未绘入趋势。", systemImage: "calendar.badge.exclamationmark")
@@ -37,15 +38,17 @@ struct OverviewView: View {
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func contribution(_ title: String, rows: [UsageSummary]) -> some View {
+    private func contribution(_ title: String, rows: [UsageSummary], grouping: UsageGrouping) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(title).font(.headline)
             ForEach(rows, id: \.group) { row in
-                HStack {
-                    Text(row.group ?? "未知归属").lineLimit(1).help(row.group ?? "未知归属")
-                    Spacer(minLength: 12)
-                    Text(UsageFormatting.tokens(row.totalTokens)).monospacedDigit().foregroundStyle(.secondary)
-                }.font(.callout)
+                Button { focus(grouping, row.group) } label: {
+                    HStack {
+                        Text(row.group ?? "未知归属").lineLimit(1).help(row.group ?? "未知归属")
+                        Spacer(minLength: 12)
+                        Text(UsageFormatting.tokens(row.totalTokens)).monospacedDigit().foregroundStyle(.secondary)
+                    }.font(.callout).contentShape(Rectangle())
+                }.buttonStyle(.plain).help("查看该范围的任务")
                 Divider()
             }
         }.frame(maxWidth: .infinity, alignment: .leading)

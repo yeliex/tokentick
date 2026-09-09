@@ -81,7 +81,17 @@ xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
   --day 2026-09-09 --timezone Asia/Shanghai --limit 100 --offset 0
 ```
 
-`records` 与 App 检查器共用查询，按发生时间降序、记录 ID 降序分页，返回 `hasMore`。支持日期／账号条件，以及任务、项目、模型或单日中的一个归属条件；未知归属使用 `--unknown-thread`、`--unknown-project`、`--unknown-model` 或 `--unknown-date`，不会与名称恰好为 `unknown` 的项目混淆。输出包含 Fast／长上下文、分项 tokens、实际十进制费率字符串、纳美元金额、最新任务名称与项目，以及统计证据和最近扫描位置。未知字段在 JSON 中显式为 `null`；`statisticalDate` 是所选时区日期，`usageDate` 是计价 UTC 日期。查询不会重建统计缓存或读取对话正文。
+`records` 与 App 检查器共用查询，默认按发生时间降序、记录 ID 降序分页，返回 `hasMore`。支持日期／账号条件，以及任务、项目、模型、单日的组合条件；未知归属使用 `--unknown-thread`、`--unknown-project`、`--unknown-model` 或 `--unknown-date`，不会与名称恰好为 `unknown` 的项目混淆。输出包含 Fast／长上下文、分项 tokens、实际十进制费率字符串、纳美元金额、最新任务名称与项目，以及统计证据和最近扫描位置。未知字段在 JSON 中显式为 `null`；`statisticalDate` 是所选时区日期，`usageDate` 是计价 UTC 日期。查询不会重建统计缓存或读取对话正文。
+
+组合筛选与排序（`usage` 和 `records` 共用）：
+
+```sh
+.build/DerivedData/Build/Products/Debug/tokentick usage --group thread \
+  --project TokenTick --model gpt-5.6-sol --from 2026-09-01 --through 2026-09-09 \
+  --search "统计" --sort amount --limit 100 --json
+```
+
+不同归属条件取交集，同一维度不允许重复指定。标题／ID 搜索按普通文本匹配，不区分大小写与音调符号，`%`、`_` 不作为通配符。`--sort automatic|tokens|amount|name` 在分页前排序；默认日汇总按日期降序，其余汇总按 tokens 降序，明细按发生时间降序。相同排序值使用分组键或记录 ID 保持顺序稳定。两种查询均返回 `hasMore`；金额排序使用已知分项金额，不代表缺价记录的完整成本。交叉筛选直接查询 SQLite 事实，普通维度汇总继续使用统计缓存，不持久化所有筛选组合。
 
 价格同步与重算：
 

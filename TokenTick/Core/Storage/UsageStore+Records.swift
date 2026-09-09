@@ -111,7 +111,9 @@ extension UsageStore {
         return try pool.read { db in
             StatisticsSQL.prepare(db, timezone: timezone)
             var arguments: StatementArguments = ["timezone": timezone.identifier, "limit": query.limit + 1, "offset": query.offset]
-            var filters = [String]()
+            let shared = UsageFiltersSQL(query.filters)
+            arguments += shared.arguments
+            var filters = [shared.predicate]
             switch query.account {
             case .all: break
             case .unknown: filters.append("u.account_id IS NULL")
@@ -126,6 +128,13 @@ extension UsageStore {
             }
             if let from = query.fromDate { filters.append("statistical_date >= :from"); arguments += ["from": from] }
             if let through = query.throughDate { filters.append("statistical_date <= :through"); arguments += ["through": through] }
+            let order: String
+            switch query.sort {
+            case .automatic: order = "u.occurred_at DESC, u.id DESC"
+            case .tokens: order = "u.total_tokens DESC, u.id DESC"
+            case .amount: order = "known_amount IS NULL, known_amount DESC, u.id DESC"
+            case .name: order = "COALESCE(t.title, u.thread_id) COLLATE NOCASE ASC, u.id DESC"
+            }
             let rows = try Row.fetchAll(db, sql: """
                 SELECT u.*, t.title, t.project_name, f.file_name, f.current_path,
                     NULLIF(\(StatisticsSQL.dayExpression), 'unknown') AS statistical_date,
@@ -133,7 +142,7 @@ extension UsageStore {
                 FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id
                 LEFT JOIN scan_files f ON f.rollout_id = u.rollout_id
                 \(filters.isEmpty ? "" : "WHERE " + filters.joined(separator: " AND "))
-                ORDER BY u.occurred_at DESC, u.id DESC LIMIT :limit OFFSET :offset
+                ORDER BY \(order) LIMIT :limit OFFSET :offset
                 """, arguments: arguments)
             return UsageRecordPage(timezone: timezone.identifier, rows: rows.prefix(query.limit).map { row in
                 UsageRecord(id: row["id"], accountID: row["account_id"], threadID: row["thread_id"],

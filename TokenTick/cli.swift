@@ -32,7 +32,7 @@ struct TokenTickCommand {
             case "usage":
                 let report = try UsageStore(databaseURL: options.database).usageReport(UsageQuery(
                     grouping: options.grouping, timezone: options.timezone, fromDate: options.fromDate,
-                    throughDate: options.throughDate, account: options.account, limit: options.limit, offset: options.offset))
+                    throughDate: options.throughDate, account: options.account, limit: options.limit, offset: options.offset, filters: options.filters, sort: options.sort))
                 if options.json { try printJSON(report) }
                 else if report.rows.isEmpty { print("所选范围暂无用量。") }
                 else {
@@ -46,7 +46,7 @@ struct TokenTickCommand {
             case "records":
                 try printJSON(UsageStore(databaseURL: options.database).usageRecords(UsageQuery(
                     timezone: options.timezone, fromDate: options.fromDate, throughDate: options.throughDate,
-                    account: options.account, limit: options.limit, offset: options.offset), scope: options.recordScope))
+                    account: options.account, limit: options.limit, offset: options.offset, filters: options.filters, sort: options.sort)))
             case "rebuild":
                 try printJSON(UsageStore(databaseURL: options.database).rebuildStatistics(timezone: options.timezone))
             case "prices":
@@ -119,7 +119,8 @@ struct TokenTickCommand {
         var codexExecutable: URL?
         var grouping = UsageGrouping.day
         var scope = SynchronizationScope.all
-        var recordScope = UsageRecordScope.all
+        var filters = UsageFilters()
+        var sort = UsageSort.automatic
         var timezone: String?
         var fromDate: String?
         var throughDate: String?
@@ -145,13 +146,12 @@ struct TokenTickCommand {
                     account = .unknown
                     continue
                 }
-                if command == "records", ["--unknown-thread", "--unknown-project", "--unknown-model", "--unknown-date"].contains(option) {
-                    guard recordScope == .all else { throw CommandError.invalid("明细归属筛选不能重复。") }
+                if ["usage", "records"].contains(command), ["--unknown-thread", "--unknown-project", "--unknown-model", "--unknown-date"].contains(option) {
                     switch option {
-                    case "--unknown-thread": recordScope = .thread(nil)
-                    case "--unknown-project": recordScope = .project(nil)
-                    case "--unknown-model": recordScope = .model(nil)
-                    default: recordScope = .day(nil)
+                    case "--unknown-thread": try setFilter(.thread, value: .unknown)
+                    case "--unknown-project": try setFilter(.project, value: .unknown)
+                    case "--unknown-model": try setFilter(.model, value: .unknown)
+                    default: try setFilter(.day, value: .unknown)
                     }
                     continue
                 }
@@ -167,14 +167,17 @@ struct TokenTickCommand {
                 case "--scope" where command == "sync":
                     guard let scope = SynchronizationScope(rawValue: value) else { throw CommandError.invalid("同步范围为 all、local、prices 或 api。") }
                     self.scope = scope
-                case let flag where command == "records" && ["--thread", "--project", "--model", "--day"].contains(flag):
-                    guard recordScope == .all else { throw CommandError.invalid("明细归属筛选不能重复。") }
+                case let flag where ["usage", "records"].contains(command) && ["--thread", "--project", "--model", "--day"].contains(flag):
                     switch option {
-                    case "--thread": recordScope = .thread(value)
-                    case "--project": recordScope = .project(value)
-                    case "--model": recordScope = .model(value)
-                    default: recordScope = .day(value)
+                    case "--thread": try setFilter(.thread, value: .value(value))
+                    case "--project": try setFilter(.project, value: .value(value))
+                    case "--model": try setFilter(.model, value: .value(value))
+                    default: try setFilter(.day, value: .value(value))
                     }
+                case "--search" where ["usage", "records"].contains(command): filters.search = value
+                case "--sort" where ["usage", "records"].contains(command):
+                    guard let order = UsageSort(rawValue: value) else { throw CommandError.invalid("排序为 automatic、tokens、amount 或 name。") }
+                    sort = order
                 case "--group" where command == "usage":
                     guard let group = UsageGrouping(rawValue: value) else { throw CommandError.invalid("无效的统计维度。") }
                     grouping = group
@@ -196,6 +199,18 @@ struct TokenTickCommand {
                 }
             }
         }
+
+        private mutating func setFilter(_ grouping: UsageGrouping, value: UsageValueFilter) throws {
+            let key: WritableKeyPath<UsageFilters, UsageValueFilter>
+            switch grouping {
+            case .thread: key = \.thread
+            case .project: key = \.project
+            case .model: key = \.model
+            default: key = \.day
+            }
+            guard filters[keyPath: key] == .all else { throw CommandError.invalid("同一维度的筛选不能重复。") }
+            filters[keyPath: key] = value
+        }
     }
 
     private static let help = """
@@ -206,7 +221,7 @@ struct TokenTickCommand {
       scan       增量采集 sessions 与 archived_sessions（含 .jsonl.zst）
       sync       采集、价格、API 与统计缓存；--scope all|local|prices|api
       usage      查询用量；--group total|day|thread|project|model，--limit 100
-      records    分页查看用量明细与证据（JSON），--thread/--project/--model/--day 选一
+      records    分页查看用量明细与证据（JSON）
       rebuild    从事实表重建统计缓存；--timezone Asia/Shanghai
       prices     查看历史价格快照（JSON），--limit 100
       sync-prices 从 models.dev 同步当天价格（每天成功一次）
@@ -223,7 +238,10 @@ struct TokenTickCommand {
     sync-api／sync 参数：--codex-bin <Codex 可执行文件路径>
     usage／records 参数：--from YYYY-MM-DD --through YYYY-MM-DD（含首尾日期）
                 --timezone <IANA 时区> --offset 0 --account <账号 ID> 或 --unknown-account
-    records 未知归属：--unknown-thread／--unknown-project／--unknown-model／--unknown-date 选一
+    usage／records 组合筛选：--thread <ID> --project <名称> --model <模型> --day YYYY-MM-DD
+                --search <任务标题或 ID> --sort automatic|tokens|amount|name
+    未知归属：--unknown-thread／--unknown-project／--unknown-model／--unknown-date
+    不同维度取交集，同一维度不能重复；排序后分页。
     scan 存在解析问题时返回 1；参数错误返回 2。
     缺失价格和模式保持未知，金额单位为 nanoUSD（1 USD = 10^9 nanoUSD）。
     """

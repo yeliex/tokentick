@@ -4,6 +4,7 @@ import TokenTickCore
 struct UsageTableView: View {
     let rows: [UsageDisplayRow]
     let isThread: Bool
+    let hasMore: Bool
     @Binding var selection: String?
     @Binding var page: Int
 
@@ -28,7 +29,7 @@ struct UsageTableView: View {
                 Text("第 \(page + 1) 页 · 每页 100 条").foregroundStyle(.secondary)
                 Spacer()
                 Button("上一页") { selection = nil; page -= 1 }.disabled(page == 0)
-                Button("下一页") { selection = nil; page += 1 }.disabled(rows.count < 100)
+                Button("下一页") { selection = nil; page += 1 }.disabled(!hasMore)
             }.padding(12)
         }
     }

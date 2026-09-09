@@ -3,10 +3,10 @@ import Observation
 import TokenTickCore
 
 enum UsagePeriod: String, CaseIterable, Identifiable {
-    case today = "今天", week = "最近 7 天", month = "最近 30 天", all = "全部历史"
+    case today = "今天", week = "最近 7 天", month = "最近 30 天", all = "全部历史", custom = "自定义"
     var id: Self { self }
     func dates(timezone: TimeZone) -> (String?, String?) {
-        guard self != .all else { return (nil, nil) }
+        guard self != .all && self != .custom else { return (nil, nil) }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timezone
         let now = Date()
@@ -33,22 +33,21 @@ final class DashboardModel {
     var projects: [UsageSummary] = []
     var limits: [LimitWindow] = []
     var apiDays: [APIDailyBucket] = []
+    var loadedQuery: UsageQuery?
+    var loadedSection: NavigationSection?
+    var hasMore = false
     var loading = false
     var error: String?
     var unknownDateTokens: Int64 = 0
     private var generation = 0
 
-    func load(store: UsageStore, section: NavigationSection, period: UsagePeriod, timezone: String, page: Int) async {
+    func load(store: UsageStore, section: NavigationSection, query: UsageQuery) async {
         generation += 1
         let request = generation
         loading = true
         error = nil
-        let dates = section == .data || section == .limits ? (nil, nil) : period.dates(timezone: TimeZone(identifier: timezone) ?? .gmt)
         do {
             let result = try await Task.detached(priority: .userInitiated) {
-                let grouping: UsageGrouping = section == .threads ? .thread : section == .projects ? .project : .day
-                let query = UsageQuery(grouping: grouping, timezone: timezone, fromDate: dates.0,
-                                       throughDate: dates.1, limit: 100, offset: page * 100)
                 let report = try store.usageReport(query)
                 let names = section == .threads ? try store.threadInfo(ids: report.rows.compactMap(\.group)) : [:]
                 let rows = report.rows.map { UsageDisplayRow(summary: $0, thread: $0.group.flatMap { names[$0] }) }
@@ -59,21 +58,28 @@ final class DashboardModel {
                 var chartQuery = totalQuery
                 chartQuery.grouping = .day
                 chartQuery.limit = 10_000
+                chartQuery.sort = .automatic
                 let days = section == .overview || section == .daily ? try store.usageReport(chartQuery).rows : []
                 chartQuery.grouping = .model
+                chartQuery.sort = query.sort
                 let models = section == .overview || section == .data ? try store.usageReport(chartQuery).rows : []
                 chartQuery.grouping = .project
                 chartQuery.limit = 8
                 let projects = section == .overview ? try store.usageReport(chartQuery).rows : []
                 return (rows, total, days, models, projects, report.unknownDateTokens,
                         section == .limits ? try store.limitWindows(limit: 100) : [],
-                        section == .data ? try store.apiDailyUsage(limit: 30) : [])
+                        section == .data ? try store.apiDailyUsage(limit: 30) : [], report.hasMore)
             }.value
             guard request == generation, !Task.isCancelled else { return }
             rows = result.0; total = result.1; days = result.2; models = result.3; projects = result.4
-            unknownDateTokens = result.5; limits = result.6; apiDays = result.7
+            loadedQuery = query; loadedSection = section
+            unknownDateTokens = result.5; limits = result.6; apiDays = result.7; hasMore = result.8
         } catch {
-            if request == generation { self.error = error.localizedDescription }
+            if request == generation && !Task.isCancelled {
+                self.error = error.localizedDescription
+                loadedQuery = query; loadedSection = section
+                rows = []; total = nil; days = []; models = []; projects = []; hasMore = false
+            }
         }
         if request == generation { loading = false }
     }

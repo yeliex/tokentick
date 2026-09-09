@@ -12,6 +12,10 @@ enum StatisticsSQL {
         """
 
     static func prepare(_ db: Database, timezone: TimeZone) {
+        db.add(function: DatabaseFunction("tokentick_contains", argumentCount: 2, pure: true) { values in
+            guard let text = String.fromDatabaseValue(values[0]), let term = String.fromDatabaseValue(values[1]) else { return false }
+            return text.range(of: term, options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX")) != nil
+        })
         let style = Date.ISO8601FormatStyle(timeZone: timezone).year().month().day().dateSeparator(.dash)
         db.add(function: DatabaseFunction("tokentick_day", argumentCount: 1, pure: true) { values in
             guard let timestamp = Double.fromDatabaseValue(values[0]), timestamp.isFinite else { return nil }
@@ -37,7 +41,9 @@ enum StatisticsSQL {
         """
 
     /// 先在 SQLite 中合并同日、同任务、同模型的请求，再展开四个维度，避免放大全部明细。
-    static let aggregate = """
+    static var aggregate: String { aggregate(predicate: "1") }
+
+    static func aggregate(predicate: String) -> String { """
         WITH facts AS (
             SELECT \(dayExpression) AS day,
                 u.account_id, u.thread_id, t.project_name, u.model, u.total_tokens,
@@ -45,6 +51,7 @@ enum StatisticsSQL {
                 u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount,
                 tokentick_known_amount(u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount) AS known_amount
             FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id
+            WHERE \(predicate)
         ), compact AS MATERIALIZED (
             SELECT day, account_id, thread_id, project_name, model,
                 SUM(total_tokens) AS total_tokens, SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens,
@@ -72,4 +79,5 @@ enum StatisticsSQL {
         CROSS JOIN (SELECT 'all' AS dimension UNION ALL SELECT 'thread' UNION ALL SELECT 'project' UNION ALL SELECT 'model')
         GROUP BY account_key, day, dimension, dimension_value
         """
+    }
 }

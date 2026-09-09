@@ -5,6 +5,16 @@
 	"objectVersion" = "56";
 	"archiveVersion" = "1";
 	"objects" = {
+		"56C58CD9D77B4D37A8637BA1" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "TokenTick/UI/UsageFilterControls.swift";
+			"sourceTree" = "<group>";
+		};
+		"13C51972095142E1BCBC77C6" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "56C58CD9D77B4D37A8637BA1";
+		};
 		"958778895F030AAA42825BFF" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -135,6 +145,7 @@
 			"buildActionMask" = "2147483647";
 			"files" = (
 				"12F57F06E90963792A0B7A4F",
+				"13C51972095142E1BCBC77C6",
 				"C8E280922E18F966DE4902FA",
 				"57927CA37D38559EC007898D",
 				"316C050AB7340885F4408286",
@@ -398,6 +409,7 @@
 			"name" = "UI";
 			"children" = (
 				"958778895F030AAA42825BFF",
+				"56C58CD9D77B4D37A8637BA1",
 				"36FF4A1297DA65346F5C2790",
 				"0460BF9724C2EF9D32A54C46",
 				"7993302792420E8B4D8D2146",

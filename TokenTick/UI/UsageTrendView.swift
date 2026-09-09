@@ -4,6 +4,8 @@ import TokenTickCore
 
 struct UsageTrendView: View {
     let days: [UsageSummary]
+    var selectDay: ((String) -> Void)? = nil
+    @State private var selectedDay: String?
     @State private var showMoney = false
 
     var body: some View {
@@ -30,6 +32,10 @@ struct UsageTrendView: View {
                         .accessibilityLabel(date)
                         .accessibilityValue(showMoney ? UsageFormatting.money(day.knownAmountNanoUSD) : UsageFormatting.tokens(day.totalTokens))
                     }
+                }
+                .chartXSelection(value: $selectedDay)
+                .onChange(of: selectedDay) {
+                    if let selectedDay { selectDay?(selectedDay) }
                 }
                 .chartXAxis { AxisMarks(values: .automatic(desiredCount: 5)) }
                 .frame(height: 200)
