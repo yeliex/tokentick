@@ -281,3 +281,12 @@ P5 剩余：自定义日期、任务搜索／排序、模型与项目交叉筛�
 - `script/build_and_run.sh --verify` 成功，最新日志 `.build/logs/limits-ui-build.log`。Computer Use 已恢复，先前 Node 启动 ENOENT 的根因是任务旧 cwd 已不存在；临时路径映射仅用于启动工具，启动后已删除。原生深色窗口验证详情／来源独立按钮、日期与桶组合筛选、空状态位置、一键清除、最新观测和弹层退出；不代表完整 VoiceOver、浅色或 macOS 26 已验收。
 
 下一步继续客户端其他页面与存储设置验收，补齐数据容量／备份／目录选择；服务端日差额的可比口径、真实 macOS 26、正式签名与公证仍未满足。完整目标保持 active。
+
+### P5 存储信息与目录选择（2026-09-10）
+
+- 新增共享 Core 存储元数据查询，统计主库／WAL／共享内存及迁移备份总大小；仅返回最近 20 份备份，排除符号链接、目录、其他命名文件和 sidecar。查询不创建备份目录，不打开备份数据库，不修改事实或主动 checkpoint。
+- 设置补齐容量、备份列表／Finder 定位、刷新，以及原生目录选择器。选择目录先回填草稿，保存才校验存在且可读。设置可独立启动连接，无需先开主页面。
+- 3 个专项测试通过（`.build/logs/storage-tests.log`），App 构建运行通过（`.build/logs/storage-ui-build.log`）。真实默认库容量、目录选择器、滚动及刷新经 Computer Use 验证。
+- 隔离旧库经 App 的实际迁移生成 1 份 8 KB 快照，设置显示与 Finder 选中文件一致，SQL 核对迁移前数据仍在。证据 `.build/audit/storage-ui-fa06ea16/verification.json`；恢复默认 App 的日志 `.build/logs/storage-ui-restore.log`。未修改自动同步、时区和来源目录偏好，备份恢复仍不提供客户端入口。
+
+完整目标继续 active：下一步验证用量页面的组合筛选与检查器、窄窗口和键盘操作，并继续处理服务端日对账契约及分发验证。
