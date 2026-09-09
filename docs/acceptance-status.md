@@ -40,7 +40,7 @@
 | 自动同步和恢复运行 | 调度、取消安静期、文件事件测试；隔离 App 自动追加／归档／补扫验证 | 真实系统睡眠／唤醒及完整开关交互尚未完成 |
 | 图标和原生外观 | App 已接入 `.icon`，通过布局补偿边距消除额外外框，原图不变；Debug／Release 包内明暗引用和八张导出预览已验证，见 [系统级应用图标](app-icon.md) | Dock／Finder 实际外观切换及 macOS 26 真机仍待验证；渲染代际预览不能替代真实系统 |
 | 文件与 SQLite 性能 | 冻结 1,539 文件、约 9.17 GB；JSONL／压缩首次扫描约 96 秒、峰值约 71／75 MiB；静态复扫零字节；跨进程读者约 11 ms | 这些为当前机器和输入的基线；App 扫描期间及长时间运行的内存／CPU完整曲线尚未采集 |
-| Developer ID、打包和安装 | App／CLI 双架构签名、时间戳和 hardened runtime 验证通过；已验证的干净源码签名包 `signed-L4pz8J/TokenTick-0.1.0-signed-ffaa27bde7a0.zip` | 尚未公证，Gatekeeper 返回 `Unnotarized Developer ID`；可用 notarytool profile 名称待确认，本任务未发起公证提交 |
+| Developer ID、打包和安装 | App／CLI 双架构签名、时间戳和 hardened runtime 验证通过；当前代码的干净源码签名包 `signed-3EeOjY/TokenTick-0.1.0-signed-b8aa16dd19cc.zip`，ZIP 图标资源与包内一致，CLI 隔离启动及 v4 schema 验证通过 | 尚未公证；此前签名候选的 Gatekeeper 检查为 `Unnotarized Developer ID`，本次不把签名或 ZIP 校验当作公证通过；可用 notarytool profile 名称待确认，本任务未发起公证提交 |
 | 最低系统与架构 | 产物最低系统为 macOS 26.0，包含 arm64／x86_64 | macOS 26、Intel 真机仍需外部设备验证，不能用宿主机 macOS 27 的结果替代 |
 
 ## 收尾顺序
