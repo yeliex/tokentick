@@ -68,15 +68,35 @@ extension UsageStore {
                 }
                 // 接口日桶没有时区／token 口径字段，历史日志也没有账号证据。
                 // 在这些契约确定前只保存服务端事实，不创建会与本地重复的 API 差额。
-                let report = APISyncReport(accountAvailable: account != nil,
+                let report = APISyncReport(accountID: account, observedAt: observedAt.timeIntervalSince1970,
+                                           accountAvailable: account != nil,
                                            dailyBucketCount: account == nil ? nil : daily?.dailyUsageBuckets?.count,
                                            savedWindows: saved, skippedWindows: skipped,
                                            reconciliation: "unverified_account_and_daily_semantics", issue: issue)
-                try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES ('api_last_report', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                               arguments: [String(decoding: try encoder.encode(report), as: UTF8.self)])
+                try Self.saveAPIReport(report, db: db)
                 return report
             }
         }
+    }
+
+    func saveAPIFailure(_ issue: String, observedAt: Date = Date()) throws {
+        guard observedAt.timeIntervalSince1970.isFinite else { throw CodexAPIError.invalidStatistics }
+        let report = APISyncReport(accountID: nil, observedAt: observedAt.timeIntervalSince1970,
+            accountAvailable: false, dailyBucketCount: nil, savedWindows: 0, skippedWindows: 0,
+            reconciliation: "unverified_account_and_daily_semantics", issue: issue)
+        try FileWriteLock(url: databaseURL.appendingPathExtension("write.lock")).withLock {
+            try pool.write { db in try Self.saveAPIReport(report, db: db) }
+        }
+    }
+
+    private static func saveAPIReport(_ report: APISyncReport, db: Database) throws {
+        let previous = try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'api_last_report'")
+            .map { try JSONDecoder().decode(APISyncReport.self, from: Data($0.utf8)) }
+        // 独立来源状态跨本地同步保留；较早完成的观测不能覆盖更新的失败或账号。
+        if let previousDate = previous?.observedAt, let date = report.observedAt, previousDate > date { return }
+        let json = String(decoding: try JSONEncoder().encode(report), as: UTF8.self)
+        try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES ('api_last_report', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                       arguments: [json])
     }
 
     public func limitWindows(limit: Int = 100, currentOnly: Bool = false) throws -> [LimitWindow] {

@@ -28,6 +28,15 @@ struct DataStatusView: View {
             Section("服务端统计") {
                 Text("服务端每日总量单独保存。账号和日期口径尚未对齐，暂不与本地用量相加。")
                     .font(.callout).foregroundStyle(.secondary)
+                if let report = app.status?.apiLastReport {
+                    LabeledContent("最近接口尝试", value: UsageFormatting.timestamp(report.observedAt))
+                    LabeledContent("本次额度账号", value: report.accountID ?? "未确认")
+                    LabeledContent("本次日桶", value: report.dailyBucketCount.map { "\($0) 条" } ?? "未取得")
+                    LabeledContent("本次保存窗口", value: "\(report.savedWindows) 条 · \(report.skippedWindows) 条缺少边界")
+                    if let issue = report.issue {
+                        Label(issue, systemImage: "exclamationmark.triangle").font(.callout).textSelection(.enabled)
+                    }
+                }
                 Button("刷新服务端统计") { app.synchronize(.api) }.disabled(app.isSyncing)
                 LabeledContent("最近日桶采集", value: UsageFormatting.timestamp(days.first?.fetchedAt))
                 Text("以下显示最近 \(days.count) 条日桶观测。")

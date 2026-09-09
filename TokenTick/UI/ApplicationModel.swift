@@ -91,7 +91,11 @@ final class ApplicationModel {
                 let zone = TimeZone(identifier: try store.statisticsTimezone()) ?? .gmt
                 let date = Date().formatted(Date.ISO8601FormatStyle(timeZone: zone).year().month().day().dateSeparator(.dash))
                 let today = try store.usageReport(UsageQuery(grouping: .total, fromDate: date, throughDate: date)).rows.first
-                return (try store.status(), try store.lastSynchronizationReport(), today, try store.limitWindows(currentOnly: true))
+                let status = try store.status()
+                let limits = try status.apiLastReport?.accountID.map {
+                    try store.limitWindowPage(LimitQuery(account: .account($0), latestOnly: true)).rows
+                } ?? []
+                return (status, try store.lastSynchronizationReport(), today, limits)
             }.value
             status = result.0
             lastSync = result.1

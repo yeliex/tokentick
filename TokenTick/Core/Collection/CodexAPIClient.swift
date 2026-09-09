@@ -3,10 +3,10 @@ import Foundation
 
 /// 通过已安装 Codex 的 stdio 协议读取统计，让 Codex 自己管理认证。
 public struct CodexAPIClient: Sendable {
-    public let executable: URL
-    public let codexHome: URL
+    private let executable: URL
+    private let codexHome: URL
 
-    public init(executable: URL? = nil, codexHome: URL = LocalUsageScanner.defaultCodexHome) throws {
+    private init(executable: URL? = nil, codexHome: URL = LocalUsageScanner.defaultCodexHome) throws {
         let candidates = executable.map { [$0.path] } ??
             (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map { "\($0)/codex" }
             + ["/opt/homebrew/bin/codex", "/usr/local/bin/codex"]
@@ -17,29 +17,37 @@ public struct CodexAPIClient: Sendable {
         self.codexHome = codexHome
     }
 
-    public func synchronize(store: UsageStore) async throws -> APISyncReport {
+    public static func synchronize(store: UsageStore, executable: URL? = nil,
+                                   codexHome: URL = LocalUsageScanner.defaultCodexHome) async throws -> APISyncReport {
         let task = Task.detached(priority: .utility) {
-            let session = try CodexAPISession(executable: executable, codexHome: codexHome)
-            defer { session.close() }
-            let before: CodexRateLimits = try session.request("account/rateLimits/read")
-            var daily: CodexDailyUsage?
-            var dailySource: String?
-            var issue: String?
             do {
-                daily = try session.request("account/usage/read")
-                dailySource = session.lastResponseJSON
+                let client = try Self(executable: executable, codexHome: codexHome)
+                let session = try CodexAPISession(executable: client.executable, codexHome: client.codexHome)
+                defer { session.close() }
+                let before: CodexRateLimits = try session.request("account/rateLimits/read")
+                var daily: CodexDailyUsage?
+                var dailySource: String?
+                var issue: String?
+                do {
+                    daily = try session.request("account/usage/read")
+                    dailySource = session.lastResponseJSON
+                }
+                catch let error as CodexAPIError { issue = error.localizedDescription }
+                // 日桶响应没有账号字段；夹在两个自带账号的观测之间，拒绝登录切换。
+                let after: CodexRateLimits = try session.request("account/rateLimits/read")
+                if before.accountId == nil || before.accountId != after.accountId {
+                    daily = nil
+                    dailySource = nil
+                    issue = "读取期间账号未知或发生切换，未保存每日桶。"
+                }
+                try Task.checkCancellation()
+                return try store.saveAPIObservation(limits: after, daily: daily, observedAt: Date(), issue: issue,
+                                                    limitsSourceJSON: session.lastResponseJSON, dailySourceJSON: dailySource)
+            } catch {
+                try Task.checkCancellation()
+                try store.saveAPIFailure(error.localizedDescription)
+                throw error
             }
-            catch let error as CodexAPIError { issue = error.localizedDescription }
-            // 日桶响应没有账号字段；夹在两个自带账号的观测之间，拒绝登录切换。
-            let after: CodexRateLimits = try session.request("account/rateLimits/read")
-            if before.accountId == nil || before.accountId != after.accountId {
-                daily = nil
-                dailySource = nil
-                issue = "读取期间账号未知或发生切换，未保存每日桶。"
-            }
-            try Task.checkCancellation()
-            return try store.saveAPIObservation(limits: after, daily: daily, observedAt: Date(), issue: issue,
-                                                limitsSourceJSON: session.lastResponseJSON, dailySourceJSON: dailySource)
         }
         return try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
     }

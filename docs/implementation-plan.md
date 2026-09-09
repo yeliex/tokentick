@@ -290,3 +290,12 @@ P5 剩余：自定义日期、任务搜索／排序、模型与项目交叉筛�
 - 隔离旧库经 App 的实际迁移生成 1 份 8 KB 快照，设置显示与 Finder 选中文件一致，SQL 核对迁移前数据仍在。证据 `.build/audit/storage-ui-fa06ea16/verification.json`；恢复默认 App 的日志 `.build/logs/storage-ui-restore.log`。未修改自动同步、时区和来源目录偏好，备份恢复仍不提供客户端入口。
 
 完整目标继续 active：下一步验证用量页面的组合筛选与检查器、窄窗口和键盘操作，并继续处理服务端日对账契约及分发验证。
+
+### API 对账核验与来源状态修复（2026-09-10）
+
+- 重新打开官方 App Server 文档并实际调用本机 0.152.1 协议：日桶 196 条，仅有日期与 tokens；实验性按任务查询成功但 `threadUsage` 为 null。时区、token 包含关系、历史账号和周期路由仍缺证据，记录到 `docs/api-reconciliation.md`；没有把现有总量直接相减。
+- 修复完整 API 失败未独立持久化的问题，App／CLI 使用同一入口，失败状态带结果时间，取消不写假故障；后续本地同步、重启和旧观测不覆盖新状态。成功状态保存确认的账号，旧 JSON 缺字段兼容为未知，无需 schema 迁移。
+- 菜单额度按最新 API 状态的账号查询，避免新账号无 codex 窗口时显示其他历史账号。数据状态页补上来源时间、账号、日桶／窗口数量和错误说明。
+- 18 个相关测试通过（`.build/logs/api-state-tests.log`）；App／CLI 构建通过。原生 CLI 缺少可执行文件返回 1，失败报告在本地同步后保持不变；隔离 App 重启后真实界面仍显示该错误。证据 `.build/audit/api-state-ca290b62/verification.json`，恢复默认 App 日志 `.build/logs/api-state-ui-restore.log`。
+
+完整目标仍 active；日 API 对账未完成，不能用已完成的状态修复替代。下一步继续用量界面的筛选／检查器、窄窗口、键盘与菜单验收，以及可用环境下的分发验证。

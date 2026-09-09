@@ -134,7 +134,7 @@ struct CodexAPITests {
         """
         try script.write(to: executable, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
-        let report = try await CodexAPIClient(executable: executable, codexHome: root).synchronize(store: store)
+        let report = try await CodexAPIClient.synchronize(store: store, executable: executable, codexHome: root)
         #expect((report.issue == nil) == (mode == "success"))
         #expect(report.issue?.contains("secret-must-not-leak") != true)
         #expect(report.dailyBucketCount == (mode == "success" ? 2 : nil))

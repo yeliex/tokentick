@@ -58,8 +58,7 @@ struct TokenTickCommand {
                 try printJSON(UsageStore(databaseURL: options.database).repriceUsage())
             case "sync-api":
                 let store = try UsageStore(databaseURL: options.database)
-                let client = try CodexAPIClient(executable: options.codexExecutable, codexHome: options.codexHome)
-                let report = try await client.synchronize(store: store)
+                let report = try await CodexAPIClient.synchronize(store: store, executable: options.codexExecutable, codexHome: options.codexHome)
                 try printJSON(report)
                 if report.issue != nil || !report.accountAvailable { exit(1) }
             case "limits":

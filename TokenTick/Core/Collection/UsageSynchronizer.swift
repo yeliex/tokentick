@@ -64,7 +64,7 @@ public struct UsageSynchronizer: Sendable {
             if scope == .all || scope == .api {
                 onProgress?(SynchronizationProgress(stage: .api, scan: nil))
                 do {
-                    let result = try await CodexAPIClient(executable: codexExecutable, codexHome: codexHome).synchronize(store: store)
+                    let result = try await CodexAPIClient.synchronize(store: store, executable: codexExecutable, codexHome: codexHome)
                     report.api = result
                     if let issue = result.issue { report.issues.append(issue) }
                     if !result.accountAvailable { report.issues.append("服务端未提供可确认的账号归属。") }

@@ -55,6 +55,8 @@ struct CodexRateLimits: Codable, Sendable {
 }
 
 public struct APISyncReport: Codable, Sendable {
+    public let accountID: String?
+    public let observedAt: Double?
     public let accountAvailable: Bool
     public let dailyBucketCount: Int?
     public let savedWindows: Int
@@ -64,6 +66,8 @@ public struct APISyncReport: Codable, Sendable {
 
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(accountID, forKey: .accountID)
+        try values.encode(observedAt, forKey: .observedAt)
         try values.encode(accountAvailable, forKey: .accountAvailable)
         try values.encode(dailyBucketCount, forKey: .dailyBucketCount)
         try values.encode(savedWindows, forKey: .savedWindows)
