@@ -307,3 +307,11 @@ P5 剩余：自定义日期、任务搜索／排序、模型与项目交叉筛�
 - 原生交互确认：搜索任务、打开检查器／明细、自动采集新请求后仍保留原选中请求、展开 JSON、方向键选择相邻请求、翻到第 2 页清除旧选择、Escape 退出明细、保留任务和搜索条件进入每日视图。
 - `script/build_and_run.sh --verify` 构建启动成功，日志 `.build/logs/usage-ui-build.log`；`git diff --check` 通过。本次仅修改 SwiftUI，采用实际界面验证，没有新增镜像实现的单元测试。
 - 明细表在 860 点宽窗口仍需横向滚动查看完整金额列，主窗口最小尺寸和完整键盘／浅色／VoiceOver 验收未完成。API 日对账、Release 性能、macOS 26 与正式分发仍按原目标推进，整体保持 active。
+
+### P6 本地 Release 包与性能基线（2026-09-10）
+
+- 新增 `script/package_release.sh`，生成包含 App、独立 CLI、安装说明、GRDB／Zstandard 许可证和构建来源的 ZIP／SHA-256。两个 Release target 均包含 arm64、x86_64；最终组装后 ad-hoc 签名并校验资源封印。产物只保存在 `.build/releases`，没有发布正式版本。
+- 修复打包流程中共享资源 bundle 的后续签名使 App 原资源封印失效的问题。解压到带空格目录后再次校验，通过实际独立 CLI 安装／查询和 Release App 原生界面验证；App 与 CLI 相同范围总量一致。已恢复默认开发 App。
+- Apple M2 Pro／macOS 27 上，冻结 JSONL 日志约 9.17 GB、168,164 条用量：完整扫描 96.10 秒／峰值 RSS 71.2 MiB，无变化复扫 0.430 秒／零读取，增量 0.407 秒／578 字节／准确新增 120 tokens；缓存查询 14–19 ms，SQL 总量与数据库完整性检查通过。
+- 数据集无压缩文件、价格表为空，因此 Zstandard 和完整历史计价的 Release 性能仍需独立测量。Release App 一次空闲样本约 204.6 MiB，不能据此宣布内存优化完成。
+- Gatekeeper 拒绝 ad-hoc 包，正式 Developer ID／公证、macOS 26 和 Intel 真机尚未通过。完整条件、首次快照 WAL 问题和证据路径记录于 [Release 本地验证](release-validation.md)，API 日对账及完整 UI 验收仍按原目标推进。

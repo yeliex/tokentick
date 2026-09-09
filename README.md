@@ -117,7 +117,19 @@ App 默认在运行期间自动同步：文件变化合并后采集，每分钟�
 
 `sync-api` 启动短期 Codex app-server，通过 stdio 读取统计；需要本机安装且已登录的 Codex CLI，可用 `--codex-bin` 指定其路径。TokenTick 不读取或复制认证文件，认证由 Codex 自己管理。日桶保存原始日期和整数 tokens；目前账号归属、日边界和 token 可比口径尚未确认，服务端总量单独显示，不与本地相加。额度百分比为最后观测值，周期 tokens／金额缺乏归属证据时保持 NULL。查询不会触发联网或创建常驻进程。
 
-两个 scheme 都以 macOS 26.0 为最低版本。App 使用本地 ad-hoc 签名，不要求开发者团队；正式分发签名、公证和 CLI 安装在发布阶段实现。Core 由本地 Swift Package 的 TokenTickCore 模块编译，新增 Core 文件自动进入模块；`TokenTickApp.swift` 与 `cli.swift` 分别只加入对应 Xcode target。
+两个 scheme 都以 macOS 26.0 为最低版本。App 使用本地 ad-hoc 签名，不要求开发者团队；正式分发签名与公证尚未完成，CLI 本地安装方式见下文。Core 由本地 Swift Package 的 TokenTickCore 模块编译，新增 Core 文件自动进入模块；`TokenTickApp.swift` 与 `cli.swift` 分别只加入对应 Xcode target。
+
+## 本地 Release 打包
+
+```sh
+./script/package_release.sh
+```
+
+脚本构建 arm64／x86_64 的 App 和 CLI，在最终组装后完成 ad-hoc 签名及验证，生成 `.build/releases/local-*/TokenTick-*-local-*.zip` 和 SHA-256 校验文件。包内包括安装说明、依赖许可证、源码提交和工具链信息；每次使用独立目录，不覆盖已有验证包，不安装到系统目录或发布 GitHub Release。
+
+CLI 可直接运行，也可按[本地安装说明](docs/local-install.md)安装到个人 `~/.local/bin`。当前包未经过 Developer ID 签名、公证或 macOS 26 真机验收，不作为正式分发版本。
+
+已完成的本地签名、解压安装、真实界面与性能基线见 [Release 验证记录](docs/release-validation.md)。
 
 数据层测试：
 
