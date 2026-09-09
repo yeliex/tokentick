@@ -129,6 +129,43 @@ struct LocalUsageScannerTests {
         #expect(try fixture.total() == 0)
     }
 
+    @Test func plainSiblingIsAuthoritativeWithoutDecodingTheCompressedSibling() throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let file = try fixture.write(fixture.header + fixture.turn + fixture.count(1))
+        let sibling = file.appendingPathExtension("zst")
+        // 即使旧压缩兄弟不可解码，只要普通文件存在，读取路径也应与 Codex 一致。
+        try Data("not a zstandard stream".utf8).write(to: sibling)
+        let first = try fixture.scan()
+        #expect(first.discoveredFiles == 2 && first.scannedFiles == 1 && first.insertedRequests == 1)
+        #expect(first.issueCount == 0)
+        try fixture.append(fixture.count(2), to: file)
+        #expect(try fixture.scan().insertedRequests == 1)
+        #expect(try fixture.total() == 240)
+        try FileManager.default.removeItem(at: file)
+        #expect(try fixture.scan().issueCount == 1)
+        #expect(try fixture.total() == 240)
+    }
+
+    @Test func immutableCompressedFileIsSkippedUntilMaterializedForAppend() throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let text = fixture.header + fixture.turn + fixture.count(1)
+        let plain = fixture.root.appendingPathComponent("sessions/" + fixture.fileName)
+        let compressed = plain.appendingPathExtension("zst")
+        try compress(Data(text.utf8)).write(to: compressed)
+        #expect(try fixture.scan().insertedRequests == 1)
+        let unchanged = try fixture.scan()
+        #expect(unchanged.unchangedFiles == 1 && unchanged.scannedBytes == 0 && unchanged.scannedFiles == 0)
+        try Data((text + fixture.count(2)).utf8).write(to: plain)
+        // 解压物化后的普通文件可以已经包含新用量，不能要求它与旧压缩兄弟全文相同。
+        let materialized = try fixture.scan()
+        #expect(materialized.issueCount == 0 && materialized.insertedRequests == 1)
+        #expect(try fixture.total() == 240)
+        try FileManager.default.removeItem(at: compressed)
+        #expect(try fixture.scan().unchangedFiles == 1)
+    }
+
     @Test func largeCompressedLinesAreStreamedAndTruncationDetected() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
