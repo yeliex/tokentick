@@ -6,7 +6,7 @@ TokenTick 从本地 Codex 日志采集统计数据，记录每个任务、每天
 
 ## 项目状态
 
-已建立面向 **macOS 26.0+** 的原生 Xcode 工程，包含 SwiftUI App 和共享 Core 源码的 CLI。已实现窗口／菜单栏骨架、现有图标、GRDB 存储与迁移、本地 JSONL／Zstandard 增量采集、任务名称缓存、历史计价、服务端日桶／额度观测和统计缓存。CLI 支持多维度、时区、日期范围与分页查询；API 差额、整体同步和客户端数据绑定仍按计划实现。
+已建立面向 **macOS 26.0+** 的原生 Xcode 工程，包含 SwiftUI App 和共享 Core 源码的 CLI。已实现本地 JSONL／Zstandard 增量采集、迁移、任务名称缓存、历史计价、服务端日桶／额度观测、统计缓存及共享同步流程。SwiftUI 已接入总览、每日趋势与表格、任务／项目分页、汇总检查器、额度和数据状态；搜索、排序、交叉筛选、请求级证据等交互仍在完善。API 差额口径和正式发布验收尚未完成。
 
 - [需求与技术方案](docs/requirements.md)
 - [实现计划](docs/implementation-plan.md)
@@ -50,6 +50,8 @@ xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
 采集和查询（首次运行建议指定独立数据库）：
 
 ```sh
+.build/DerivedData/Build/Products/Debug/tokentick sync \
+  --database .build/audit/usage.sqlite --scope all
 .build/DerivedData/Build/Products/Debug/tokentick scan \
   --database .build/audit/usage.sqlite --json
 .build/DerivedData/Build/Products/Debug/tokentick usage \
@@ -57,6 +59,8 @@ xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
 .build/DerivedData/Build/Products/Debug/tokentick status \
   --database .build/audit/usage.sqlite
 ```
+
+`sync --scope all|local|prices|api` 与 App 使用相同流程，保存最近同步报告，各来源失败互不清空已有数据。价格成功同步后仅重算本次价格日期及之后的记录；手动 `reprice` 仍可重算全部历史。App 启动时自动同步一次，可从工具栏或数据状态页重试；定时刷新与文件变动提示仍待接入。开发验证可用 `TOKENTICK_DATABASE` 指定独立数据库，`TOKENTICK_AUTOSYNC=0` 关闭本次启动自动同步，不改变持久设置。
 
 也可省略 `--codex-home`，默认读取环境变量 `CODEX_HOME` 或 `~/.codex`。省略 `--database` 时使用 `~/Library/Application Support/TokenTick/usage.sqlite`。`scan` 只读 Codex 数据，写入 TokenTick 自己的数据库；存在解析问题时返回 1，参数错误返回 2。统计时区默认采用数据库首次初始化／升级时的系统时区并保存，价格日期始终使用 UTC。
 

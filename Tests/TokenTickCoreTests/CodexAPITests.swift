@@ -65,6 +65,21 @@ struct CodexAPITests {
         #expect(try store.limitWindows().count == 3)
     }
 
+    @Test func latestWindowSelectionDoesNotPreferAnOlderLaterResetOrRecoverMissingWindows() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        let before = try JSONDecoder().decode(CodexRateLimits.self, from: Data(Self.limits.utf8))
+        _ = try store.saveAPIObservation(limits: before, daily: nil, observedAt: Date(timeIntervalSince1970: 100))
+        let after = try JSONDecoder().decode(CodexRateLimits.self, from: Data(Self.limits.replacingOccurrences(of: "20000", with: "15000").utf8))
+        _ = try store.saveAPIObservation(limits: after, daily: nil, observedAt: Date(timeIntervalSince1970: 200))
+        #expect(try store.limitWindows(currentOnly: true).first(where: { $0.kind == "primary" })?.resetsAt == 15000)
+        let empty = try JSONDecoder().decode(CodexRateLimits.self, from: Data(#"{"accountId":"account-a","rateLimits":{},"rateLimitsByLimitId":{}}"#.utf8))
+        _ = try store.saveAPIObservation(limits: empty, daily: nil, observedAt: Date(timeIntervalSince1970: 300))
+        #expect(try store.limitWindows(currentOnly: true).isEmpty)
+        #expect(try store.limitWindows().count == 3)
+    }
+
     @Test func invalidDailyResponseRollsBackAndUnknownAccountDoesNotAcquireOtherAccountsHistory() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

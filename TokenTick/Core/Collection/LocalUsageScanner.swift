@@ -28,6 +28,13 @@ public struct ScanIssue: Codable, Sendable {
     public let message: String
 }
 
+public struct ScanProgress: Sendable {
+    public let completedFiles: Int
+    public let totalFiles: Int
+    public let fileName: String
+    public let insertedRequests: Int
+}
+
 public struct LocalUsageScanner: Sendable {
     public let store: UsageStore
     public init(store: UsageStore) { self.store = store }
@@ -39,7 +46,8 @@ public struct LocalUsageScanner: Sendable {
         return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex", isDirectory: true)
     }
 
-    public func scan(codexHome: URL = LocalUsageScanner.defaultCodexHome) throws -> ScanReport {
+    public func scan(codexHome: URL = LocalUsageScanner.defaultCodexHome,
+                     onProgress: (@Sendable (ScanProgress) -> Void)? = nil) throws -> ScanReport {
         try FileWriteLock(url: store.databaseURL.appendingPathExtension("write.lock")).withLock {
             var report = ScanReport()
             var candidates: [UUID: [(URL, RolloutIdentity)]] = [:]
@@ -68,9 +76,18 @@ public struct LocalUsageScanner: Sendable {
                 report.addIssue(ScanIssue(fileName: codexHome.lastPathComponent, line: nil, message: "未发现可识别的 rollout 日志。"))
             }
             let ordered = candidates.values.sorted { $0[0].1.fileName < $1[0].1.fileName }
-            for copies in ordered {
+            var lastProgress = ContinuousClock.now
+            for (index, copies) in ordered.enumerated() {
+                try Task.checkCancellation()
                 let sorted = copies.sorted { $0.0.path < $1.0.path }
                 let (url, identity) = sorted[0]
+                defer {
+                    if lastProgress.duration(to: .now) >= .milliseconds(200) || index + 1 == ordered.count {
+                        onProgress?(ScanProgress(completedFiles: index + 1, totalFiles: ordered.count,
+                                                 fileName: identity.fileName, insertedRequests: report.insertedRequests))
+                        lastProgress = .now
+                    }
+                }
                 if sorted.count > 1 {
                     do {
                         let first = try contentDigest(url: url, identity: identity)
@@ -89,6 +106,7 @@ public struct LocalUsageScanner: Sendable {
                 }
                 try autoreleasepool { try scanFile(url: url, identity: identity, report: &report) }
             }
+            try Task.checkCancellation()
             do {
                 if let changed = try ThreadCatalogReader().refresh(codexHome: codexHome, store: store) {
                     report.catalogAvailable = true
@@ -135,6 +153,7 @@ public struct LocalUsageScanner: Sendable {
         var linesSinceCommit = 0
         var failed = false
         while true {
+            if linesSinceCommit == 0 { try Task.checkCancellation() }
             let previousState = parser.state
             do {
                 let hasLine = try autoreleasepool {
@@ -170,6 +189,7 @@ public struct LocalUsageScanner: Sendable {
         let reader = try RolloutLineReader(url: url, compressed: identity.isCompressed)
         var hash = SHA256()
         while try autoreleasepool(invoking: {
+            try Task.checkCancellation()
             let chunk = try reader.nextChunk()
             if chunk.isEmpty { return false }
             hash.update(data: chunk)

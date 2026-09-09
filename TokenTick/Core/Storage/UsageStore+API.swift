@@ -79,10 +79,12 @@ extension UsageStore {
         }
     }
 
-    public func limitWindows(limit: Int = 100) throws -> [LimitWindow] {
+    public func limitWindows(limit: Int = 100, currentOnly: Bool = false) throws -> [LimitWindow] {
         try pool.read { db in
             try Row.fetchAll(db, sql: """
-                SELECT * FROM limit_windows ORDER BY resets_at DESC, account_id, limit_id, window_kind LIMIT ?
+                SELECT * FROM limit_windows
+                \(currentOnly ? "WHERE last_observed_at = (SELECT CAST(value AS REAL) FROM app_metadata WHERE key = 'api_last_observed:' || account_id)" : "")
+                ORDER BY last_observed_at DESC, resets_at DESC, account_id, limit_id, window_kind LIMIT ?
                 """, arguments: [min(max(limit, 1), 10_000)]).map { row in
                 LimitWindow(accountID: row["account_id"], limitID: row["limit_id"], kind: row["window_kind"],
                             startsAt: row["starts_at"], resetsAt: row["resets_at"], durationMinutes: row["window_duration_mins"],

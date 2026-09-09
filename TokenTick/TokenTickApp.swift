@@ -5,19 +5,20 @@ import SwiftUI
 @main
 struct TokenTickApp: App {
     @NSApplicationDelegateAdaptor(TokenTickAppDelegate.self) private var delegate
+    @State private var model = ApplicationModel()
 
     var body: some Scene {
         WindowGroup(ApplicationInfo.name, id: "main") {
-            ContentView()
+            ContentView().environment(model)
         }
         .defaultSize(width: 1120, height: 760)
 
         Settings {
-            SettingsView()
+            SettingsView().environment(model)
         }
 
         MenuBarExtra {
-            MenuBarView()
+            MenuBarView().environment(model)
         } label: {
             Image("MenuBarIcon")
         }

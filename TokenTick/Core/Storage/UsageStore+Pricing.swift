@@ -14,13 +14,16 @@ public struct RepriceReport: Codable, Sendable {
 
 extension UsageStore {
     /// 明确重算才覆盖已有价格与金额；扫描事实和历史 token 保持不变。
-    public func repriceUsage() throws -> RepriceReport {
-        try FileWriteLock(url: databaseURL.appendingPathExtension("write.lock")).withLock {
+    public func repriceUsage(fromDate: String? = nil) throws -> RepriceReport {
+        try UsageQuery(fromDate: fromDate).validate()
+        return try FileWriteLock(url: databaseURL.appendingPathExtension("write.lock")).withLock {
             var report = RepriceReport()
             var lastID: Int64 = 0
             while true {
+                try Task.checkCancellation()
                 let count = try autoreleasepool { try pool.write { db -> Int in
-                    let rows = try Row.fetchAll(db, sql: "SELECT * FROM usage WHERE id > ? ORDER BY id LIMIT 512", arguments: [lastID])
+                    let rows = try Row.fetchAll(db, sql: "SELECT * FROM usage WHERE id > ? AND (? IS NULL OR usage_date >= ?) ORDER BY id LIMIT 512",
+                                               arguments: [lastID, fromDate, fromDate])
                     for row in rows {
                         let id: Int64 = row["id"]
                         lastID = id
@@ -93,8 +96,8 @@ extension UsageStore {
         ]
         let assignments = columns.map { "\($0) = ?" }.joined(separator: ", ")
         let unchanged = columns.map { "\($0) IS ?" }.joined(separator: " AND ")
-        try db.execute(sql: "UPDATE usage SET \(assignments) WHERE id = ? AND NOT (\(unchanged))",
-                       arguments: StatementArguments(values + [id] + values))
+        let update = try db.cachedStatement(sql: "UPDATE usage SET \(assignments) WHERE id = ? AND NOT (\(unchanged))")
+        try update.execute(arguments: StatementArguments(values + [id] + values))
         report.changed += db.changesCount
         return report
     }

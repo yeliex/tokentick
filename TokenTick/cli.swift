@@ -23,6 +23,12 @@ struct TokenTickCommand {
                     if report.issueCount > 0 { print("共 \(report.issueCount) 个问题，最多显示 100 个。") }
                 }
                 if report.issueCount > 0 { exit(1) }
+            case "sync":
+                let store = try UsageStore(databaseURL: options.database)
+                let report = try await UsageSynchronizer(store: store).synchronize(scope: options.scope,
+                    codexHome: options.codexHome, codexExecutable: options.codexExecutable)
+                try printJSON(report)
+                if !report.issues.isEmpty { exit(1) }
             case "usage":
                 let report = try UsageStore(databaseURL: options.database).usageReport(UsageQuery(
                     grouping: options.grouping, timezone: options.timezone, fromDate: options.fromDate,
@@ -108,6 +114,7 @@ struct TokenTickCommand {
         var codexHome = LocalUsageScanner.defaultCodexHome
         var codexExecutable: URL?
         var grouping = UsageGrouping.day
+        var scope = SynchronizationScope.all
         var timezone: String?
         var fromDate: String?
         var throughDate: String?
@@ -120,7 +127,7 @@ struct TokenTickCommand {
             command = arguments.first ?? "help"
             if ["--help", "-h"].contains(command) { command = "help" }
             if command == "--version" { command = "version" }
-            guard ["help", "version", "scan", "usage", "status", "prices", "sync-prices", "reprice", "sync-api", "limits", "api-usage", "rebuild"].contains(command) else {
+            guard ["help", "version", "scan", "sync", "usage", "status", "prices", "sync-prices", "reprice", "sync-api", "limits", "api-usage", "rebuild"].contains(command) else {
                 throw CommandError.invalid("不支持的命令：\(command)。")
             }
             var index = 1
@@ -138,10 +145,13 @@ struct TokenTickCommand {
                 index += 1
                 switch option {
                 case "--database": database = URL(fileURLWithPath: (value as NSString).expandingTildeInPath)
-                case "--codex-home" where command == "scan" || command == "sync-api":
+                case "--codex-home" where ["scan", "sync-api", "sync"].contains(command):
                     codexHome = URL(fileURLWithPath: (value as NSString).expandingTildeInPath, isDirectory: true)
-                case "--codex-bin" where command == "sync-api":
+                case "--codex-bin" where command == "sync-api" || command == "sync":
                     codexExecutable = URL(fileURLWithPath: (value as NSString).expandingTildeInPath)
+                case "--scope" where command == "sync":
+                    guard let scope = SynchronizationScope(rawValue: value) else { throw CommandError.invalid("同步范围为 all、local、prices 或 api。") }
+                    self.scope = scope
                 case "--group" where command == "usage":
                     guard let group = UsageGrouping(rawValue: value) else { throw CommandError.invalid("无效的统计维度。") }
                     grouping = group
@@ -171,6 +181,7 @@ struct TokenTickCommand {
     用法：tokentick <命令> [参数]
 
       scan       增量采集 sessions 与 archived_sessions（含 .jsonl.zst）
+      sync       采集、价格、API 与统计缓存；--scope all|local|prices|api
       usage      查询用量；--group total|day|thread|project|model，--limit 100
       rebuild    从事实表重建统计缓存；--timezone Asia/Shanghai
       prices     查看历史价格快照（JSON），--limit 100
@@ -184,8 +195,8 @@ struct TokenTickCommand {
       --help     显示帮助
 
     通用参数：--database <SQLite 路径>，--json
-    scan／sync-api 参数：--codex-home <Codex 数据目录>
-    sync-api 参数：--codex-bin <Codex 可执行文件路径>
+    scan／sync-api／sync 参数：--codex-home <Codex 数据目录>
+    sync-api／sync 参数：--codex-bin <Codex 可执行文件路径>
     usage 参数：--from YYYY-MM-DD --through YYYY-MM-DD（含首尾日期）
                 --timezone <IANA 时区> --offset 0 --account <账号 ID> 或 --unknown-account
     scan 存在解析问题时返回 1；参数错误返回 2。

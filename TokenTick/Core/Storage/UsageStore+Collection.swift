@@ -102,13 +102,15 @@ extension UsageStore {
                 """, arguments: [usage.dedupKey, usage.responseID, json, usage.line, usage.rolloutID, replaced])
             return .upgraded
         }
-        try db.execute(sql: """
+        // 热路径复用语句，避免每个请求都重新编译用量表的失效触发器。
+        let insert = try db.cachedStatement(sql: """
             INSERT INTO usage(dedup_key, thread_id, turn_id, response_id, occurred_at, usage_date,
                               model, is_fast, input_tokens, output_tokens, cache_read_tokens,
                               cache_write_tokens, reasoning_tokens, total_tokens, source,
                               rollout_id, source_line, evidence_json)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?, ?)
-            """, arguments: [usage.dedupKey, usage.threadID, usage.turnID, usage.responseID,
+            """)
+        try insert.execute(arguments: [usage.dedupKey, usage.threadID, usage.turnID, usage.responseID,
                               usage.timestamp.timeIntervalSince1970,
                               usage.timestamp.formatted(.iso8601.year().month().day().dateSeparator(.dash)),
                               usage.model, usage.isFast, usage.tokens.inputTokens, usage.tokens.outputTokens,
