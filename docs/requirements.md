@@ -2,7 +2,9 @@
 
 日期：2026-09-09
 
-状态：需求基线草案，尚未实施。项目名 TokenTick，CLI 为 `tokentick`。
+状态：需求基线与 macOS 工程初始化。产品名 TokenTick，仓库和 CLI 为 `tokentick`，默认分支为 `master`。
+
+第一版最低系统版本确定为 **macOS 26.0**。详细实施顺序见 [实现计划](implementation-plan.md)，客户端布局与交互见 [客户端 UI 方案](client-ui.md)。工程骨架不代表采集、数据库或计价功能已实现。
 
 ## 1. 定位与边界
 
@@ -12,14 +14,14 @@
 - 本地日志作为请求用量的主要来源；服务端每日 token 总量用于补充未归属用量；额度百分比单独采集。
 - 金额是按模型公开价格换算的 API 等值金额，不等同于 ChatGPT 订阅实际账单。
 - 完整保存统计相关字段和必要的统计来源证据，不保存对话正文、工具输出或凭据。
-- 第一版只支持 macOS 和 Codex，不建设多 provider 框架、跨平台 CLI 或自有云同步服务。
-- 不在本阶段定义页面数量、导航结构和布局。数据库与查询能力不绑定某一版页面。
+- 第一版只支持 macOS 26 及更新版本和 Codex，不建设多 provider 框架、跨平台 CLI 或自有云同步服务。
+- 数据层保持独立；客户端方案可以迭代，不反向限制已保存的统计事实和查询能力。
 
 ## 2. 技术与工程结构
 
-采用 Swift、SwiftUI、SQLite，数据库访问和迁移使用 GRDB。Swift 能覆盖流式文件读取、JSON 解析、HTTP、并发和命令行；性能首先由读取方式、数据库批处理及索引决定，不预先引入 Rust 核心。
+采用 Swift 6、SwiftUI、SQLite，数据库访问和迁移计划使用 GRDB。Swift 能覆盖流式文件读取、JSON 解析、HTTP、并发和命令行；性能首先由读取方式、数据库批处理及索引决定，不预先引入 Rust 核心。
 
-App 与 CLI 位于同一工程，共享业务源码，以两个 target 编译。CLI 入口是 App 目录下的 `cli.swift`，无需先拆独立 Swift Package。
+App 与 CLI 位于 `TokenTick.xcodeproj`，以 `TokenTick` 和 `tokentick` 两个 target 编译，共享本地 Swift Package 中的 `TokenTickCore` 模块。Core 源码仍在 App 目录下，不复制业务实现。两个 target 的 `MACOSX_DEPLOYMENT_TARGET` 均为 `26.0`。CLI 入口是 App 目录下的 `cli.swift`，根目录 `Package.swift` 负责 Core 的依赖和测试；不拆独立仓库或另一套 CLI 产品。
 
 ```text
 TokenTick/
@@ -31,11 +33,12 @@ TokenTick/
     Pricing/               # 价格同步和金额计算
     Statistics/            # 对账、聚合、缓存维护
   UI/                      # 仅 App target
+  Resources/               # 品牌图标、菜单栏模板和界面资源
 ```
 
 Core 不依赖 SwiftUI。两个入口共用同一个默认数据库、解析器、计价逻辑和查询语义。App 状态主要保存统计结果、当前查询结果及同步进度；历史明细保存在数据库中。解析缓冲、当前批次和详情分页结果允许短暂驻留内存。
 
-使用 Foundation 原生 I/O 和网络能力；需要读取 `.jsonl.zst` 时使用原生 Zstandard 库绑定，不依赖用户安装解压命令。最低 macOS 版本及具体库版本在初始化工程时按实际构建环境确定，不在需求阶段虚构兼容性承诺。
+使用 Foundation 原生 I/O 和网络能力；需要读取 `.jsonl.zst` 时使用原生 Zstandard 库绑定，不依赖用户安装解压命令。最低系统版本固定为 macOS 26.0；GRDB 和 Zstandard 在对应实现阶段通过包管理工具加入，锁定实际验证的版本。GRDB 已通过 Swift Package Manager 锁定为 7.11.1；Zstandard 在压缩采集阶段加入。
 
 ## 3. 已核实的两个关键契约
 
@@ -266,7 +269,7 @@ SQLite 中 NULL 不自动提供期望的复合唯一性；全局／未知维度�
 
 查询默认不触发网络同步。结构化结果保留 NULL、金额单位和统计时区，不能把未知输出成 0。App 与 CLI 同一查询条件得到相同结果。
 
-## 8. SwiftUI 视觉约束
+## 8. SwiftUI 视觉与客户端约束
 
 采用 SwiftUI 原生控件和布局，视觉方向为 shadcn Luma，参考 Shuttle 的原生 macOS 界面。Luma 提供圆润几何、柔和层级和宽松间距的方向，不引入 React、Tailwind 或 WebView 来实现界面。[Luma 官方说明](https://ui.shadcn.com/docs/changelog/2026-03-luma)
 
@@ -280,7 +283,13 @@ SQLite 中 NULL 不自动提供期望的复合唯一性；全局／未知维度�
 - 由少量 Swift 样式值统一颜色、圆角和间距，不先建设通用跨平台组件库。
 - 保留 macOS 原生键盘操作、焦点、文本选择和辅助功能语义，适配深浅色。
 - 数据密集区域允许紧凑行距；Luma 风格不应导致不必要的留白或影响对比阅读。
-- 这里只确定风格与交互原则，页面结构和精确视觉值在数据功能可用后迭代。
+- 客户端采用原生侧栏、统计内容区和按需展开的详情检查器；总览、每日用量、任务、项目为主要入口，额度周期和数据状态为辅助入口。
+- 菜单栏始终只展示单一模板图标，点击后显示摘要与打开主窗口的入口，不把 token 或金额拼在系统菜单栏上。
+- 沿用已定稿的「用量环 · 分格」图标，浅色暖白琥珀、深色石墨薄荷，详见 [品牌决策](brand/decisions.md)。不重新设计图标。
+- 默认保持系统原生窗口、侧栏和工具栏行为；内容表面沿用 Luma 的柔和层级，不强制全窗口 Liquid Glass。
+- 标准 Settings scene 承载偏好设置，不将设置混为一张统计页面。
+- 工程骨架只展示真实空状态，不用模拟 token、假价格、假同步进度或不可用按钮冒充已实现功能。
+- [客户端 UI 方案](client-ui.md) 定义首版信息结构和交互，精确视觉值允许在实际数据接入后迭代。
 
 ## 9. 验收标准
 
@@ -308,6 +317,8 @@ SQLite 中 NULL 不自动提供期望的复合唯一性；全局／未知维度�
 
 ## 10. 实施顺序与待核实项
 
+按 [实现计划](implementation-plan.md) 的 P0–P6 推进：先工程与数据契约，再本地采集、计价、API 对账、客户端绑定和发布验证。
+
 1. 建立脱敏日志 fixtures：普通、fork、revert、压缩、新旧用量事件、缺模型、Fast 和长上下文；核对实际 API 日期及 token 口径。
 2. 实现共享数据库、rollout 身份识别、增量采集和去重，用 CLI 验证明细。
 3. 实现价格历史、四种模式计价和缺失处理，验证金额分项及重算。
@@ -320,6 +331,6 @@ SQLite 中 NULL 不自动提供期望的复合唯一性；全局／未知维度�
 - 本机 Codex 服务端接口可用性，以及日桶时区、token 口径、历史覆盖范围。
 - 各代本地日志是否足以恢复请求级 Fast 状态、账号归属及缓存计价语义。
 - 多个 limit bucket 的用量归属依据，不能按模型名称猜测。
-- 最低 macOS 版本、Zstandard 绑定及 GRDB 版本的实际构建验证。
+- 最低系统版本已确定为 macOS 26.0；仍需完成 macOS 26 真机验收，以及 Zstandard 绑定和 GRDB 的构建验证。
 
 以上事项影响精确程度的部分保持未知，不能在界面或 CLI 中包装成完整统计。它们不阻止本地采集和数据层先落地。

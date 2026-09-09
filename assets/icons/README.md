@@ -12,4 +12,4 @@
 
 `menubar/template.svg` 为单色矢量源文件；`template-18.png`、`template-18@2x.png` 分别为 18pt 的 1x、2x 透明底模板。
 
-接入时将 NSImage 标记为 `isTemplate = true`，由系统着色，无需单独的白色资源。应用图标的浅深外观尚未接入原生切换。
+接入时将 NSImage 标记为 `isTemplate = true`，由系统着色，无需单独的白色资源。应用内容的品牌图已接入 Asset Catalog 的明暗外观，菜单栏已按模板资源接入；应用包使用浅色 ICNS，Dock／Finder 图标的系统级浅深切换尚未实现。

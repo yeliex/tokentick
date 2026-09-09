@@ -1,0 +1,11 @@
+# 由项目初始化流程生成。
+version = 1
+name = "TokenTick"
+
+[setup]
+script = ""
+
+[[actions]]
+name = "Run"
+icon = "run"
+command = "./script/build_and_run.sh"
