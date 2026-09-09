@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import CryptoKit
 
 public struct RepriceReport: Codable, Sendable {
     public var examined = 0
@@ -12,36 +13,80 @@ public struct RepriceReport: Codable, Sendable {
     public var unpricedReasons: [String: Int] = [:]
 }
 
+private struct RepriceCheckpoint: Codable {
+    // 计价算法或断点格式变化时递增，避免恢复时混合新旧计算结果。
+    static let currentVersion = 1
+    static let key = "reprice_checkpoint"
+    let version: Int
+    let fromDate: String?
+    let priceFingerprint: String
+    var revision: Int64
+    var lastID: Int64 = 0
+    var report = RepriceReport()
+
+    static func priceFingerprint(_ db: Database) throws -> String {
+        var columns = ["model", "date", "long_context_threshold", "source_json"]
+        for prefix in ["", "fast_", "long_", "fast_long_"] {
+            for component in ["input", "output", "cache_read", "cache_write"] {
+                columns.append(prefix + component + "_price")
+            }
+        }
+        let rows = try String.fetchCursor(db, sql: "SELECT json_array(\(columns.joined(separator: ","))) FROM prices ORDER BY model, date")
+        var hash = SHA256()
+        while let row = try rows.next() { hash.update(data: Data(row.utf8)) }
+        return hash.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+}
+
 extension UsageStore {
-    /// 明确重算才覆盖已有价格与金额；扫描事实和历史 token 保持不变。
+    /// 明确重算才覆盖已有价格与金额；相同依据的中断任务从已提交批次恢复，报告包含此前批次。
     public func repriceUsage(fromDate: String? = nil) throws -> RepriceReport {
         try UsageQuery(fromDate: fromDate).validate()
         return try FileWriteLock(url: databaseURL.appendingPathExtension("write.lock")).withLock {
-            var report = RepriceReport()
-            var lastID: Int64 = 0
+            var checkpoint = try pool.read { db in
+                let revision = try Self.statisticsRevision(db)
+                let fingerprint = try RepriceCheckpoint.priceFingerprint(db)
+                if let json = try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = ?", arguments: [RepriceCheckpoint.key]),
+                   let saved = try? JSONDecoder().decode(RepriceCheckpoint.self, from: Data(json.utf8)),
+                   saved.version == RepriceCheckpoint.currentVersion, saved.fromDate == fromDate,
+                   saved.revision == revision, saved.priceFingerprint == fingerprint {
+                    return saved
+                }
+                return RepriceCheckpoint(version: RepriceCheckpoint.currentVersion, fromDate: fromDate,
+                                         priceFingerprint: fingerprint, revision: revision)
+            }
             while true {
                 try Task.checkCancellation()
                 let count = try autoreleasepool { try pool.write { db -> Int in
                     let rows = try Row.fetchAll(db, sql: "SELECT * FROM usage WHERE id > ? AND (? IS NULL OR usage_date >= ?) ORDER BY id LIMIT 512",
-                                               arguments: [lastID, fromDate, fromDate])
+                                               arguments: [checkpoint.lastID, fromDate, fromDate])
+                    if rows.isEmpty {
+                        try db.execute(sql: "DELETE FROM app_metadata WHERE key = ?", arguments: [RepriceCheckpoint.key])
+                        return 0
+                    }
                     for row in rows {
                         let id: Int64 = row["id"]
-                        lastID = id
+                        checkpoint.lastID = id
                         let outcome = try Self.priceUsage(row, db: db)
-                        report.examined += outcome.examined
-                        report.changed += outcome.changed
-                        report.fullyPriced += outcome.fullyPriced
-                        report.partiallyPriced += outcome.partiallyPriced
-                        report.unpriced += outcome.unpriced
-                        report.invalidUsage += outcome.invalidUsage
-                        report.overflow += outcome.overflow
-                        for (reason, count) in outcome.unpricedReasons { report.unpricedReasons[reason, default: 0] += count }
+                        checkpoint.report.examined += outcome.examined
+                        checkpoint.report.changed += outcome.changed
+                        checkpoint.report.fullyPriced += outcome.fullyPriced
+                        checkpoint.report.partiallyPriced += outcome.partiallyPriced
+                        checkpoint.report.unpriced += outcome.unpriced
+                        checkpoint.report.invalidUsage += outcome.invalidUsage
+                        checkpoint.report.overflow += outcome.overflow
+                        for (reason, count) in outcome.unpricedReasons { checkpoint.report.unpricedReasons[reason, default: 0] += count }
                     }
+                    // 自身计价也会推进事实版本；与结果同事务保存，其他写入会使断点失效。
+                    checkpoint.revision = try Self.statisticsRevision(db)
+                    let json = String(decoding: try JSONEncoder().encode(checkpoint), as: UTF8.self)
+                    try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                                   arguments: [RepriceCheckpoint.key, json])
                     return rows.count
                 } }
                 if count == 0 { break }
             }
-            return report
+            return checkpoint.report
         }
     }
 
