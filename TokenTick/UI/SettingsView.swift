@@ -23,8 +23,10 @@ struct SettingsView: View {
             Section("数据来源") {
                 TextField("Codex 目录", text: $directory)
                 Button("保存目录") { app.codexDirectory = (directory as NSString).expandingTildeInPath }
-                Text("目录变更后点击同步，已采集的历史数据会保留。")
+                Toggle("应用运行时自动同步", isOn: Binding(get: { app.automaticSyncEnabled }, set: { app.automaticSyncEnabled = $0 }))
+                Text("文件变化合并后采集；每分钟核对本地日志，每五分钟刷新额度和日用量。价格每日成功获取一次。休眠恢复后补扫，退出后停止。")
                     .font(.caption).foregroundStyle(.secondary)
+                if let issue = app.automaticSyncIssue { Text(issue).font(.caption).foregroundStyle(.secondary) }
             }
             Section("存储") {
                 if let url = app.store?.databaseURL {

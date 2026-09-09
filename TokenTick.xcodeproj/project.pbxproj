@@ -5,6 +5,16 @@
 	"objectVersion" = "56";
 	"archiveVersion" = "1";
 	"objects" = {
+		"739E83C01C9D47EAAF16F6A2" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "TokenTick/UI/AutomaticSyncController.swift";
+			"sourceTree" = "<group>";
+		};
+		"2D82C6F909FB45BBA6FF9C4A" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "739E83C01C9D47EAAF16F6A2";
+		};
 		"56C58CD9D77B4D37A8637BA1" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -145,6 +155,7 @@
 			"buildActionMask" = "2147483647";
 			"files" = (
 				"12F57F06E90963792A0B7A4F",
+				"2D82C6F909FB45BBA6FF9C4A",
 				"13C51972095142E1BCBC77C6",
 				"C8E280922E18F966DE4902FA",
 				"57927CA37D38559EC007898D",
@@ -409,6 +420,7 @@
 			"name" = "UI";
 			"children" = (
 				"958778895F030AAA42825BFF",
+				"739E83C01C9D47EAAF16F6A2",
 				"56C58CD9D77B4D37A8637BA1",
 				"36FF4A1297DA65346F5C2790",
 				"0460BF9724C2EF9D32A54C46",

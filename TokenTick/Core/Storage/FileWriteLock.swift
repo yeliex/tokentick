@@ -10,12 +10,17 @@ struct FileWriteLock {
         let descriptor = open(url.path, O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR)
         guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         defer { close(descriptor) }
-        while flock(descriptor, LOCK_EX | (nonBlocking ? LOCK_NB : 0)) != 0 {
+        while true {
+            try Task.checkCancellation()
+            if flock(descriptor, LOCK_EX | LOCK_NB) == 0 { break }
             if errno == EINTR { continue }
-            if nonBlocking && errno == EWOULDBLOCK { throw LockError.busy }
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            guard errno == EWOULDBLOCK else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            if nonBlocking { throw LockError.busy }
+            // 另一个进程可能扫描数分钟；有限等待让取消能在获得写锁前生效。
+            Thread.sleep(forTimeInterval: 0.05)
         }
         defer { flock(descriptor, LOCK_UN) }
+        try Task.checkCancellation()
         return try operation()
     }
 }

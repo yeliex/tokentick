@@ -20,9 +20,25 @@ public final class UsageStore: Sendable {
         let directory = databaseURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
                                                attributes: [.posixPermissions: 0o700])
+        let migrator = StoreSchema.migrator
+        var configuration = Configuration()
+        configuration.busyMode = .timeout(5)
+        // 已完成迁移的数据库可直接加入 WAL 读者，不等待扫描者持有的整文件锁。
+        // 需要迁移时仍在锁内重新核对并备份，不能沿用锁外检查结果执行迁移。
+        if FileManager.default.fileExists(atPath: databaseURL.path) {
+            let existing = try DatabaseQueue(path: databaseURL.path, configuration: configuration)
+            let ready = try existing.read { db in
+                guard try !migrator.hasBeenSuperseded(db) else { throw StoreError.newerSchema }
+                return try migrator.hasCompletedMigrations(db)
+            }
+            try existing.close()
+            if ready {
+                pool = try DatabasePool(path: databaseURL.path, configuration: configuration)
+                return
+            }
+        }
         let lock = FileWriteLock(url: databaseURL.appendingPathExtension("write.lock"))
         pool = try lock.withLock {
-            let migrator = StoreSchema.migrator
             if FileManager.default.fileExists(atPath: databaseURL.path) {
                 var readConfiguration = Configuration()
                 // 恢复的 WAL 备份可能没有 sidecar。连接须能创建 SQLite 自身的
@@ -42,8 +58,6 @@ public final class UsageStore: Sendable {
                     try previous.backup(to: backup)
                 }
             }
-            var configuration = Configuration()
-            configuration.busyMode = .timeout(5)
             let database = try DatabasePool(path: databaseURL.path, configuration: configuration)
             try migrator.migrate(database)
             return database

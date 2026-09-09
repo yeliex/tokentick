@@ -6,6 +6,7 @@ import TokenTickCore
 final class ApplicationModel {
     @ObservationIgnored private(set) var store: UsageStore?
     @ObservationIgnored private var syncTask: Task<Void, Never>?
+    @ObservationIgnored private var automatic: AutomaticSyncController?
     private var started = false
     var isSyncing = false
     var progress: SynchronizationProgress?
@@ -15,9 +16,19 @@ final class ApplicationModel {
     var limits: [LimitWindow] = []
     var error: String?
     var refreshID = 0
+    var automaticSyncIssue: String?
+    var automaticSyncEnabled = UserDefaults.standard.object(forKey: "automaticSyncEnabled") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(automaticSyncEnabled, forKey: "automaticSyncEnabled")
+            configureAutomaticSync()
+        }
+    }
     var codexDirectory: String {
         get { UserDefaults.standard.string(forKey: "codexDirectory") ?? LocalUsageScanner.defaultCodexHome.path }
-        set { UserDefaults.standard.set(newValue, forKey: "codexDirectory") }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "codexDirectory")
+            configureAutomaticSync()
+        }
     }
 
     var progressText: String {
@@ -41,17 +52,26 @@ final class ApplicationModel {
             let database = ProcessInfo.processInfo.environment["TOKENTICK_DATABASE"].map { URL(fileURLWithPath: $0) } ?? UsageStore.defaultDatabaseURL
             store = try await Task.detached(priority: .utility) { try UsageStore(databaseURL: database) }.value
             await refresh()
-            if ProcessInfo.processInfo.environment["TOKENTICK_AUTOSYNC"] != "0" { synchronize() }
+            configureAutomaticSync()
         } catch { self.error = error.localizedDescription; started = false }
+    }
+
+    private func configureAutomaticSync() {
+        automatic?.stop(); automatic = nil; automaticSyncIssue = nil
+        guard store != nil, automaticSyncEnabled, ProcessInfo.processInfo.environment["TOKENTICK_AUTOSYNC"] != "0" else { return }
+        let controller = AutomaticSyncController(app: self)
+        automatic = controller
+        controller.start(home: URL(fileURLWithPath: codexDirectory, isDirectory: true))
     }
 
     func synchronize(_ scope: SynchronizationScope = .all) {
         guard !isSyncing, let store else { return }
         isSyncing = true
+        automatic?.started(scope)
         error = nil
         let home = URL(fileURLWithPath: codexDirectory, isDirectory: true)
         syncTask = Task { [self] in
-            defer { isSyncing = false; progress = nil; syncTask = nil }
+            defer { isSyncing = false; progress = nil; syncTask = nil; automatic?.finished() }
             do {
                 lastSync = try await UsageSynchronizer(store: store).synchronize(scope: scope, codexHome: home) { [weak self] progress in
                     Task { @MainActor in self?.progress = progress }
@@ -62,7 +82,7 @@ final class ApplicationModel {
         }
     }
 
-    func cancelSync() { syncTask?.cancel() }
+    func cancelSync() { automatic?.cancelled(); syncTask?.cancel() }
 
     func refresh() async {
         guard let store else { return }
@@ -93,7 +113,7 @@ final class ApplicationModel {
         guard let store, !isSyncing else { return }
         isSyncing = true
         progress = SynchronizationProgress(stage: .statistics, scan: nil)
-        defer { isSyncing = false; progress = nil }
+        defer { isSyncing = false; progress = nil; automatic?.finished() }
         do { _ = try await Task.detached(priority: .utility) { try store.rebuildStatistics() }.value }
         catch { self.error = error.localizedDescription }
         await refresh()
