@@ -131,7 +131,18 @@ CLI 可直接运行，也可按[本地安装说明](docs/local-install.md)安装
 
 已完成的本地签名、解压安装、真实界面与性能基线见 [Release 验证记录](docs/release-validation.md)。
 
-数据层测试：
+## 外观验证
+
+Debug App 支持进程环境变量 `TOKENTICK_APPEARANCE=light|dark`，只覆盖当前进程的原生外观；不设置时跟随系统，不改写用户偏好，Release 构建不包含这个入口。先退出已有测试实例，再运行：
+
+```sh
+open -n --env TOKENTICK_APPEARANCE=light --env TOKENTICK_AUTOSYNC=0 \
+  .build/DerivedData/Build/Products/Debug/TokenTick.app
+```
+
+验证后退出该实例，正常打开 App 即恢复跟随系统及原有自动同步设置。
+
+## 数据层测试
 
 ```sh
 swift test

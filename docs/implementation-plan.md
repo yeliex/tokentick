@@ -330,3 +330,10 @@ P5 剩余：自定义日期、任务搜索／排序、模型与项目交叉筛�
 - 物化普通文件并保留旧压缩兄弟时，普通文件优先，重扫只新增测试请求 120 tokens；随后归档移动，读取零字节、位置更新且金额不变。所有动作限于隔离副本，完整性检查通过。
 - 当前真实样本中 3,062 条可完整计价、165,103 条仍未知，没有长上下文计价样本。另以 Release 配置执行价格／价格历史专项，16 个测试、2 个 suite 全部通过，覆盖四种组合和历史／精度边界。
 - 详细环境、测量条件、字段比对和原始证据路径见 [Release 本地验证](release-validation.md)。本机压缩与现有价格基线完成；API 日差额及周期归属、浅色／完整键盘／VoiceOver、macOS 26／Intel 真机、正式签名与公证仍待完成，目标 active。
+
+### P5 浅色界面与字段标签（2026-09-10）
+
+- 增加仅 Debug 可用的进程外观覆盖，完成本机浅色主要页面及设置截图检查；不改写系统偏好，Release 保持跟随系统。
+- 汇总和请求详情显式提供逐字段无障碍标签和值；原生 AX 输出已逐项核对。方向键选请求、Escape 关闭明细、设置快捷键通过。完整 Tab、VoiceOver 朗读、菜单栏及 macOS 26 真机仍未全部验收，详见 [客户端 UI](client-ui.md)。
+- Debug 构建运行及 arm64／x86_64 Release 构建通过。核对 Debug 的 `TokenTick.debug.dylib` 包含外观测试变量、Release 可执行文件不包含；Release 日志为 `.build/logs/light-accessibility-release-build.log`。验证后以正常环境重新启动开发 App，恢复跟随系统外观。
+- 只读签名环境检查发现有效 Developer ID Application 证书，正式签名不再按“缺少本机证书”推断受阻；当前分发包仍为 ad-hoc，尚未进行 Developer ID 签署、公证凭据检查和公证提交。完整目标保持 active。
