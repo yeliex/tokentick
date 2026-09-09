@@ -10,6 +10,7 @@ struct UsageSummaryInspector: View {
     @State private var models: [UsageSummary] = []
     @State private var modelError: String?
     @State private var showingRecords = false
+    private struct Request: Hashable { let query: UsageQuery; let refresh: Int }
     var body: some View {
         Form {
             Section {
@@ -52,7 +53,7 @@ struct UsageSummaryInspector: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
         }.formStyle(.grouped).textSelection(.enabled)
-            .task(id: query) {
+            .task(id: Request(query: query, refresh: app.refreshID)) {
                 guard let store = app.store else { return }
                 var request = query
                 request.grouping = .model; request.offset = 0; request.limit = 10_000; request.sort = .tokens

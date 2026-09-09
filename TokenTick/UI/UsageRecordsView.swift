@@ -55,21 +55,21 @@ struct UsageRecordsView: View {
                         Button("上一页") { page -= 1 }.disabled(page == 0 || loading)
                         Button("下一页") { page += 1 }.disabled(!hasMore || loading)
                     }.padding(12)
-                }.frame(minWidth: 510)
+                }.frame(minWidth: 510, maxHeight: .infinity)
                 if let record = records.first(where: { $0.id == selection }) {
                     UsageRecordDetail(record: record, timezone: TimeZone(identifier: query.timezone ?? "UTC") ?? .gmt)
                         .frame(minWidth: 320, idealWidth: 360)
                 } else {
                     ContentUnavailableView("选择一条用量", systemImage: "doc.text.magnifyingglass",
                         description: Text("查看分项计价和日志证据。"))
-                        .frame(minWidth: 320, idealWidth: 360)
+                        .frame(minWidth: 320, idealWidth: 360, maxHeight: .infinity)
                 }
-            }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 860, idealWidth: 980, minHeight: 540, idealHeight: 680)
         .task(id: "\(page)/\(app.refreshID)") {
             guard let store = app.store else { return }
-            loading = true; error = nil; selection = nil
+            loading = true; error = nil
             var request = query
             request.limit = 100; request.offset = page * 100
             let current = request
@@ -77,12 +77,14 @@ struct UsageRecordsView: View {
                 let result = try await Task.detached(priority: .userInitiated) { try store.usageRecords(current, scope: scope) }.value
                 guard !Task.isCancelled else { return }
                 records = result.rows; hasMore = result.hasMore
+                if let selection, !records.contains(where: { $0.id == selection }) { self.selection = nil }
             } catch {
                 guard !Task.isCancelled else { return }
                 self.error = error.localizedDescription; records = []; hasMore = false
             }
             loading = false
         }
+        .onChange(of: page) { selection = nil; records = [] }
     }
 }
 
@@ -146,9 +148,8 @@ private struct UsageRecordDetail: View {
                     Text("位置在扫描后更新，日志归档或移除不会删除已保存的用量与证据。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                DisclosureGroup("统计证据 JSON", isExpanded: $evidenceExpanded) {
-                    Text(record.evidenceJSON).font(.system(.caption, design: .monospaced))
-                }
+                Button(evidenceExpanded ? "收起统计证据 JSON" : "查看统计证据 JSON") { evidenceExpanded.toggle() }
+                if evidenceExpanded { Text(record.evidenceJSON).font(.system(.caption, design: .monospaced)) }
             }
         }.formStyle(.grouped).textSelection(.enabled)
     }
