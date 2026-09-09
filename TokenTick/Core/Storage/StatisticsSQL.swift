@@ -33,12 +33,26 @@ enum StatisticsSQL {
         })
     }
 
-    static let columns = """
-        account_key, date, timezone, dimension, dimension_value, total_tokens, input_tokens,
+    static let groupColumns = "account_key, date, timezone, dimension, dimension_value"
+
+    private static let metricColumns = """
+        total_tokens, input_tokens,
         output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, input_amount,
         output_amount, cache_read_amount, cache_write_amount, complete_amount, unpriced_tokens,
         unattributed_tokens, record_count, known_amount, unpriced_records
         """
+
+    static var columns: String { "\(groupColumns), \(metricColumns)" }
+
+    static var mergeStaged: String {
+        // SUM 保留全空分项，并在整数溢出时失败；不能用会转为 REAL 的逐次加法。
+        let sums = metricColumns.split(separator: ",").map { "SUM(\($0.trimmingCharacters(in: .whitespacesAndNewlines)))" }
+        return """
+            SELECT \(groupColumns), \(sums.joined(separator: ", "))
+            FROM statistics_rebuild WHERE timezone = :timezone
+            GROUP BY \(groupColumns)
+            """
+    }
 
     /// 先在 SQLite 中合并同日、同任务、同模型的请求，再展开四个维度，避免放大全部明细。
     static var aggregate: String { aggregate(predicate: "1") }

@@ -73,4 +73,40 @@ struct UsageStoreTests {
         #expect(title == "保留标题")
     }
 
+    @Test func statisticsRecoveryMigrationPreservesFactsCacheAndOtherCheckpoints() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("usage.sqlite")
+        let old = try DatabaseQueue(path: url.path)
+        try StoreSchema.migrator.migrate(old, upTo: "v3.statistics-cache")
+        try old.write { db in
+            try db.execute(sql: """
+                INSERT INTO usage(dedup_key, usage_date, total_tokens, source, evidence_json)
+                    VALUES ('fixture', '2026-09-10', 7, 'local', '{"keep":true}');
+                INSERT INTO statistics(account_key, date, timezone, dimension, dimension_value,
+                    total_tokens, unpriced_tokens, unattributed_tokens, record_count)
+                    VALUES ('all', '2026-09-10', 'GMT', 'all', 'all', 7, 7, 7, 1);
+                INSERT INTO app_metadata(key, value) VALUES ('reprice_checkpoint', '{"keep":true}');
+                """)
+        }
+        let before = try old.read { db in
+            try ["usage", "statistics", "app_metadata"].map { try Row.fetchAll(db, sql: "SELECT * FROM \($0) ORDER BY 1") }
+        }
+        try old.close()
+        let current = try UsageStore(databaseURL: url)
+        let after = try current.pool.read { db in
+            #expect(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM statistics_rebuild") == 0)
+            return try ["usage", "statistics", "app_metadata"].map { try Row.fetchAll(db, sql: "SELECT * FROM \($0) ORDER BY 1") }
+        }
+        #expect(before == after)
+        let backups = try FileManager.default.contentsOfDirectory(at: root.appendingPathComponent("Backups"), includingPropertiesForKeys: nil)
+        let backup = try DatabaseQueue(path: #require(backups.first(where: { $0.pathExtension == "sqlite" })).path)
+        try backup.read { db in
+            let hasStaging = try db.tableExists("statistics_rebuild")
+            let saved = try ["usage", "statistics", "app_metadata"].map { try Row.fetchAll(db, sql: "SELECT * FROM \($0) ORDER BY 1") }
+            #expect(!hasStaging && saved == before)
+        }
+    }
+
 }

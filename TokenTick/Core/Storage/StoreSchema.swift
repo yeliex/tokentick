@@ -178,6 +178,18 @@ enum StoreSchema {
                     """)
             }
         }
+        migrator.registerMigration("v4.statistics-recovery") { db in
+            // 内部暂存允许同一维度跨批次重复，只有发布时才合并进正式缓存。
+            try db.execute(sql: """
+                CREATE TABLE statistics_rebuild AS SELECT
+                    account_key, date, timezone, dimension, dimension_value, total_tokens, input_tokens,
+                    output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, input_amount,
+                    output_amount, cache_read_amount, cache_write_amount, complete_amount, unpriced_tokens,
+                    unattributed_tokens, record_count, known_amount, unpriced_records
+                FROM statistics WHERE 0;
+                CREATE INDEX statistics_rebuild_timezone ON statistics_rebuild(timezone);
+                """)
+        }
         return migrator
     }
 }

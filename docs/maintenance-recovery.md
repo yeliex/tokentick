@@ -1,6 +1,6 @@
 # 维护任务恢复
 
-日志采集、金额重算和统计重建分别维护自己的事务边界；当前金额重算已具备持久断点，统计缓存重建仍需补齐。
+日志采集、金额重算和统计重建分别维护自己的事务边界，均保存持久进度。以下区分金额写回和统计缓存最终发布的恢复方式。
 
 ## 金额重算
 
@@ -32,6 +32,20 @@ App 与 CLI 继续调用共享的 `repriceUsage(fromDate:)`，无需额外的恢
 
 ## 统计缓存重建
 
-当前 `rebuildStatistics` 在单事务内替换一个时区的缓存，失败时回滚，旧缓存版本不会被标为当前版本。它能安全重跑，但没有持久化的中间聚合进度。
+App 与 CLI 共用 `rebuildStatistics`，每批按用量 ID 读取最多 8,192 条，在 SQLite 内复用已有统计 SQL 聚合，再将中间结果写入 `statistics_rebuild`。该表由 `v4.statistics-recovery` 迁移创建，属于内部恢复数据；升级前沿用一致备份，不修改已有七张业务表、事实或金额重算断点。
 
-此项保持未完成：需要在保存中间进度的同时维持最终缓存发布的原子性，并在事实变更后废弃过期中间结果；不能让部分完成的聚合成为查询结果。金额重算的恢复验证不替代这一项。
+每个时区在 `app_metadata` 的 `statistics_rebuild_checkpoint:<时区>` 保存最后提交 ID、事实版本和内部断点版本。批次聚合与断点同一事务提交；每批重新核对事实版本。用量变化、项目重新归属、旧版或损坏断点会废弃该时区的中间结果并从头重建。其他时区的中间结果不受影响。
+
+所有批次完成后，以 `SUM` 合并相同日期、账号和维度，并在一个事务内替换正式缓存、发布缓存版本、清理暂存和断点。全空分项仍为 NULL，跨批次整数溢出会报错，不通过转为浮点数完成发布。进程退出、批次失败或最终发布失败都保留此前提交的进度和旧缓存。查询不使用暂存表，发现正式缓存过期时仍读取已提交事实。
+
+`StatisticsRecoveryTests` 覆盖第二批失败后重开续算、禁止重复执行已完成批次、多时区隔离、断点写入回滚、最终发布失败后仅重试发布、依据变化后重建，以及跨批次金额溢出。结果逐字段与原有直接聚合 SQL 比较。`UsageStoreTests` 另验证 v3 升级前后的事实、正式缓存、内部元数据和迁移备份一致。
+
+2026-09-10 的 Release CLI 真实进程验证使用独立数据库中的 100,000 条明确标记测试用量：
+
+- 第 8,192 条中间聚合提交后 SIGKILL，断点 ID 和暂存记录数一致；正式缓存仍完整保留。
+- 新进程在禁止重复执行已提交批次的测试触发器下成功续算，完成后暂存与断点清空。10 万条用量合计 110,000,001 tokens、1,010,000,000,000 nanoUSD，缓存与事实一致。
+- 恢复约 0.108 秒，峰值 RSS 22,151,168 bytes；这是维度较少的测试输入，不能代表真实历史的聚合耗时。
+
+另外，对冻结历史库的两个独立副本分别运行修改前和修改后的 Release CLI：168,165 条用量（包含此前标记的一条测试记录）、4,514 条 Asia/Shanghai 缓存，新旧用量和缓存全部字段双向 SQL 比对一致。单次重建分别约 0.419／0.431 秒，峰值 RSS 32,505,856／23,085,056 bytes。新版本首次打开副本的约 0.641 秒另含迁移和备份，不计入重建耗时；单次测量仅作本机基线，不据此承诺稳定性能收益。两项 `integrity_check` 均为 `ok`。
+
+证据脚本为 `.build/audit/statistics-process-recovery.py`、`.build/audit/statistics-release-benchmark.py`，输出分别在 `.build/audit/statistics-kill-mdmfu2mz/` 和 `.build/audit/statistics-benchmark-gjnun1fo/`。Core 全量 107 个测试、19 个 suite 通过，日志 `.build/logs/statistics-recovery-full-tests.log`；App Debug 与 CLI 通用 Release 构建通过，日志分别为 `.build/logs/statistics-recovery-app-build.log`、`.build/logs/statistics-recovery-cli-build.log`。本次不修改 Codex 日志或默认产品数据库，App 原生交互仍待解锁后的独立验收。
