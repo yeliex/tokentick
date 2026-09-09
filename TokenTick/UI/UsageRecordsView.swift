@@ -55,7 +55,7 @@ struct UsageRecordsView: View {
                         Button("上一页") { page -= 1 }.disabled(page == 0 || loading)
                         Button("下一页") { page += 1 }.disabled(!hasMore || loading)
                     }.padding(12)
-                }.frame(minWidth: 510, maxHeight: .infinity)
+                }.frame(minWidth: 580, maxHeight: .infinity)
                 if let record = records.first(where: { $0.id == selection }) {
                     UsageRecordDetail(record: record, timezone: TimeZone(identifier: query.timezone ?? "UTC") ?? .gmt)
                         .frame(minWidth: 320, idealWidth: 360)
@@ -66,7 +66,7 @@ struct UsageRecordsView: View {
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 860, idealWidth: 980, minHeight: 540, idealHeight: 680)
+        .frame(minWidth: 920, idealWidth: 980, minHeight: 540, idealHeight: 680)
         .task(id: "\(page)/\(app.refreshID)") {
             guard let store = app.store else { return }
             loading = true; error = nil
