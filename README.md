@@ -6,7 +6,7 @@ TokenTick 从本地 Codex 日志采集统计数据，记录每个任务、每天
 
 ## 项目状态
 
-已建立面向 **macOS 26.0+** 的原生 Xcode 工程，包含 SwiftUI App 和共享 Core 源码的 CLI。当前已实现窗口／菜单栏骨架、现有图标、GRDB 存储与迁移、本地 JSONL／Zstandard 增量采集、任务名称缓存和 CLI 用量查询。已加入 models.dev 价格快照、分项计价和金额重算；API 对账、统计缓存和客户端数据绑定仍按计划实现。
+已建立面向 **macOS 26.0+** 的原生 Xcode 工程，包含 SwiftUI App 和共享 Core 源码的 CLI。当前已实现窗口／菜单栏骨架、现有图标、GRDB 存储与迁移、本地 JSONL／Zstandard 增量采集、任务名称缓存和 CLI 用量查询。已加入 models.dev 价格快照、分项计价、金额重算，以及服务端日桶／额度窗口采集；API 差额、统计缓存和客户端数据绑定仍按计划实现。
 
 - [需求与技术方案](docs/requirements.md)
 - [实现计划](docs/implementation-plan.md)
@@ -58,7 +58,7 @@ xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
   --database .build/audit/usage.sqlite
 ```
 
-也可省略 `--codex-home`，默认读取环境变量 `CODEX_HOME` 或 `~/.codex`。省略 `--database` 时使用 `~/Library/Application Support/TokenTick/usage.sqlite`。`scan` 只读 Codex 数据，写入 TokenTick 自己的数据库；存在解析问题时返回 1，参数错误返回 2。当前日分组为 UTC，缺失价格／模式不会伪造为零金额；`sync`、API 与缓存重建命令将在对应阶段接入。
+也可省略 `--codex-home`，默认读取环境变量 `CODEX_HOME` 或 `~/.codex`。省略 `--database` 时使用 `~/Library/Application Support/TokenTick/usage.sqlite`。`scan` 只读 Codex 数据，写入 TokenTick 自己的数据库；存在解析问题时返回 1，参数错误返回 2。当前日分组为 UTC，缺失价格／模式不会伪造为零金额；`sync` 和缓存重建命令将在对应阶段接入。
 
 价格同步与重算：
 
@@ -69,6 +69,16 @@ xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
 ```
 
 价格按 UTC 采集日保存，每天成功一次，只记录价格变化。新扫描的请求自动匹配已有历史价格；`reprice` 显式重算已有用量。首次采价以前的日期不会套用今日价格；模式、缓存分项或价格缺失时，保留可算分项，总金额仍为空。重算报告列出未定价原因。
+
+服务端统计采集与离线查询：
+
+```sh
+.build/DerivedData/Build/Products/Debug/tokentick sync-api --database .build/audit/usage.sqlite
+.build/DerivedData/Build/Products/Debug/tokentick api-usage --database .build/audit/usage.sqlite --limit 1000
+.build/DerivedData/Build/Products/Debug/tokentick limits --database .build/audit/usage.sqlite
+```
+
+`sync-api` 启动短期 Codex app-server，通过 stdio 读取统计；需要本机安装且已登录的 Codex CLI，可用 `--codex-bin` 指定其路径。TokenTick 不读取或复制认证文件，认证由 Codex 自己管理。日桶保存原始日期和整数 tokens；目前账号归属、日边界和 token 可比口径尚未确认，服务端总量单独显示，不与本地相加。额度百分比为最后观测值，周期 tokens／金额缺乏归属证据时保持 NULL。查询不会触发联网或创建常驻进程。
 
 两个 scheme 都以 macOS 26.0 为最低版本。App 使用本地 ad-hoc 签名，不要求开发者团队；正式分发签名、公证和 CLI 安装在发布阶段实现。Core 由本地 Swift Package 的 TokenTickCore 模块编译，新增 Core 文件自动进入模块；`TokenTickApp.swift` 与 `cli.swift` 分别只加入对应 Xcode target。
 

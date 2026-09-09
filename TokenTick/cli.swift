@@ -41,6 +41,16 @@ struct TokenTickCommand {
                 try await printJSON(PriceSynchronizer(store: store).synchronize())
             case "reprice":
                 try printJSON(UsageStore(databaseURL: options.database).repriceUsage())
+            case "sync-api":
+                let store = try UsageStore(databaseURL: options.database)
+                let client = try CodexAPIClient(executable: options.codexExecutable, codexHome: options.codexHome)
+                let report = try await client.synchronize(store: store)
+                try printJSON(report)
+                if report.issue != nil || !report.accountAvailable { exit(1) }
+            case "limits":
+                try printJSON(LimitsOutput(rows: UsageStore(databaseURL: options.database).limitWindows(limit: options.limit)))
+            case "api-usage":
+                try printJSON(APIUsageOutput(rows: UsageStore(databaseURL: options.database).apiDailyUsage(limit: options.limit)))
             case "status": try printJSON(UsageStore(databaseURL: options.database).tableCounts())
             default: throw CommandError.invalid("不支持的命令。")
             }
@@ -53,6 +63,25 @@ struct TokenTickCommand {
     private struct PriceOutput: Encodable {
         let priceUnit = "USD_per_million_tokens"
         let rows: [PriceEntry]
+    }
+
+    private struct LimitsOutput: Encodable {
+        let amountUnit = "nanoUSD"
+        let coverage = "observed_windows; last percentage is not a final percentage"
+        let rows: [LimitWindow]
+    }
+
+    private struct APIUsageOutput: Encodable {
+        let timezone: String? = nil
+        let includedInLocalTotals = false
+        let rows: [APIDailyBucket]
+        enum CodingKeys: String, CodingKey { case timezone, includedInLocalTotals, rows }
+        func encode(to encoder: any Encoder) throws {
+            var values = encoder.container(keyedBy: CodingKeys.self)
+            try values.encode(timezone, forKey: .timezone)
+            try values.encode(includedInLocalTotals, forKey: .includedInLocalTotals)
+            try values.encode(rows, forKey: .rows)
+        }
     }
 
     private struct UsageOutput: Encodable {
@@ -79,6 +108,7 @@ struct TokenTickCommand {
         var command: String
         var database = UsageStore.defaultDatabaseURL
         var codexHome = LocalUsageScanner.defaultCodexHome
+        var codexExecutable: URL?
         var grouping = UsageGrouping.day
         var limit = 100
         var json = false
@@ -87,7 +117,7 @@ struct TokenTickCommand {
             command = arguments.first ?? "help"
             if ["--help", "-h"].contains(command) { command = "help" }
             if command == "--version" { command = "version" }
-            guard ["help", "version", "scan", "usage", "status", "prices", "sync-prices", "reprice"].contains(command) else {
+            guard ["help", "version", "scan", "usage", "status", "prices", "sync-prices", "reprice", "sync-api", "limits", "api-usage"].contains(command) else {
                 throw CommandError.invalid("不支持的命令：\(command)。")
             }
             var index = 1
@@ -100,12 +130,14 @@ struct TokenTickCommand {
                 index += 1
                 switch option {
                 case "--database": database = URL(fileURLWithPath: (value as NSString).expandingTildeInPath)
-                case "--codex-home" where command == "scan":
+                case "--codex-home" where command == "scan" || command == "sync-api":
                     codexHome = URL(fileURLWithPath: (value as NSString).expandingTildeInPath, isDirectory: true)
+                case "--codex-bin" where command == "sync-api":
+                    codexExecutable = URL(fileURLWithPath: (value as NSString).expandingTildeInPath)
                 case "--group" where command == "usage":
                     guard let group = UsageGrouping(rawValue: value) else { throw CommandError.invalid("无效的统计维度。") }
                     grouping = group
-                case "--limit" where command == "usage" || command == "prices":
+                case "--limit" where ["usage", "prices", "limits", "api-usage"].contains(command):
                     guard let count = Int(value), (1...10_000).contains(count) else { throw CommandError.invalid("limit 必须为 1–10000。") }
                     limit = count
                 default: throw CommandError.invalid("不支持的参数：\(option)。")
@@ -124,12 +156,16 @@ struct TokenTickCommand {
       prices     查看历史价格快照（JSON），--limit 100
       sync-prices 从 models.dev 同步当天价格（每天成功一次）
       reprice    按请求日期的历史价格重算分项金额
+      sync-api   通过 Codex app-server 保存每日总量和额度观测
+      api-usage  查看服务端每日总量缓存（当前不与本地相加）
+      limits     查看已观测额度周期，百分比为最后观测值
       status     输出数据库表记录数
       --version  显示版本
       --help     显示帮助
 
     通用参数：--database <SQLite 路径>，--json
-    扫描参数：--codex-home <Codex 数据目录>
+    scan／sync-api 参数：--codex-home <Codex 数据目录>
+    sync-api 参数：--codex-bin <Codex 可执行文件路径>
     scan 存在解析问题时返回 1；参数错误返回 2。
     缺失价格和模式保持未知，金额单位为 nanoUSD（1 USD = 10^9 nanoUSD）。
     """

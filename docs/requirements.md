@@ -182,7 +182,9 @@ GPT-6 Astra 的上游 OpenAI 条目示例，金额单位均为美元／百万 to
 
 逻辑主键 `(account_id, start_date)`。保存 `start_date`、`tokens`、`fetched_at`；保留接口返回的日期，不擅自转换成机器本地日期。API 摘要统计响应保存在内部同步元数据，避免复制到每天一行。
 
-真实接口 `account/usage/read` 的每日桶提供 `startDate` 和 `tokens`，日桶可能为空，不包含模型、token 分项或金额。接口摘要还可包含累计 tokens 等统计。能力依赖实际 Codex 服务及认证，接入时做能力检查。[App Server 文档](https://learn.chatgpt.com/docs/app-server)
+真实接口 `account/usage/read` 的每日桶提供 `startDate` 和 `tokens`，日桶可能为空，不包含模型、token 分项或金额。接口摘要还可包含累计 tokens 等统计。Codex CLI 0.152.1 的本机生成 schema 和实际响应均已核验；2026-09-09 返回了 196 个日桶。响应不提供日桶时区／token 定义，也不直接带账号 ID。通过前后两次 `account/rateLimits/read` 返回的一致账号关联本次缓存，账号未知或切换时不保存日桶。[App Server 文档](https://learn.chatgpt.com/docs/app-server)
+
+该版本还支持按 threadId 请求 `threadUsage`，包含模型分组、speed 和服务端 estimatedUsage 字段；本次账号级查询返回 null。该估值不等同于 models.dev 历史价格换算，暂不混入请求金额。完整统计响应保存在内部同步元数据，为后续核对保留依据。
 
 每日差额规则：
 
@@ -205,6 +207,8 @@ GPT-6 Astra 的上游 OpenAI 条目示例，金额单位均为美元／百万 to
 周期 token 与金额从 `[starts_at, resets_at)` 内、能归属该 limit 的用量计算；这是当前采集覆盖下的统计，不保证全账号完整。每日 API 差额无法精确归到非自然日边界的周期。不能通过额度百分比推算 tokens 或金额。
 
 窗口开始时间为结束时间减时长的推定值。提前 reset、窗口变化按新观测记录处理，不伪造旧周期实际结束时间。未观测到周期末尾时，最后一次百分比不能称为最终百分比。primary 与 secondary 可能重叠，同一消耗可出现在各自周期统计中，但不能跨周期类型直接相加。
+
+本机实测中，未使用的 Spark 窗口返回 0%，但 resetsAt 会随查询移动。不同重置时间保存为不同观测窗口，不据此断言已经开始或完成了新的额度周期；界面需标明推定开始时间与最后观测时间。
 
 ### 4.7 `statistics`：可重建统计缓存
 
@@ -329,8 +333,8 @@ SQLite 中 NULL 不自动提供期望的复合唯一性；全局／未知维度�
 
 当前明确的待核实事项：
 
-- 线上 models.dev API 的实际返回及部署版本：本次返回 403，已核对上游字段与构建代码。
-- 本机 Codex 服务端接口可用性，以及日桶时区、token 口径、历史覆盖范围。
+- models.dev 已成功读取并验证 48 个 OpenAI 模型条目；未来 schema／规则变化继续按缺失处理，不能沿用未验证乘数。
+- 本机 Codex 两个统计接口已可用；仍需验证日桶时区、token 口径和历史覆盖保证。
 - 各代本地日志是否足以恢复请求级 Fast 状态、账号归属及缓存计价语义。
 - 多个 limit bucket 的用量归属依据，不能按模型名称猜测。
 - 最低系统版本已确定为 macOS 26.0；GRDB 和 Zstandard 的本机构建已验证，仍需完成 macOS 26 真机验收。
