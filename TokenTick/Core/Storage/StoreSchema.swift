@@ -1,3 +1,4 @@
+import Foundation
 import GRDB
 
 enum StoreSchema {
@@ -142,6 +143,40 @@ enum StoreSchema {
                 CREATE INDEX usage_legacy_alias ON usage(json_extract(evidence_json, '$.legacyKey'))
                 WHERE source = 'local';
                 """)
+        }
+        migrator.registerMigration("v3.statistics-cache") { db in
+            try db.execute(sql: """
+                ALTER TABLE statistics ADD COLUMN known_amount INTEGER;
+                ALTER TABLE statistics ADD COLUMN unpriced_records INTEGER NOT NULL DEFAULT 0;
+                DELETE FROM statistics;
+                INSERT INTO app_metadata(key, value) VALUES ('statistics_revision', '0');
+                INSERT INTO app_metadata(key, value) VALUES ('statistics_timezone', ?);
+                INSERT INTO app_metadata(key, value) VALUES ('statistics_dirty', 'true')
+                    ON CONFLICT(key) DO UPDATE SET value = 'true';
+                """, arguments: [TimeZone.current.identifier])
+            // 失效跟随事实事务提交，后续采集入口不会因忘记通知 UI 而留下旧缓存。
+            for (name, event) in [("insert", "INSERT"), ("update", "UPDATE"), ("delete", "DELETE")] {
+                try db.execute(sql: """
+                    CREATE TRIGGER usage_statistics_\(name) AFTER \(event) ON usage BEGIN
+                        UPDATE app_metadata SET value = CAST(value AS INTEGER) + 1 WHERE key = 'statistics_revision';
+                        INSERT INTO app_metadata(key, value) VALUES ('statistics_dirty', 'true')
+                            ON CONFLICT(key) DO UPDATE SET value = 'true';
+                    END;
+                    """)
+            }
+            for (name, event, condition) in [
+                ("insert", "INSERT", "NEW.project_name IS NOT NULL"),
+                ("update", "UPDATE OF project_name", "OLD.project_name IS NOT NEW.project_name"),
+                ("delete", "DELETE", "OLD.project_name IS NOT NULL")
+            ] {
+                try db.execute(sql: """
+                    CREATE TRIGGER thread_statistics_\(name) AFTER \(event) ON threads WHEN \(condition) BEGIN
+                        UPDATE app_metadata SET value = CAST(value AS INTEGER) + 1 WHERE key = 'statistics_revision';
+                        INSERT INTO app_metadata(key, value) VALUES ('statistics_dirty', 'true')
+                            ON CONFLICT(key) DO UPDATE SET value = 'true';
+                    END;
+                    """)
+            }
         }
         return migrator
     }

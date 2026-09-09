@@ -57,9 +57,6 @@ extension UsageStore {
                     file_state_json = excluded.file_state_json, parser_state_json = excluded.parser_state_json
                 """, arguments: [identity.rolloutID.uuidString.lowercased(), threadID, identity.fileName, url.path,
                                   line, offset, Date().timeIntervalSince1970, fileJSON, stateJSON])
-            if inserted > 0 || upgraded > 0 {
-                try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES ('statistics_dirty', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'")
-            }
             return (inserted, upgraded, duplicates)
         }
         report.insertedRequests += counts.0

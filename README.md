@@ -6,7 +6,7 @@ TokenTick 从本地 Codex 日志采集统计数据，记录每个任务、每天
 
 ## 项目状态
 
-已建立面向 **macOS 26.0+** 的原生 Xcode 工程，包含 SwiftUI App 和共享 Core 源码的 CLI。当前已实现窗口／菜单栏骨架、现有图标、GRDB 存储与迁移、本地 JSONL／Zstandard 增量采集、任务名称缓存和 CLI 用量查询。已加入 models.dev 价格快照、分项计价、金额重算，以及服务端日桶／额度窗口采集；API 差额、统计缓存和客户端数据绑定仍按计划实现。
+已建立面向 **macOS 26.0+** 的原生 Xcode 工程，包含 SwiftUI App 和共享 Core 源码的 CLI。已实现窗口／菜单栏骨架、现有图标、GRDB 存储与迁移、本地 JSONL／Zstandard 增量采集、任务名称缓存、历史计价、服务端日桶／额度观测和统计缓存。CLI 支持多维度、时区、日期范围与分页查询；API 差额、整体同步和客户端数据绑定仍按计划实现。
 
 - [需求与技术方案](docs/requirements.md)
 - [实现计划](docs/implementation-plan.md)
@@ -58,7 +58,17 @@ xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
   --database .build/audit/usage.sqlite
 ```
 
-也可省略 `--codex-home`，默认读取环境变量 `CODEX_HOME` 或 `~/.codex`。省略 `--database` 时使用 `~/Library/Application Support/TokenTick/usage.sqlite`。`scan` 只读 Codex 数据，写入 TokenTick 自己的数据库；存在解析问题时返回 1，参数错误返回 2。当前日分组为 UTC，缺失价格／模式不会伪造为零金额；`sync` 和缓存重建命令将在对应阶段接入。
+也可省略 `--codex-home`，默认读取环境变量 `CODEX_HOME` 或 `~/.codex`。省略 `--database` 时使用 `~/Library/Application Support/TokenTick/usage.sqlite`。`scan` 只读 Codex 数据，写入 TokenTick 自己的数据库；存在解析问题时返回 1，参数错误返回 2。统计时区默认采用数据库首次初始化／升级时的系统时区并保存，价格日期始终使用 UTC。
+
+统计缓存与范围查询：
+
+```sh
+.build/DerivedData/Build/Products/Debug/tokentick rebuild --database .build/audit/usage.sqlite --timezone Asia/Shanghai
+.build/DerivedData/Build/Products/Debug/tokentick usage --database .build/audit/usage.sqlite \
+  --group project --timezone Asia/Shanghai --from 2026-09-01 --through 2026-09-09 --limit 50 --offset 0 --json
+```
+
+`--group` 支持 `total|day|thread|project|model`，日期范围包含首尾两天；`--account <ID>` 与 `--unknown-account` 用于账号筛选。临时指定时区不会改变 App 的默认时区。缓存失效时自动重建；扫描者持锁时，已有连接直接查询已提交事实。只有日日期而无精确时间的数据，在不能换算的时区归到未知日期；范围查询排除它，并单独返回 `unknownDateTokens`。JSON 中 `records` 是统计记录数，API 日差额记录不被称为实际请求。`status` 显示缓存版本、时区和来源状态。
 
 价格同步与重算：
 

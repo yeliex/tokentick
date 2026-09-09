@@ -72,9 +72,6 @@ extension UsageStore {
                     """, arguments: [mapping.threadID, mapping.title, mapping.projectName])
                 changed += db.changesCount
             }
-            if changed > 0 {
-                try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES ('statistics_dirty', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'")
-            }
             return changed
         }
     }

@@ -34,9 +34,6 @@ extension UsageStore {
                         report.overflow += outcome.overflow
                         for (reason, count) in outcome.unpricedReasons { report.unpricedReasons[reason, default: 0] += count }
                     }
-                    if report.changed > 0 {
-                        try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES ('statistics_dirty', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'")
-                    }
                     return rows.count
                 } }
                 if count == 0 { break }
