@@ -80,19 +80,7 @@ extension UsageStore {
     }
 
     public func limitWindows(limit: Int = 100, currentOnly: Bool = false) throws -> [LimitWindow] {
-        try pool.read { db in
-            try Row.fetchAll(db, sql: """
-                SELECT * FROM limit_windows
-                \(currentOnly ? "WHERE last_observed_at = (SELECT CAST(value AS REAL) FROM app_metadata WHERE key = 'api_last_observed:' || account_id)" : "")
-                ORDER BY last_observed_at DESC, resets_at DESC, account_id, limit_id, window_kind LIMIT ?
-                """, arguments: [min(max(limit, 1), 10_000)]).map { row in
-                LimitWindow(accountID: row["account_id"], limitID: row["limit_id"], kind: row["window_kind"],
-                            startsAt: row["starts_at"], resetsAt: row["resets_at"], durationMinutes: row["window_duration_mins"],
-                            lastUsedPercent: row["used_percent"], lastObservedAt: row["last_observed_at"], tokens: row["tokens"],
-                            inputAmount: row["input_amount"], outputAmount: row["output_amount"],
-                            cacheReadAmount: row["cache_read_amount"], cacheWriteAmount: row["cache_write_amount"], unpricedTokens: row["unpriced_tokens"])
-            }
-        }
+        try limitWindowPage(LimitQuery(latestOnly: currentOnly, limit: min(max(limit, 1), 10_000))).rows
     }
 
     public func apiDailyUsage(limit: Int = 100) throws -> [APIDailyBucket] {

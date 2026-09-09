@@ -63,7 +63,10 @@ struct TokenTickCommand {
                 try printJSON(report)
                 if report.issue != nil || !report.accountAvailable { exit(1) }
             case "limits":
-                try printJSON(LimitsOutput(rows: UsageStore(databaseURL: options.database).limitWindows(limit: options.limit)))
+                try printJSON(UsageStore(databaseURL: options.database).limitWindowPage(LimitQuery(
+                    timezone: options.timezone, fromDate: options.fromDate, throughDate: options.throughDate,
+                    account: options.account, limitID: options.limitID, kind: options.windowKind,
+                    latestOnly: options.latestLimits, limit: options.limit, offset: options.offset)))
             case "api-usage":
                 try printJSON(APIUsageOutput(rows: UsageStore(databaseURL: options.database).apiDailyUsage(limit: options.limit)))
             case "status": try printJSON(UsageStore(databaseURL: options.database).status())
@@ -78,12 +81,6 @@ struct TokenTickCommand {
     private struct PriceOutput: Encodable {
         let priceUnit = "USD_per_million_tokens"
         let rows: [PriceEntry]
-    }
-
-    private struct LimitsOutput: Encodable {
-        let amountUnit = "nanoUSD"
-        let coverage = "observed_windows; last percentage is not a final percentage"
-        let rows: [LimitWindow]
     }
 
     private struct APIUsageOutput: Encodable {
@@ -128,6 +125,9 @@ struct TokenTickCommand {
         var offset = 0
         var limit = 100
         var json = false
+        var limitID: String?
+        var windowKind: LimitWindowKind?
+        var latestLimits = false
 
         init(arguments: [String]) throws {
             command = arguments.first ?? "help"
@@ -141,7 +141,8 @@ struct TokenTickCommand {
                 let option = arguments[index]
                 index += 1
                 if option == "--json" { json = true; continue }
-                if option == "--unknown-account", ["usage", "records"].contains(command) {
+                if option == "--latest", command == "limits" { latestLimits = true; continue }
+                if option == "--unknown-account", ["usage", "records", "limits"].contains(command) {
                     guard account == .all else { throw CommandError.invalid("账号筛选参数不能重复。") }
                     account = .unknown
                     continue
@@ -178,18 +179,22 @@ struct TokenTickCommand {
                 case "--sort" where ["usage", "records"].contains(command):
                     guard let order = UsageSort(rawValue: value) else { throw CommandError.invalid("排序为 automatic、tokens、amount 或 name。") }
                     sort = order
+                case "--limit-id" where command == "limits": limitID = value
+                case "--window" where command == "limits":
+                    guard let kind = LimitWindowKind(rawValue: value) else { throw CommandError.invalid("窗口为 primary 或 secondary。") }
+                    windowKind = kind
                 case "--group" where command == "usage":
                     guard let group = UsageGrouping(rawValue: value) else { throw CommandError.invalid("无效的统计维度。") }
                     grouping = group
-                case "--timezone" where ["usage", "records", "rebuild"].contains(command):
+                case "--timezone" where ["usage", "records", "rebuild", "limits"].contains(command):
                     guard TimeZone(identifier: value) != nil else { throw CommandError.invalid("无效的 IANA 时区。") }
                     timezone = value
-                case "--from" where ["usage", "records"].contains(command): fromDate = value
-                case "--through" where ["usage", "records"].contains(command): throughDate = value
-                case "--account" where ["usage", "records"].contains(command):
+                case "--from" where ["usage", "records", "limits"].contains(command): fromDate = value
+                case "--through" where ["usage", "records", "limits"].contains(command): throughDate = value
+                case "--account" where ["usage", "records", "limits"].contains(command):
                     guard account == .all, !value.isEmpty else { throw CommandError.invalid("账号筛选参数不能重复或为空。") }
                     account = .account(value)
-                case "--offset" where ["usage", "records"].contains(command):
+                case "--offset" where ["usage", "records", "limits"].contains(command):
                     guard let count = Int(value), count >= 0 else { throw CommandError.invalid("offset 不能为负数。") }
                     offset = count
                 case "--limit" where ["usage", "records", "prices", "limits", "api-usage"].contains(command):
@@ -242,6 +247,10 @@ struct TokenTickCommand {
                 --search <任务标题或 ID> --sort automatic|tokens|amount|name
     未知归属：--unknown-thread／--unknown-project／--unknown-model／--unknown-date
     不同维度取交集，同一维度不能重复；排序后分页。
+    limits 参数：--from YYYY-MM-DD --through YYYY-MM-DD --timezone <IANA 时区>
+                --account <账号 ID> --limit-id <额度桶> --window primary|secondary
+                --latest（每账号最近一次快照）--limit 100 --offset 0
+    额度日期匹配与所选日期有重叠的周期，不拆分窗口或推算 token／金额。
     scan 存在解析问题时返回 1；参数错误返回 2。
     缺失价格和模式保持未知，金额单位为 nanoUSD（1 USD = 10^9 nanoUSD）。
     """

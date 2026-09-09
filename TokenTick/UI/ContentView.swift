@@ -64,7 +64,7 @@ struct ContentView: View {
                     }.padding(12)
                     Divider()
                 }
-                if let error = dashboard.error ?? app.error {
+                if let error = (section == .limits ? nil : dashboard.error) ?? app.error {
                     Label(error, systemImage: "exclamationmark.triangle").font(.callout)
                         .foregroundStyle(.secondary).textSelection(.enabled).padding(12)
                 }
@@ -100,7 +100,7 @@ struct ContentView: View {
                     .disabled(app.isSyncing || app.store == nil).keyboardShortcut("r")
             }
             .overlay(alignment: .topTrailing) {
-                if dashboard.loading { ProgressView().controlSize(.small).padding(12).allowsHitTesting(false) }
+                if section != .limits && dashboard.loading { ProgressView().controlSize(.small).padding(12).allowsHitTesting(false) }
             }
         }
         .inspector(isPresented: Binding(get: { selectedRow != nil }, set: { if !$0 { selectedRow = nil } })) {
@@ -119,7 +119,7 @@ struct ContentView: View {
         .task(id: request) {
             // 输入期间取消尚未开始的查询，避免每个按键都聚合历史事实。
             do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
-            guard let store = app.store else { return }
+            guard section != .limits, let store = app.store else { return }
             await dashboard.load(store: store, section: section, query: query)
         }
         .onChange(of: selectedSection) { page = 0; selectedRow = nil }
@@ -140,12 +140,12 @@ struct ContentView: View {
             } actions: {
                 if app.error != nil { Button("重试") { Task { await app.start() } } }
             }
+        } else if section == .limits {
+            LimitsView()
         } else if dashboard.loadedQuery != query || dashboard.loadedSection != section {
             ProgressView("正在查询用量").frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if section == .data {
             DataStatusView(days: dashboard.apiDays, models: dashboard.models)
-        } else if section == .limits {
-            LimitsView(windows: dashboard.limits)
         } else if dashboard.total == nil && !dashboard.loading {
             ContentUnavailableView("所选范围暂无用量", systemImage: section.symbol,
                                    description: Text("同步本地日志，或选择其他日期范围。"))

@@ -113,6 +113,8 @@ App 默认在运行期间自动同步：文件变化合并后采集，每分钟�
 .build/DerivedData/Build/Products/Debug/tokentick limits --database .build/audit/usage.sqlite
 ```
 
+`limits` 支持 `--from`／`--through`（含首尾日期）、`--timezone`、`--account`、`--limit-id`、`--window primary|secondary` 与 `--limit`／`--offset` 分页；返回 `hasMore`。日期匹配与所选本地日期范围重叠的窗口，不拆分或按比例分配周期用量。`--latest` 仅查询每个账号最近一次观测中存在的窗口，不代表此刻仍有效，也不恢复最近快照中缺失的旧窗口。每行包含已保存的来源 JSON，缺失的 tokens 和分项金额显式输出 `null`。
+
 `sync-api` 启动短期 Codex app-server，通过 stdio 读取统计；需要本机安装且已登录的 Codex CLI，可用 `--codex-bin` 指定其路径。TokenTick 不读取或复制认证文件，认证由 Codex 自己管理。日桶保存原始日期和整数 tokens；目前账号归属、日边界和 token 可比口径尚未确认，服务端总量单独显示，不与本地相加。额度百分比为最后观测值，周期 tokens／金额缺乏归属证据时保持 NULL。查询不会触发联网或创建常驻进程。
 
 两个 scheme 都以 macOS 26.0 为最低版本。App 使用本地 ad-hoc 签名，不要求开发者团队；正式分发签名、公证和 CLI 安装在发布阶段实现。Core 由本地 Swift Package 的 TokenTickCore 模块编译，新增 Core 文件自动进入模块；`TokenTickApp.swift` 与 `cli.swift` 分别只加入对应 Xcode target。

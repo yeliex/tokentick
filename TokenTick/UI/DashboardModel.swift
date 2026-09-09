@@ -31,7 +31,6 @@ final class DashboardModel {
     var days: [UsageSummary] = []
     var models: [UsageSummary] = []
     var projects: [UsageSummary] = []
-    var limits: [LimitWindow] = []
     var apiDays: [APIDailyBucket] = []
     var loadedQuery: UsageQuery?
     var loadedSection: NavigationSection?
@@ -67,13 +66,12 @@ final class DashboardModel {
                 chartQuery.limit = 8
                 let projects = section == .overview ? try store.usageReport(chartQuery).rows : []
                 return (rows, total, days, models, projects, report.unknownDateTokens,
-                        section == .limits ? try store.limitWindows(limit: 100) : [],
                         section == .data ? try store.apiDailyUsage(limit: 30) : [], report.hasMore)
             }.value
             guard request == generation, !Task.isCancelled else { return }
             rows = result.0; total = result.1; days = result.2; models = result.3; projects = result.4
             loadedQuery = query; loadedSection = section
-            unknownDateTokens = result.5; limits = result.6; apiDays = result.7; hasMore = result.8
+            unknownDateTokens = result.5; apiDays = result.6; hasMore = result.7
         } catch {
             if request == generation && !Task.isCancelled {
                 self.error = error.localizedDescription

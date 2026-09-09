@@ -73,7 +73,14 @@ public struct APISyncReport: Codable, Sendable {
     }
 }
 
-public struct LimitWindow: Codable, Sendable {
+public struct LimitWindow: Codable, Sendable, Identifiable {
+    public struct ID: Hashable, Sendable {
+        public let account: String
+        public let bucket: String
+        public let kind: String
+        public let reset: Int64
+    }
+    public var id: ID { ID(account: accountID, bucket: limitID, kind: kind, reset: resetsAt) }
     public let accountID: String
     public let limitID: String
     public let kind: String
@@ -88,6 +95,7 @@ public struct LimitWindow: Codable, Sendable {
     public let cacheReadAmount: Int64?
     public let cacheWriteAmount: Int64?
     public let unpricedTokens: Int64?
+    public let sourceJSON: String?
 
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
@@ -105,5 +113,6 @@ public struct LimitWindow: Codable, Sendable {
         try values.encode(cacheReadAmount, forKey: .cacheReadAmount)
         try values.encode(cacheWriteAmount, forKey: .cacheWriteAmount)
         try values.encode(unpricedTokens, forKey: .unpricedTokens)
+        try values.encode(sourceJSON, forKey: .sourceJSON)
     }
 }
