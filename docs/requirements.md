@@ -2,7 +2,7 @@
 
 日期：2026-09-09
 
-状态：需求基线、macOS 工程与本地采集实现中。产品名 TokenTick，仓库和 CLI 为 `tokentick`，默认分支为 `master`。
+状态：本地采集、计价、统计及客户端已实现并完成部分本机验证；API 对账、长任务断点及外部验收仍未完成。当前逐项证据见 [验收状态](acceptance-status.md)。产品名 TokenTick，仓库和 CLI 为 `tokentick`，默认分支为 `master`。
 
 第一版最低系统版本确定为 **macOS 26.0**。详细实施顺序见 [实现计划](implementation-plan.md)，客户端布局与交互见 [客户端 UI 方案](client-ui.md)。工程骨架不代表采集、数据库或计价功能已实现。
 
