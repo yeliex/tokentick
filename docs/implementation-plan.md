@@ -337,3 +337,9 @@ P5 剩余：自定义日期、任务搜索／排序、模型与项目交叉筛�
 - 汇总和请求详情显式提供逐字段无障碍标签和值；原生 AX 输出已逐项核对。方向键选请求、Escape 关闭明细、设置快捷键通过。完整 Tab、VoiceOver 朗读、菜单栏及 macOS 26 真机仍未全部验收，详见 [客户端 UI](client-ui.md)。
 - Debug 构建运行及 arm64／x86_64 Release 构建通过。核对 Debug 的 `TokenTick.debug.dylib` 包含外观测试变量、Release 可执行文件不包含；Release 日志为 `.build/logs/light-accessibility-release-build.log`。验证后以正常环境重新启动开发 App，恢复跟随系统外观。
 - 只读签名环境检查发现有效 Developer ID Application 证书，正式签名不再按“缺少本机证书”推断受阻；当前分发包仍为 ad-hoc，尚未进行 Developer ID 签署、公证凭据检查和公证提交。完整目标保持 active。
+
+### P6 Developer ID 签名包（2026-09-10）
+
+- 打包脚本增加显式 `--sign` 入口，默认仍为 ad-hoc。实际生成 App、CLI 和资源包的 Developer ID 签名产物，附安全时间戳、签名明细及真实构建来源；没有改变本地开发签名配置。
+- 解压后的 App／CLI 在 arm64 和 x86_64 上的签名、团队、时间戳与 hardened runtime 标志均通过检查；ZIP SHA-256 和独立 CLI 帮助执行通过。这里的双架构是签名结构验证，仍只在 arm64 宿主机执行。
+- 默认 ad-hoc 打包回归通过；4 组无效参数均在构建前返回退出码 2。Gatekeeper 均明确拒绝未公证的 Developer ID 包；可用的 notarytool profile 尚待确认，未提交公证，也未发布正式版本。完整证据与限制见 [Release 验证](release-validation.md)，完整目标继续 active。

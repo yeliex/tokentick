@@ -1,9 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SIGNING_MODE=ad-hoc
+PACKAGE_KIND=local
+SIGNING_ARGS=(--sign - --timestamp=none)
 if [ "$#" -ne 0 ]; then
-  echo "用法：$0（生成本地 Release 验证包，不签发正式版本）" >&2
-  exit 2
+  if [ "$#" -ne 2 ] || [ "$1" != "--sign" ]; then
+    echo "用法：$0 [--sign 'Developer ID Application: 姓名 (TEAMID)']" >&2
+    exit 2
+  fi
+  case "$2" in
+    "Developer ID Application: "*) ;;
+    *) echo "--sign 需要完整的 Developer ID Application 证书名称。" >&2; exit 2 ;;
+  esac
+  SIGNING_MODE=developer-id
+  PACKAGE_KIND=signed
+  SIGNING_ARGS=(--sign "$2" --timestamp)
 fi
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,8 +42,8 @@ PRODUCTS="$BUILD_DIR/Build/Products/Release"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PRODUCTS/TokenTick.app/Contents/Info.plist")"
 SOURCE_REVISION="$(git -C "$PROJECT_ROOT" rev-parse --short=12 HEAD)"
 # 每次使用独立目录，失败时不覆盖上一份已经核验的产物。
-STAGING="$(mktemp -d "$RELEASE_DIR/local-XXXXXX")"
-PACKAGE_NAME="TokenTick-$VERSION-local-$SOURCE_REVISION"
+STAGING="$(mktemp -d "$RELEASE_DIR/$PACKAGE_KIND-XXXXXX")"
+PACKAGE_NAME="TokenTick-$VERSION-$PACKAGE_KIND-$SOURCE_REVISION"
 PACKAGE_DIR="$STAGING/$PACKAGE_NAME"
 mkdir -p "$PACKAGE_DIR/bin" "$PACKAGE_DIR/Licenses"
 /usr/bin/ditto "$PRODUCTS/TokenTick.app" "$PACKAGE_DIR/TokenTick.app"
@@ -43,10 +55,15 @@ cp "$BUILD_DIR/SourcePackages/checkouts/zstd/LICENSE" "$PACKAGE_DIR/Licenses/Zst
 APP_EXECUTABLE="$PACKAGE_DIR/TokenTick.app/Contents/MacOS/TokenTick"
 CLI_EXECUTABLE="$PACKAGE_DIR/bin/tokentick"
 # CLI 构建可能更新共享资源包的签名；最终组装后再封印 App 的资源。
-/usr/bin/codesign --force --sign - --options runtime --timestamp=none "$PACKAGE_DIR/TokenTick.app"
-/usr/bin/codesign --force --sign - --options runtime --timestamp=none "$CLI_EXECUTABLE"
+if [ "$SIGNING_MODE" = developer-id ]; then
+  /usr/bin/codesign --force "${SIGNING_ARGS[@]}" "$PACKAGE_DIR/TokenTick.app/Contents/Resources/GRDB_GRDB.bundle"
+fi
+/usr/bin/codesign --force "${SIGNING_ARGS[@]}" --options runtime "$PACKAGE_DIR/TokenTick.app"
+/usr/bin/codesign --force "${SIGNING_ARGS[@]}" --options runtime "$CLI_EXECUTABLE"
 /usr/bin/codesign --verify --deep --strict "$PACKAGE_DIR/TokenTick.app"
 /usr/bin/codesign --verify --strict "$CLI_EXECUTABLE"
+/usr/bin/codesign -dvvv "$PACKAGE_DIR/TokenTick.app" >"$PACKAGE_DIR/App-signature.txt" 2>&1
+/usr/bin/codesign -dvvv "$CLI_EXECUTABLE" >"$PACKAGE_DIR/CLI-signature.txt" 2>&1
 for ARCH in arm64 x86_64; do
   /usr/bin/lipo "$APP_EXECUTABLE" -verify_arch "$ARCH"
   /usr/bin/lipo "$CLI_EXECUTABLE" -verify_arch "$ARCH"
@@ -55,7 +72,7 @@ done
 
 {
   echo "configuration=Release"
-  echo "signing=ad-hoc"
+  echo "signing=$SIGNING_MODE"
   echo "notarized=false"
   echo "source_commit=$(git -C "$PROJECT_ROOT" rev-parse HEAD)"
   if [ -n "$(git -C "$PROJECT_ROOT" status --porcelain)" ]; then
@@ -72,6 +89,6 @@ done
 ARCHIVE="$STAGING/$PACKAGE_NAME.zip"
 /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$PACKAGE_DIR" "$ARCHIVE"
 (cd "$STAGING" && /usr/bin/shasum -a 256 "$PACKAGE_NAME.zip" >"$PACKAGE_NAME.zip.sha256")
-echo "本地验证包：$ARCHIVE"
+echo "Release 验证包：$ARCHIVE"
 echo "校验文件：$ARCHIVE.sha256"
-echo "此产物为 ad-hoc 签名，未经过 Developer ID 签名、公证或 macOS 26 真机验收。"
+echo "签名方式：${SIGNING_MODE}。此产物尚未公证，也不代表 macOS 26 真机验收通过。"

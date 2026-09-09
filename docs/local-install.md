@@ -1,8 +1,8 @@
-# TokenTick 本地 Release 验证包
+# TokenTick Release 验证包
 
 此包用于本地构建和安装验证，要求 macOS 26 或更新版本。App 与 CLI 均包含 arm64 和 x86_64；构建包含某架构不代表已经在对应设备运行验证。
 
-当前使用 ad-hoc 签名，未经过 Developer ID 签名和 Apple 公证，不能作为已经通过 Gatekeeper 的正式下载版本。请在本机源码构建后验证，不通过关闭系统安全检查或删除隔离属性绕过分发验收。
+签名方式以 `BUILD.txt` 为准：`ad-hoc` 是本机临时签名；`developer-id` 是带 Apple 安全时间戳的 Developer ID 签名，App 与 CLI 的签名明细分别保存在 `App-signature.txt` 和 `CLI-signature.txt`。签名不等于公证；当前脚本生成的包仍标记 `notarized=false`，不能作为已经通过 Gatekeeper 的正式下载版本。不通过关闭系统安全检查或删除隔离属性绕过分发验收。
 
 ## App
 

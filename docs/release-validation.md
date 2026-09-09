@@ -66,3 +66,17 @@ Gatekeeper `spctl --assess --type execute` 返回拒绝（退出码 3）。当�
 针对真实样本未覆盖的组合，执行 `swift test -c release --filter 'UsagePricingTests|PriceStoreTests'`，16 个测试、2 个 suite 全部通过，覆盖普通／Fast／长上下文／组合计价、严格阈值、分项不重复计费、精度／银行家舍入／溢出、未知字段、价格只在变化时新增、不回填早于首个快照的金额和重新计价保留事实。这些是明确标记的测试输入，不作为真实使用记录。
 
 原始证据位于 `.build/audit/compressed-release-8zwdg2zg/verification.json` 及同目录的 CLI JSON、time 和 stderr；脚本为 `.build/audit/compressed-release-benchmark.py`。运行日志 `.build/logs/compressed-release-benchmark.log`，Release 价格测试日志 `.build/logs/release-pricing-tests.log`。这关闭了压缩日志及现有历史价格的本机 Release 基线缺口，不替代多设备 API 对账、完整原生 UI 和外部平台／分发验收。
+
+## Developer ID 签名验证
+
+同日继续核对本机签名环境，存在有效的 `Developer ID Application: Yexin Wang (47YTFN9LPP)`。`package_release.sh --sign '<完整证书名称>'` 显式选择证书；默认不传参数仍使用 ad-hoc。最终组装后先签署 GRDB 资源包，再分别签署 App 与独立 CLI，使用 Apple 安全时间戳，两个可执行文件保留 hardened runtime，不新增沙盒或权限例外。
+
+App／CLI 源码基于 `a8a1d57`，本轮打包脚本与说明尚未提交，`BUILD.txt` 如实标记 `source_dirty=true`。完整签名包为 `.build/releases/signed-YvwW8N/TokenTick-0.1.0-signed-a8a1d57023a4.zip`。第一次运行已经产出 ZIP，但最后一行中文提示中的 Shell 变量边界错误导致退出码 1；修正为显式变量边界后，在新目录重新执行完整打包，退出码为 0，不把第一次运行计为流程通过。
+
+ZIP 校验值通过。解压至带空格的独立目录后，对 App 和 CLI 的 arm64／x86_64 签名逐一检查：证书链为 Developer ID Application → Developer ID Certification Authority → Apple Root CA；团队为 `47YTFN9LPP`，均有安全时间戳与 runtime 标志，严格签名验证通过。独立 CLI 从 `/tmp` 执行 `--help` 成功；此项仅验证签名包的基本执行，不替代完整功能及 Intel 真机运行。
+
+App 与 CLI 的 Gatekeeper 评估均返回退出码 3、`source=Unnotarized Developer ID`。正式证书签名已验证，Apple 公证尚未执行，包内保持 `notarized=false`，没有删除隔离属性、关闭 Gatekeeper 或发布 GitHub Release。当前进程没有公证配置变量；尚待确认可用的 notarytool 钥匙串 profile，再验证认证并提交。证书存在不能证明公证凭据可用。
+
+证据：`.build/logs/developer-id-package.log` 保留首次提示错误，`.build/logs/developer-id-package-verified.log` 记录完整成功流程；`.build/audit/developer-id-pqkg49ud/verification.json` 及同目录保存解压后的签名、Gatekeeper 输出和 CLI 帮助。
+
+默认不传参数的 ad-hoc 打包也重新执行通过，日志为 `.build/logs/adhoc-package-regression.log`；额外检查缺少证书参数、未知选项、ad-hoc 标记及 Apple Development 名称共 4 组无效输入，均在构建前返回退出码 2，不把开发证书冒充 Developer ID 分发证书。
