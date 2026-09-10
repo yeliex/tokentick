@@ -56,6 +56,15 @@
 
 原生界面已观察到：总览重算后显示 10.62B tokens、US$8,266.57 已知金额和 836.54M 未定价 tokens，提供精确整数辅助信息；额度页显示当前 3 个 API 窗口，包含 300／10080 分钟及额外桶，历史区域仅周额度，并明确标记疑似提前重置／未知归属证据。数值会随同步更新。
 
-设置页的目录选项移除已由源码和测试验证；本次菜单操作遇到工具元素失效及按键名称不支持，未补记新版设置页交互通过。其他精细 UI、完整键盘和 VoiceOver 不作为当前完成门槛。
+后续通过先将窗口 Raise 到前台再操作应用菜单，成功打开设置：只有 CODEX_HOME 说明与自动同步开关，没有目录选择器；显示实际数据库与 2 份迁移备份。此前工具菜单元素失效不再作为设置入口的阻塞。系统菜单栏仍有工具访问超时，但用户随后实际操作并确认菜单栏打开设置、关闭主窗口后恢复窗口均正常，该项记录为用户人工验收。精细 UI、完整键盘和 VoiceOver 不作为当前完成门槛。
 
 最新代码 `854f0ded9a31` 的干净 App／CLI Release 包位于 `.build/releases/local-wz3odX/`，构建、仅 arm64 和严格签名检查通过，日志 `.build/logs/current-package-final.log`。
+
+
+## 独立分发包与跨入口补验
+
+当前 `.build/audit/completion-release-2kvfzeg1/` 保存最新代码包的独立解压和运行验证。ZIP SHA-256 为 `69d1b54a0d0e6cd5e82433b22843159c7744d9216735d1c265cb99d1c8fdba46`，BUILD 记录干净源码 `854f0ded9a3190804605c8419480092c8b4376a6`。App／CLI 严格签名及仅 arm64 检查通过，动态链接没有依赖开发机 Homebrew 或工作目录。
+
+解压后的 CLI 在独立空库执行 status、limits、api-usage、prices、records、rebuild、reprice，7 个命令均成功返回合法 JSON。无效命令退出 2；指定不存在的 Codex 可执行文件执行 current-limits，退出 1、stderr 给出缺少 CLI 的诊断、stdout 没有虚假快照。调用链确认 API 失败向外抛错，不存在“失败却返回 null 并成功退出”的先前疑点，未为该疑点修改代码。
+
+当前 App 的 2026-08-17 筛选显示 61M tokens、US$65.84 已知金额、456.03K 未定价用量，精确辅助值为 61,004,858。同条件 Release CLI 返回 61,004,858 tokens、65,843,041,600 nanoUSD 和 456,033 未定价 tokens，逐项对应。证据为目录中的 `ui-day-cli.json` 与 `verification.json`。

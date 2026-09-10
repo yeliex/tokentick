@@ -166,7 +166,7 @@ GPT-6 Astra 的上游 OpenAI 条目示例，金额单位均为美元／百万 to
 | --- | --- |
 | 行身份 | 内部 `id`、唯一 `dedup_key` |
 | 请求归属 | `account_id`、`thread_id`、`turn_id`、`request_id`／`response_id`，不可得时为空 |
-| 时间 | `occurred_at`；API 日差额使用 `usage_date`，不伪造请求时间 |
+| 时间 | `occurred_at`；只有日期的既有来源使用 `usage_date`，不伪造请求时间，不新增 API 日差额 |
 | 模型和模式 | `model`、可空 `is_fast`、可空 `is_long_context` |
 | token 明细 | `input_tokens`、`output_tokens`、`cache_read_tokens`、`cache_write_tokens`、`reasoning_tokens`、`total_tokens` |
 | 采用的单价 | `input_price`、`output_price`、`cache_read_price`、`cache_write_price` |
