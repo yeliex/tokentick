@@ -80,9 +80,14 @@ struct RolloutParser {
         case .other: return nil
         case .count(let count):
             if let raw = count.rate_limits, let session = state.session,
-               try !isInherited(event, session: session), let timestamp = event.timestamp.flatMap(Self.parseDate) {
+               let timestamp = event.timestamp.flatMap(Self.parseDate) {
                 currentLimits = try CurrentLimitSnapshot.log(raw: raw, observedAt: timestamp.timeIntervalSince1970,
                     threadID: session.id, fileName: identity.fileName, line: line)
+                currentLimits?.turnID = state.turnID
+                if try isInherited(event, session: session) { currentLimits?.historyExclusion = "inherited" }
+                else if session.forked_from_id != nil, let created = session.timestamp.flatMap(Self.parseDate), timestamp <= created {
+                    currentLimits?.historyExclusion = "fork_replay"
+                }
             }
             guard let info = count.info else { return nil }
             guard let session = state.session else { throw ParseError.missingSession }

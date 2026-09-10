@@ -7,11 +7,11 @@ struct LimitsView: View {
     @State private var customFrom = Date()
     @State private var customThrough = Date()
     @State private var account = ""
-    @State private var bucket = ""
     @State private var filtersPresented = false
     @State private var page = 0
     @State private var windows: [WeeklyLimitReset] = []
     @State private var hasMore = false
+    @State private var excludedObservations: [String: Int] = [:]
     @State private var loadedQuery: LimitQuery?
     @State private var loading = false
     @State private var error: String?
@@ -21,7 +21,7 @@ struct LimitsView: View {
         let style = Date.ISO8601FormatStyle(timeZone: timezone).year().month().day().dateSeparator(.dash)
         let dates = period == .custom ? (customFrom.formatted(style), customThrough.formatted(style)) : period.dates(timezone: timezone)
         return LimitQuery(timezone: timezone.identifier, fromDate: dates.0, throughDate: dates.1,
-            account: account.isEmpty ? .all : .account(account), limitID: bucket.isEmpty ? nil : bucket)
+            account: account.isEmpty ? .all : .account(account), limitID: "codex")
     }
     private var query: LimitQuery { var query = criteria; query.offset = page * 100; return query }
     private struct Request: Hashable { let query: LimitQuery; let refresh: Int }
@@ -58,10 +58,14 @@ struct LimitsView: View {
                 if loading { ProgressView().controlSize(.small) }
             }.padding(16)
             VStack(alignment: .leading, spacing: 4) {
-                Text("重置日期：\(query.fromDate ?? "最早") — \(query.throughDate ?? "至今") · \(timezone.identifier)")
-                Text("账号：\(account.isEmpty ? "全部" : account) · 额度桶：\(bucket.isEmpty ? "全部" : bucket) · 历史周额度")
-                    .lineLimit(1).help("账号：\(account)；额度桶：\(bucket)")
-                Text("百分比为重置前最后观测值，可能低于最终用量；未知账号按任务分别保留，不合并百分比。")
+                Text("周期边界日期：\(query.fromDate ?? "最早") — \(query.throughDate ?? "至今") · \(timezone.identifier)")
+                Text("账号：\(account.isEmpty ? "全部" : account) · 主限额 codex · 历史周窗口")
+                    .lineLimit(1).help("账号：\(account)")
+                Text("百分比为最后可信观测，不能当作最终用量。未知账号仅合并窗口证据，不确认账号或重置。")
+                Text("周期 token／金额缺少账号及额度桶归属证据，暂不估算。")
+                if !excludedObservations.isEmpty {
+                    Text("已排除回放、过期及冲突点：\(excludedObservations.values.reduce(0, +).formatted()) 条")
+                }
             }.font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16).padding(.bottom, 12)
             Divider()
@@ -98,7 +102,7 @@ struct LimitsView: View {
             do {
                 let result = try await Task.detached(priority: .userInitiated) { try store.weeklyLimitHistory(current) }.value
                 guard !Task.isCancelled else { return }
-                windows = result.rows; hasMore = result.hasMore
+                windows = result.rows; hasMore = result.hasMore; excludedObservations = result.excludedObservations
             } catch {
                 guard !Task.isCancelled else { return }
                 windows = []; hasMore = false; self.error = error.localizedDescription
@@ -113,8 +117,6 @@ struct LimitsView: View {
         Form {
             Section("窗口归属") {
                 TextField("账号 ID（空白为全部）", text: $account)
-                TextField("额度桶 ID（空白为全部）", text: $bucket)
-
             }
             if period == .custom {
                 Section("日期范围") {
@@ -122,7 +124,7 @@ struct LimitsView: View {
                     DatePicker("结束", selection: $customThrough, in: customFrom..., displayedComponents: .date)
                 }
             }
-            Button("清除筛选") { account = ""; bucket = ""; period = .all }
+            Button("清除筛选") { account = ""; period = .all }
         }.formStyle(.grouped).frame(width: 400, height: period == .custom ? 340 : 220)
             .environment(\.timeZone, timezone)
     }
@@ -131,18 +133,37 @@ struct LimitsView: View {
 private struct WeeklyLimitRow: View {
     let window: WeeklyLimitReset
     let timezone: TimeZone
+    private var kindLabel: String {
+        switch window.kind {
+        case "natural": "自然结束（观测推断）"
+        case "manual_suspected": "疑似提前重置"
+        case "drop_unconfirmed": "持续回落，原因未确认"
+        case "boundary_changed": "边界变化，未确认重置"
+        case "gap_unconfirmed": "跨周期缺口，原因未知"
+        case "unattributed": "未知账号窗口证据"
+        default: "预计已结束，未确认重置"
+        }
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(window.limitID).fontWeight(.medium)
-                Text(window.kind == "natural" ? "自然重置" : window.kind == "manual" ? "疑似提前重置" : "边界变化待确认")
+                Text(kindLabel)
                 Spacer()
-                Text("重置前最后观测已用 \(window.usedPercentBeforeReset.formatted())%").monospacedDigit()
+                Text("最后观测：\(window.usedPercentBeforeReset.map { $0.formatted() + "%" } ?? "同刻冲突")").monospacedDigit()
             }
-            Text("\(window.accountID ?? "未知账号") · \(window.scopeKey)").font(.caption).foregroundStyle(.secondary)
-            Text("原计划重置：\(UsageFormatting.timestamp(Double(window.scheduledResetAt), timezone: timezone))").font(.caption)
-            Text("重置前观测：\(UsageFormatting.timestamp(window.lastObservedAt, timezone: timezone)) · 新周期观测：\(UsageFormatting.timestamp(window.detectedAt, timezone: timezone))")
+            Text("\(window.accountID ?? "未知账号") · 观测最高 \(window.peakUsedPercent.formatted())% · \(window.observationCount) 条观测")
                 .font(.caption).foregroundStyle(.secondary)
+            Text("预计截止：\(UsageFormatting.timestamp(Double(window.scheduledResetAt), timezone: timezone))").font(.caption)
+            Text("首次观测：\(UsageFormatting.timestamp(window.firstObservedAt, timezone: timezone)) · 最后观测：\(UsageFormatting.timestamp(window.lastObservedAt, timezone: timezone))")
+                .font(.caption).foregroundStyle(.secondary)
+            if let after = window.resetAfter, let before = window.resetBefore {
+                Text("状态变化区间：\(UsageFormatting.timestamp(after, timezone: timezone)) 之后 — \(UsageFormatting.timestamp(before, timezone: timezone)) 之前（含）")
+                    .font(.caption)
+            }
+            if let confirmation = window.confirmedAt {
+                Text("后续支持观测：\(UsageFormatting.timestamp(confirmation, timezone: timezone))").font(.caption).foregroundStyle(.secondary)
+            }
             DisclosureGroup("统计证据") {
                 Text(window.sourceJSON).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
             }

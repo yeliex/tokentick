@@ -9,6 +9,8 @@ public struct CurrentLimitSnapshot: Codable, Sendable {
     public let sourceJSON: String
     public var fileName: String? = nil
     public var line: Int? = nil
+    public var turnID: String? = nil
+    public var historyExclusion: String? = nil
 
     static func log(raw: SourceJSON, observedAt: Double, threadID: String, fileName: String, line: Int) throws -> Self {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]

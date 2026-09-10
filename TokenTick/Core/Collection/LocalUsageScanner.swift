@@ -179,7 +179,7 @@ public struct LocalUsageScanner: Sendable {
                     if let usage = try parser.consume(data, line: line + 1) { batch.append(usage) }
                     if let limits = parser.currentLimits {
                         if limits.windows.contains(where: { $0.durationMinutes == 10_080 }) { quotaBatch.append(limits) }
-                        if report.currentLimits.map({ limits.observedAt > $0.observedAt }) ?? true { report.currentLimits = limits }
+                        if limits.historyExclusion == nil, report.currentLimits.map({ limits.observedAt > $0.observedAt }) ?? true { report.currentLimits = limits }
                     }
                     line += 1
                     offset = reader.offset

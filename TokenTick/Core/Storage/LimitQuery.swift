@@ -33,62 +33,67 @@ public struct WeeklyLimitReset: Codable, Sendable, Identifiable {
     public let scopeKey: String
     public let limitID: String
     public let scheduledResetAt: Int64
-    public let detectedAt: Double
+    public let firstObservedAt: Double
+    public let detectedAt: Double?
+    public let confirmedAt: Double?
+    public let resetAt: Double?
+    public let resetAfter: Double?
+    public let resetBefore: Double?
     public let lastObservedAt: Double
-    public let usedPercentBeforeReset: Double
+    public let usedPercentBeforeReset: Double?
+    public let peakUsedPercent: Double
+    public let observationCount: Int
+    public let conflictingObservations: Int
     public let kind: String
     public let sourceJSON: String
+    // 百分比不能换算 token 或金额；本地用量尚无可核验的账号及额度桶路由。
+    public var totalTokens: Int64? = nil
+    public var amountNanoUSD: Int64? = nil
+    public var finalUsedPercent: Double? = nil
 }
 
 public struct WeeklyLimitHistory: Encodable, Sendable {
     public let timezone: String
     public let rows: [WeeklyLimitReset]
     public let hasMore: Bool
-    public let coverage = "last_observation_before_reset; exact_final_usage_is_unknown"
+    public let excludedObservations: [String: Int]
+    public let coverage = "observed_weekly_windows; final_usage_and_bucket_token_attribution_unknown"
 }
 
 extension UsageStore {
-    /// 先按完整时间线识别边界，再按重置日期筛选；补入乱序历史会重新形成正确相邻关系。
     public func weeklyLimitHistory(_ query: LimitQuery = LimitQuery()) throws -> WeeklyLimitHistory {
         try UsageQuery(fromDate: query.fromDate, throughDate: query.throughDate, limit: query.limit, offset: query.offset).validate()
         let identifier = try query.timezone ?? statisticsTimezone()
         guard let timezone = TimeZone(identifier: identifier) else { throw UsageQueryError.invalidTimezone }
         let from = try query.boundary(query.fromDate, afterDay: false, timezone: timezone)
         let until = try query.boundary(query.throughDate, afterDay: true, timezone: timezone)
-        return try pool.read { db in
-            // 未使用的额度桶会不断移动截止时间；截止时间变化本身不证明发生了重置。
-            var clauses = ["previous_reset IS NOT NULL", "((observed_at >= previous_reset AND resets_at > previous_reset) OR used_percent < previous_percent)"]
-            var arguments: StatementArguments = ["limit": query.limit + 1, "offset": query.offset]
-            switch query.account {
-            case .all: break
-            case .unknown: clauses.append("account_id IS NULL")
-            case .account(let id): clauses.append("account_id = :account"); arguments += ["account": id]
+        while true {
+            try Task.checkCancellation()
+            try rebuildWeeklyCyclesIfNeeded()
+            let result = try pool.read { db -> WeeklyLimitHistory? in
+                guard try Self.weeklyCycleRevision(db) == String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key='weekly_cache_revision'") else { return nil }
+                // 当前窗口由实时快照展示；过去截止但未有后续证据的窗口明确保持未确认。
+                var clauses = ["(event_at IS NOT NULL OR scheduled_reset_at <= :now)"]
+                var arguments: StatementArguments = ["limit": query.limit + 1, "offset": query.offset, "now": Date().timeIntervalSince1970]
+                switch query.account {
+                case .all: break
+                case .unknown: clauses.append("account_id IS NULL")
+                case .account(let id): clauses.append("account_id = :account"); arguments += ["account": id]
+                }
+                if let id = query.limitID { clauses.append("limit_id = :bucket"); arguments += ["bucket": id] }
+                if let from { clauses.append("COALESCE(event_at,scheduled_reset_at) >= :from"); arguments += ["from": from] }
+                if let until { clauses.append("COALESCE(event_at,scheduled_reset_at) < :until"); arguments += ["until": until] }
+                let rows = try String.fetchAll(db, sql: """
+                    SELECT result_json FROM weekly_limit_cycles WHERE \(clauses.joined(separator: " AND "))
+                    ORDER BY COALESCE(event_at,scheduled_reset_at) DESC, id LIMIT :limit OFFSET :offset
+                    """, arguments: arguments)
+                let summary = try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key='weekly_cache_exclusions'") ?? "{}"
+                return WeeklyLimitHistory(timezone: identifier,
+                    rows: try rows.prefix(query.limit).map { try JSONDecoder().decode(WeeklyLimitReset.self, from: Data($0.utf8)) },
+                    hasMore: rows.count > query.limit,
+                    excludedObservations: try JSONDecoder().decode([String: Int].self, from: Data(summary.utf8)))
             }
-            if let id = query.limitID { clauses.append("limit_id = :bucket"); arguments += ["bucket": id] }
-            let eventTime = "CASE WHEN observed_at >= previous_reset AND resets_at > previous_reset THEN previous_reset ELSE observed_at END"
-            if let from { clauses.append("\(eventTime) >= :from"); arguments += ["from": from] }
-            if let until { clauses.append("\(eventTime) < :until"); arguments += ["until": until] }
-            let rows = try Row.fetchAll(db, sql: """
-                WITH ordered AS (
-                    SELECT *, LAG(observed_at) OVER timeline AS previous_observed,
-                        LAG(resets_at) OVER timeline AS previous_reset,
-                        LAG(used_percent) OVER timeline AS previous_percent,
-                        LAG(source_json) OVER timeline AS previous_source
-                    FROM weekly_limit_observations
-                    WINDOW timeline AS (PARTITION BY scope_key, limit_id ORDER BY observed_at, id)
-                )
-                SELECT *, CASE
-                    WHEN observed_at >= previous_reset AND resets_at > previous_reset THEN 'natural'
-                    WHEN account_id IS NOT NULL AND observed_at < previous_reset AND used_percent < previous_percent THEN 'manual'
-                    ELSE 'unconfirmed' END AS reset_kind
-                FROM ordered WHERE \(clauses.joined(separator: " AND "))
-                ORDER BY observed_at DESC, id LIMIT :limit OFFSET :offset
-                """, arguments: arguments)
-            return WeeklyLimitHistory(timezone: identifier, rows: rows.prefix(query.limit).map { row in
-                WeeklyLimitReset(id: row["id"], accountID: row["account_id"], scopeKey: row["scope_key"], limitID: row["limit_id"],
-                    scheduledResetAt: row["previous_reset"], detectedAt: row["observed_at"], lastObservedAt: row["previous_observed"],
-                    usedPercentBeforeReset: row["previous_percent"], kind: row["reset_kind"], sourceJSON: row["previous_source"])
-            }, hasMore: rows.count > query.limit)
+            if let result { return result }
         }
     }
 }

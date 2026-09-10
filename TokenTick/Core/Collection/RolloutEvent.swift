@@ -94,7 +94,7 @@ struct RolloutEvent: Decodable {
 
 struct RolloutParserState: Codable {
     // 解析状态可丢弃重建；版本变化只触发重扫，不改写事实。
-    static let currentVersion = 4
+    static let currentVersion = 5
     var version = currentVersion
     var session: RolloutEvent.Session?
     var turnID: String?

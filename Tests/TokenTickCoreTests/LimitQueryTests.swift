@@ -4,58 +4,145 @@ import Testing
 @testable import TokenTickCore
 
 struct LimitQueryTests {
-    @Test func resetsUseChronologicalEvidenceAndKeepUnknownAccountsSeparate() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
-        // 乱序插入仍按观测时间识别自然及提前重置；首条观测不是历史重置。
-        for (scope, account, observed, reset, percent) in [
-            ("account:a", "a" as String?, 201.0, 900, 0.0),
-            ("account:a", "a", 100, 200, 80),
-            ("account:a", "a", 300, 900, 50),
-            ("account:a", "a", 350, 1000, 0),
-            ("thread:x", nil, 100, 200, 90),
-            ("thread:x", nil, 201, 900, 0),
-            ("thread:y", nil, 110, 800, 1)
-        ] {
-            let snapshot = CurrentLimitSnapshot(accountID: account, observedAt: observed, source: "local", scopeKey: scope,
-                windows: [CurrentLimitWindow(limitID: "codex", kind: "primary", usedPercent: percent, durationMinutes: 10080, resetsAt: Int64(reset))], sourceJSON: "{}")
-            try store.pool.write { db throws -> Void in
-                #expect(try UsageStore.saveWeeklyObservations(snapshot, db: db) == 1)
-                #expect(try UsageStore.saveWeeklyObservations(snapshot, db: db) == 0)
-            }
+    @Test func naturalAndEarlyRecoveryUseConfirmedAccountTimelineAndStablePagination() throws {
+        let f = try Fixture(); defer { f.clean() }
+        // 第二次零值是独立后续观测；未使用新窗口的截止漂移不形成额外重置。
+        for (time, reset, percent) in [(100.0, 200, 80.0), (201, 900, 0), (300, 900, 50),
+                                       (350, 1000, 0), (360, 1010, 0), (370, 1020, 0), (400, 1100, 2)].reversed() {
+            try f.add(time, reset, percent)
         }
-        let rows = try store.weeklyLimitHistory().rows
-        #expect(rows.count == 3)
-        #expect(rows.first?.kind == "manual" && rows.first?.usedPercentBeforeReset == 50)
-        #expect(rows.filter { $0.kind == "natural" }.count == 2)
-        #expect(try store.weeklyLimitHistory(LimitQuery(account: .account("a"))).rows.count == 2)
-        #expect(try store.weeklyLimitHistory(LimitQuery(account: .unknown)).rows.count == 1)
+        let rows = try f.store.weeklyLimitHistory().rows
+        #expect(rows.filter { $0.kind == "natural" }.count == 1)
+        let early = try #require(rows.first { $0.kind == "manual_suspected" })
+        #expect(early.usedPercentBeforeReset == 50 && early.resetAfter == 300 && early.resetBefore == 350)
+        #expect(early.confirmedAt == 360 && early.resetAt == nil && early.finalUsedPercent == nil)
+        #expect(early.totalTokens == nil && early.amountNanoUSD == nil)
         var ids: [String] = []
-        for offset in 0..<3 {
-            let page = try store.weeklyLimitHistory(LimitQuery(limit: 1, offset: offset))
+        for offset in rows.indices {
+            let page = try f.store.weeklyLimitHistory(LimitQuery(limit: 1, offset: offset))
             ids += page.rows.map(\.id)
-            #expect(page.hasMore == (offset < 2))
+            #expect(page.hasMore == (offset < rows.count - 1))
         }
-        #expect(ids == rows.map(\.id) && Set(ids).count == 3)
-        #expect(try store.weeklyLimitHistory(LimitQuery(limitID: "other")).rows.isEmpty)
-        #expect(try UsageStore(databaseURL: store.databaseURL).weeklyLimitHistory().rows.map(\.id) == ids)
+        #expect(ids == rows.map(\.id) && Set(ids).count == rows.count)
+        #expect(try f.store.weeklyLimitHistory(LimitQuery(account: .unknown)).rows.isEmpty)
+        #expect(try f.store.weeklyLimitHistory(LimitQuery(limitID: "other")).rows.isEmpty)
+        #expect(try UsageStore(databaseURL: f.store.databaseURL).weeklyLimitHistory().rows.map(\.id) == ids)
     }
 
-    @Test func driftingDeadlinesDoNotCreateResetsAndPartialDropsKeepManualResetEvidence() throws {
+    @Test func isolatedDropDoesNotReplaceLastCredibleUsageAndSustainedSameDeadlineIsUnconfirmed() throws {
+        let f = try Fixture(); defer { f.clean() }
+        for (time, percent) in [(100.0,40.0),(110,5),(120,41)] { try f.add(time, 700, percent) }
+        var rows = try f.store.weeklyLimitHistory().rows
+        #expect(rows.count == 1 && rows[0].kind == "observed")
+        #expect(rows[0].usedPercentBeforeReset == 41 && rows[0].peakUsedPercent == 41)
+        try f.add(130, 700, 6); try f.add(140, 700, 7)
+        rows = try f.store.weeklyLimitHistory().rows
+        #expect(rows.contains { $0.kind == "drop_unconfirmed" && $0.usedPercentBeforeReset == 41 })
+        #expect(!rows.contains { $0.kind == "manual_suspected" || $0.kind == "natural" })
+    }
+
+    @Test func expiredForkAndSameInstantConflictsDoNotGenerateResets() throws {
+        let f = try Fixture(); defer { f.clean() }
+        try f.add(100, 200, 80)
+        try f.add(201, 180, 5)
+        try f.add(202, 190, 8)
+        try f.add(203, 900, 0, exclusion: "fork_replay")
+        try f.add(204, 900, 0, scope: "thread:one")
+        try f.add(204, 800, 95, scope: "thread:two")
+        let result = try f.store.weeklyLimitHistory()
+        #expect(result.rows.count == 1 && result.rows[0].kind == "observed")
+        #expect(result.rows[0].usedPercentBeforeReset == 80)
+        #expect(result.excludedObservations["expired"] == 2)
+        #expect(result.excludedObservations["fork_replay"] == 1)
+        #expect(result.excludedObservations["conflicting_or_isolated_drop_points"] == 1)
+    }
+
+    @Test func unknownWindowsMergeEvidenceWithoutClaimingAnAccountOrReset() throws {
+        let f = try Fixture(); defer { f.clean() }
+        try f.add(100, 200, 80, account: nil, scope: "thread:x")
+        try f.add(110, 201, 85, account: nil, scope: "thread:y")
+        try f.add(110, 200, 90, account: nil, scope: "thread:z")
+        let rows = try f.store.weeklyLimitHistory(LimitQuery(account: .unknown)).rows
+        #expect(rows.count == 1 && rows[0].kind == "unattributed")
+        #expect(rows[0].accountID == nil && rows[0].usedPercentBeforeReset == nil)
+        #expect(rows[0].peakUsedPercent == 90 && rows[0].observationCount == 3)
+        #expect(try f.store.weeklyLimitHistory(LimitQuery(account: .account("a"))).rows.isEmpty)
+        try f.add(120, 200, 91, account: nil, scope: "thread:x")
+        try f.add(120, 200, 92, account: nil, scope: "thread:y")
+        let conflict = try #require(f.store.weeklyLimitHistory(LimitQuery(account: .unknown)).rows.first)
+        #expect(conflict.usedPercentBeforeReset == nil && conflict.conflictingObservations > 0)
+    }
+
+    @Test func deadlineToleranceIsAnchoredAndGapsDoNotInventWeeklyResets() throws {
+        let f = try Fixture(); defer { f.clean() }
+        for (time,reset,percent) in [(100.0, 700, 10.0),(110,701,11),(120,702,12),(130,703,13)] {
+            try f.add(time,reset,percent)
+        }
+        let rows = try f.store.weeklyLimitHistory().rows
+        #expect(rows.count == 2 && rows.contains { $0.kind == "boundary_changed" })
+        #expect(!rows.contains { $0.kind == "natural" })
+        try f.add(2_000_000, 2_000_100, 5)
+        #expect(try f.store.weeklyLimitHistory().rows.filter { $0.kind == "gap_unconfirmed" }.count == 1)
+    }
+
+    @Test func failedCachePublicationRollsBackAndRebuildDoesNotAlterUsage() throws {
+        let f = try Fixture(); defer { f.clean() }
+        try f.add(100,200,80)
+        _ = try f.store.weeklyLimitHistory()
+        let before = try f.store.pool.read { try Row.fetchAll($0, sql: "SELECT * FROM weekly_limit_cycles") }
+        try f.add(201,900,5)
+        try f.store.pool.write { db in
+            try db.execute(sql: "CREATE TRIGGER fail_weekly BEFORE INSERT ON weekly_limit_cycles BEGIN SELECT RAISE(ABORT,'test'); END")
+        }
+        #expect(throws: (any Error).self) { try f.store.weeklyLimitHistory() }
+        #expect(try f.store.pool.read { try Row.fetchAll($0, sql: "SELECT * FROM weekly_limit_cycles") } == before)
+        try f.store.pool.write { try $0.execute(sql: "DROP TRIGGER fail_weekly") }
+        #expect(try f.store.weeklyLimitHistory().rows.contains { $0.kind == "natural" })
+        #expect(try f.store.tableCounts()["usage"] == 0)
+    }
+
+    @Test func newlyDiscoveredTurnOwnerInvalidatesQuotaCopiesWithoutChangingTokenFacts() throws {
+        let f = try Fixture(); defer { f.clean() }
+        try f.add(100,200,80,account:nil,scope:"thread:child",turn:"shared")
+        #expect(try f.store.weeklyLimitHistory().rows.count == 1)
+        try f.store.pool.write { db in
+            try db.execute(sql: "INSERT INTO turn_usage(id,turn_id,thread_id,source_created_at,started_at,last_event_at,seen_json) VALUES ('turn:shared','shared','parent',1,1,1,'{}')")
+        }
+        let result = try f.store.weeklyLimitHistory()
+        #expect(result.rows.isEmpty && result.excludedObservations["fork_turn"] == 1)
+        #expect(try f.store.tableCounts()["usage"] == 0)
+    }
+
+    @Test func historyOnlyUsesMainWeeklyBucketRegardlessOfPrimarySecondaryPosition() throws {
+        let f = try Fixture(); defer { f.clean() }
+        let snapshot = CurrentLimitSnapshot(accountID: "a", observedAt: 100, source: "api", scopeKey: "account:a", windows: [
+            .init(limitID: "codex", kind: "primary", usedPercent: 80, durationMinutes: 10080, resetsAt: 200),
+            .init(limitID: "codex", kind: "secondary", usedPercent: 20, durationMinutes: 300, resetsAt: 200),
+            .init(limitID: "codex_bengalfox", kind: "secondary", usedPercent: 30, durationMinutes: 10080, resetsAt: 200)
+        ], sourceJSON: "{}")
+        try f.store.pool.write { db in
+            #expect(try UsageStore.saveWeeklyObservations(snapshot, db: db) == 1)
+            // 旧版本已保存的附加桶也不能进入新历史结果。
+            try db.execute(sql: "INSERT INTO weekly_limit_observations(id,scope_key,account_id,limit_id,observed_at,resets_at,used_percent,source_json) VALUES ('old-extra','account:a','a','codex_bengalfox',100,200,30,'{}')")
+        }
+        #expect(snapshot.windows.count == 3)
+        let rows = try f.store.weeklyLimitHistory().rows
+        #expect(rows.count == 1 && rows[0].limitID == "codex" && rows[0].usedPercentBeforeReset == 80)
+        #expect(try f.store.weeklyLimitHistory(LimitQuery(limitID: "codex_bengalfox")).rows.isEmpty)
+    }
+
+    private struct Fixture {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
-        for (observed, reset, percent) in [(100.0, 700, 0.0), (110, 710, 0), (120, 720, 30), (130, 730, 40), (140, 730, 5)] {
-            let snapshot = CurrentLimitSnapshot(accountID: "a", observedAt: observed, source: "api", scopeKey: "account:a",
-                windows: [CurrentLimitWindow(limitID: "codex", kind: "secondary", usedPercent: percent, durationMinutes: 10080, resetsAt: Int64(reset))], sourceJSON: "{}")
+        let store: UsageStore
+        init() throws { store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite")) }
+        func clean() { try? FileManager.default.removeItem(at: root) }
+        func add(_ time: Double, _ reset: Int, _ percent: Double, account: String? = "a", scope: String = "account:a", exclusion: String? = nil, turn: String? = nil) throws {
+            var snapshot = CurrentLimitSnapshot(accountID: account, observedAt: time, source: "api", scopeKey: scope,
+                windows: [.init(limitID: "codex", kind: "secondary", usedPercent: percent, durationMinutes: 10080, resetsAt: Int64(reset))], sourceJSON: "{}")
+            snapshot.historyExclusion = exclusion
+            snapshot.turnID = turn
             try store.pool.write { db in _ = try UsageStore.saveWeeklyObservations(snapshot, db: db) }
         }
-        let rows = try store.weeklyLimitHistory().rows
-        #expect(rows.count == 1)
-        #expect(rows.first?.kind == "manual" && rows.first?.usedPercentBeforeReset == 40)
-        #expect(rows.first?.detectedAt == 140)
-        #expect(try store.tableCounts()["weekly_limit_observations"] == 5)
     }
 
     @Test func logOnlyQuotaBackfillsWeeklyHistoryWithoutTokenUsageOrDuplicateRescans() throws {

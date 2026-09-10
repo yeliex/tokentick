@@ -13,7 +13,7 @@ TokenTick 从本地 Codex 日志采集统计数据，记录每个任务、每天
 - [客户端 UI 方案](docs/client-ui.md)
 - [验收状态与剩余条件](docs/acceptance-status.md)
 
-未上线的 v6 切换会直接清空旧用量及扫描进度，再从原日志采集，不备份或修复旧请求行。fork 和双格式去重已通过真实 AIChat 验证，见 [重建结果](docs/turn-usage-validation.md)。历史周额度重置的误判仍待修正。
+未上线的 v6 切换会直接清空旧用量及扫描进度，再从原日志采集，不备份或修复旧请求行。fork 和双格式去重已通过真实 AIChat 验证，见 [重建结果](docs/turn-usage-validation.md)。历史主限额周窗口已重建，排除 fork 回放及过期观测；见 [周期验证](docs/weekly-cycle-validation.md)。
 
 ## 技术方向
 
@@ -122,7 +122,7 @@ App 默认在运行期间自动同步：文件变化合并后采集，监听正�
 .build/DerivedData/Build/Products/Debug/tokentick limits --database .build/audit/usage.sqlite
 ```
 
-`limits` 查询历史周额度重置，支持 `--from`／`--through`、`--timezone`、`--account`／`--unknown-account`、`--limit-id` 和分页。百分比是重置前最后观测，不保证最终用量。未知账号日志按任务分开保存，不能把百分比相加。`current-limits` 通过 Codex app-server 显式联网读取所有当前额度；App 当前额度只保留在内存。
+`limits` 查询主额度桶 `codex` 的历史周窗口，支持 `--from`／`--through`、`--timezone`、`--account`／`--unknown-account`、`--limit-id` 和分页。百分比是重置前最后观测，不保证最终用量。未知账号日志保留任务来源，按截止时间整理为未归属窗口证据，不确认重置，也不把百分比相加。`current-limits` 通过 Codex app-server 显式联网读取所有当前额度；App 当前额度只保留在内存。
 
 `sync-api` 使用短期 Codex app-server 读取统计，认证由已登录的 Codex CLI 管理，支持 `--codex-bin`。日桶保留整数 tokens、原日期和可空账号，不与本地相加；账号读取期间切换时不保存本次日桶。全局保留未知账号的本地用量，按账号筛选时只包含明确匹配的记录。
 

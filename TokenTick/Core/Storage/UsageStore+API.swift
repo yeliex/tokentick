@@ -23,7 +23,7 @@ extension UsageStore {
                 let snapshot = try CurrentLimitSnapshot.parse(Data(limitsJSON.utf8), accountID: account,
                     observedAt: observedAt.timeIntervalSince1970, source: "api", scopeKey: account.map { "account:" + $0 } ?? "api:unknown")
                 let saved = try Self.saveWeeklyObservations(snapshot, db: db)
-                let skipped = snapshot.windows.filter { $0.durationMinutes == 10_080 && $0.resetsAt == nil }.count
+                let skipped = snapshot.windows.filter { $0.limitID == "codex" && $0.durationMinutes == 10_080 && $0.resetsAt == nil }.count
                 let observed = observedAt.timeIntervalSince1970
                 for bucket in daily?.dailyUsageBuckets ?? [] {
                     try db.execute(sql: """

@@ -255,6 +255,47 @@ enum StoreSchema {
                 UPDATE app_metadata SET value = 'true' WHERE key = 'statistics_dirty';
                 """)
         }
+        migrator.registerMigration("v7.weekly-cycles") { db in
+            try db.execute(sql: """
+                ALTER TABLE weekly_limit_observations ADD COLUMN turn_id TEXT;
+                ALTER TABLE weekly_limit_observations ADD COLUMN exclusion_reason TEXT;
+                ALTER TABLE weekly_limit_observations ADD COLUMN collected_at REAL;
+                CREATE TABLE weekly_limit_cycles (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    account_id TEXT,
+                    limit_id TEXT NOT NULL,
+                    scheduled_reset_at INTEGER NOT NULL,
+                    event_at REAL,
+                    result_json TEXT NOT NULL
+                );
+                CREATE INDEX weekly_cycles_date ON weekly_limit_cycles(scheduled_reset_at);
+                INSERT INTO app_metadata(key,value) VALUES ('weekly_revision','0');
+                """)
+            for event in ["INSERT", "UPDATE", "DELETE"] {
+                try db.execute(sql: """
+                    CREATE TRIGGER weekly_revision_\(event.lowercased()) AFTER \(event) ON weekly_limit_observations BEGIN
+                        UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key='weekly_revision';
+                    END;
+                    """)
+            }
+            // 原始任务晚到改变 turn 所有权时，额度副本过滤也必须重新计算。
+            try db.execute(sql: """
+                CREATE TRIGGER weekly_turn_owner AFTER UPDATE OF thread_id ON turn_usage
+                WHEN OLD.thread_id IS NOT NEW.thread_id BEGIN
+                    UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key='weekly_revision';
+                END;
+                """)
+        }
+        migrator.registerMigration("v8.weekly-owner-invalidation") { db in
+            for event in ["INSERT", "DELETE"] {
+                try db.execute(sql: """
+                    CREATE TRIGGER weekly_turn_\(event.lowercased()) AFTER \(event) ON turn_usage BEGIN
+                        UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key='weekly_revision';
+                    END;
+                    """)
+            }
+            try db.execute(sql: "UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key='weekly_revision'")
+        }
         return migrator
     }
 }
