@@ -36,8 +36,10 @@ struct ThreadCatalogReader {
                 let id: String = row["thread_id"]
                 let project: String? = row["project_name"]
                 let cwd: String? = row["cwd"]
+                let fallback = if let desktop { desktop.projectName(threadID: id, cwd: cwd) }
+                    else { DesktopProjectCatalog.folderName(cwd) }
                 batch.append(ThreadMapping(threadID: id.lowercased(), title: row["title"],
-                                           projectName: project ?? desktop?.projectName(threadID: id, cwd: cwd)))
+                                           projectName: DesktopProjectCatalog.nonemptyName(project) ?? fallback))
                 if batch.count == 512 {
                     changed += try store.updateThreadMappings(batch)
                     batch.removeAll(keepingCapacity: true)

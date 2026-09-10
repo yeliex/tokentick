@@ -74,7 +74,7 @@ extension UsageFilters {
             switch filter {
             case .all: nil
             case .unknown: "\(name)：未知"
-            case .value(let value): "\(name)：\(value)"
+            case .value(let value): "\(name)：\(name == "项目" ? UsageFormatting.project(value) : value)"
             }
         }.joined(separator: " · ")
     }

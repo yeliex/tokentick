@@ -247,7 +247,7 @@ struct TokenTickCommand {
                 --limit 100 --offset 0
     额度日期按检测到的周额度重置筛选，不从百分比推算 token／金额。
     scan 存在解析问题时返回 1；参数错误返回 2。
-无数据库价格时使用内置默认价；缺 Fast 证据按普通费率，未知模型或费率保留 NULL。
-金额单位为 nanoUSD（1 USD = 10^9 nanoUSD）。
+    无数据库价格时使用内置默认价；缺 Fast 证据按普通费率，未知模型或费率保留 NULL。
+    金额单位为 nanoUSD（1 USD = 10^9 nanoUSD）。
     """
 }

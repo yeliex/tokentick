@@ -160,3 +160,5 @@ swift test
 通过 `swift package add-dependency` 与 `swift package add-target-dependency` 管理外部依赖，并提交生成的 `Package.resolved`。Core 与测试的包管理入口是根目录 `Package.swift`，App 仍通过 Xcode 工程构建。
 
 默认模型价格维护在 [OpenAI JSON](TokenTick/Core/Pricing/openai-default-prices.json)，用于没有数据库价格历史的模型；API 历史优先。缺少 Fast 证据时补查 Codex trace，仍缺则按普通价格计费，观测字段和计价依据分开保存。详见 [验证说明](docs/default-pricing-validation.md)。
+
+项目名优先使用 Codex 名称，缺失时从项目根目录取文件夹名；无项目聊天保存为 `Chat`，CLI 可用 `--project Chat` 筛选。任务切换项目后，全部历史用量使用最新归属。见 [项目映射验证](docs/project-mapping-validation.md)。

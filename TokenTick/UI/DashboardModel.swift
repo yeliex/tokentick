@@ -20,8 +20,9 @@ enum UsagePeriod: String, CaseIterable, Identifiable {
 struct UsageDisplayRow: Identifiable, Sendable {
     let summary: UsageSummary
     let thread: ThreadInfo?
+    let grouping: UsageGrouping
     var id: String { summary.group.map { "value:" + $0 } ?? "unknown" }
-    var title: String { thread?.title ?? summary.group ?? "未知归属" }
+    var title: String { grouping == .project ? UsageFormatting.project(summary.group) : thread?.title ?? summary.group ?? "未知归属" }
 }
 
 @MainActor @Observable
@@ -49,7 +50,7 @@ final class DashboardModel {
             let result = try await Task.detached(priority: .userInitiated) {
                 let report = try store.usageReport(query)
                 let names = section == .threads ? try store.threadInfo(ids: report.rows.compactMap(\.group)) : [:]
-                let rows = report.rows.map { UsageDisplayRow(summary: $0, thread: $0.group.flatMap { names[$0] }) }
+                let rows = report.rows.map { UsageDisplayRow(summary: $0, thread: $0.group.flatMap { names[$0] }, grouping: query.grouping) }
                 var totalQuery = query
                 totalQuery.grouping = .total
                 totalQuery.offset = 0

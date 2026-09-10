@@ -97,7 +97,7 @@ private struct UsageRecordDetail: View {
             Section("请求归属") {
                 UsageDetailField("任务", value: record.title ?? record.threadID ?? "未知")
                 UsageDetailField("任务 ID", value: record.threadID ?? "未知")
-                UsageDetailField("项目", value: record.projectName ?? "未知")
+                UsageDetailField("项目", value: UsageFormatting.project(record.projectName))
                 UsageDetailField("账号", value: record.accountID ?? "未知")
                 UsageDetailField("轮次 ID", value: record.turnID ?? "未知")
                 UsageDetailField("请求 ID", value: record.requestID ?? "未知")

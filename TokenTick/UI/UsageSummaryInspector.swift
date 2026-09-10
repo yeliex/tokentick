@@ -41,7 +41,7 @@ struct UsageSummaryInspector: View {
                 Text(row.title).font(.headline).textSelection(.enabled)
                 if let thread = row.thread {
                     UsageDetailField("任务 ID", value: thread.id)
-                    UsageDetailField("项目", value: thread.projectName ?? "未知")
+                    UsageDetailField("项目", value: UsageFormatting.project(thread.projectName))
                     UsageDetailField("最后活跃", value: UsageFormatting.timestamp(thread.lastActiveAt))
                 }
             }

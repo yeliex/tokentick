@@ -8,7 +8,7 @@ struct DesktopProjectCatalog: Decodable {
     let projectless: Set<String>
 
     struct Project: Decodable {
-        let name: String
+        let name: String?
         let rootPaths: [String]
     }
     struct Assignment: Decodable {
@@ -42,24 +42,48 @@ struct DesktopProjectCatalog: Decodable {
     }
 
     func projectName(threadID: String, cwd: String?) -> String? {
-        if projectless.contains(threadID) { return nil }
+        if projectless.contains(threadID) { return "Chat" }
         if let assignment = assignments[threadID] {
             guard assignment.projectKind == "local" else { return nil }
-            return projects[assignment.projectId]?.name
+            let project = projects[assignment.projectId]
+            return Self.nonemptyName(project?.name) ?? Self.folderName(project?.rootPaths.first)
+                ?? Self.folderName(rootHints[threadID] ?? cwd)
         }
         guard let hint = rootHints[threadID] ?? cwd else { return nil }
+        // Remote 日志可能含 Windows 路径，不能让本机 URL 把它解析成当前目录的相对路径。
+        guard hint.hasPrefix("/") else { return Self.folderName(hint) }
         let path = URL(fileURLWithPath: hint).standardizedFileURL.path
         var depth = -1
         var names = Set<String>()
         for project in projects.values {
             for root in project.rootPaths {
+                guard root.hasPrefix("/") else { continue }
                 let root = URL(fileURLWithPath: root).standardizedFileURL.path
                 guard path == root || path.hasPrefix(root.hasSuffix("/") ? root : root + "/") else { continue }
-                if root.count > depth { depth = root.count; names = [project.name] }
-                else if root.count == depth { names.insert(project.name) }
+                guard let name = Self.nonemptyName(project.name) ?? Self.folderName(root) else { continue }
+                if root.count > depth { depth = root.count; names = [name] }
+                else if root.count == depth { names.insert(name) }
             }
         }
-        return names.count == 1 ? names.first : nil
+        if names.count > 1 { return nil }
+        return names.first ?? Self.folderName(hint)
+    }
+
+    static func nonemptyName(_ name: String?) -> String? {
+        guard let name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return name
+    }
+
+    /// 优先使用项目根目录提示，避免把 worktree 的临时目录当成项目名。
+    static func folderName(_ path: String?) -> String? {
+        guard let path else { return nil }
+        if path.range(of: #"^[A-Za-z]:[\\/]"#, options: .regularExpression) != nil || path.hasPrefix("\\\\") {
+            let parts = path.split { $0 == "\\" || $0 == "/" }
+            return parts.count > 1 ? parts.last.map(String.init) : nil
+        }
+        guard path.hasPrefix("/") else { return nil }
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        return url.path == "/" ? nil : nonemptyName(url.lastPathComponent)
     }
 
     private enum CatalogError: LocalizedError {
