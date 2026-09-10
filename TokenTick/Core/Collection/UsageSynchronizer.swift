@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-public enum SynchronizationScope: String, Codable, Sendable { case all, local, prices, api }
+public enum SynchronizationScope: String, Codable, Sendable { case all, local, prices, api, remote }
 public enum SynchronizationStage: String, Sendable {
     case scanning, prices, repricing, api, statistics
 }
@@ -47,21 +47,23 @@ public struct UsageSynchronizer: Sendable {
                 }
             }
             try Task.checkCancellation()
-            if scope == .all || scope == .prices {
+            if scope == .all || scope == .prices || scope == .remote {
                 onProgress?(SynchronizationProgress(stage: .prices, scan: nil))
                 do {
                     let prices = try await PriceSynchronizer(store: store).synchronize()
                     report.prices = prices
                     onProgress?(SynchronizationProgress(stage: .repricing, scan: nil))
-                    // 今日价格不会改变更早日期；避免每次同步重算全部历史。
-                    report.reprice = try store.repriceUsage(fromDate: prices.date)
+                    // 首份模型价格也覆盖更早历史；新快照或规则升级需要重算旧记录。
+                    if try prices.insertedSnapshots > 0 || store.needsRepricing() {
+                        report.reprice = try store.repriceUsage()
+                    }
                 } catch {
                     try Task.checkCancellation()
                     report.issues.append("价格：\(error.localizedDescription)")
                 }
             }
             try Task.checkCancellation()
-            if scope == .all || scope == .api {
+            if scope == .all || scope == .api || scope == .remote {
                 onProgress?(SynchronizationProgress(stage: .api, scan: nil))
                 do {
                     let result = try await CodexAPIClient.synchronize(store: store, executable: codexExecutable, codexHome: codexHome)

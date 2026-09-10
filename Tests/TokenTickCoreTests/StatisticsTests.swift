@@ -195,7 +195,7 @@ struct StatisticsTests {
                     ('a', 'all', 't1', ?, '2026-03-08', 'model', 100, 10, 20, 110, 1, 2, 3, 4, 10, 'local', '{}'),
                     ('b', NULL, 't2', ?, '2026-03-08', 'value:', 15, 5, 0, 20, NULL, 7, 0, 0, NULL, 'local', '{}'),
                     ('c', NULL, NULL, ?, '2026-03-09', NULL, NULL, NULL, NULL, 30, 0, NULL, NULL, NULL, NULL, 'local', '{}'),
-                    ('d', 'unknown', NULL, NULL, '2026-03-08', NULL, NULL, NULL, NULL, 40, NULL, NULL, NULL, NULL, NULL, 'api', '{}')
+                    ('d', 'unknown', NULL, NULL, '2026-03-08', NULL, NULL, NULL, NULL, 40, NULL, NULL, NULL, NULL, NULL, 'local', '{}')
                     """, arguments: StatementArguments(times))
             }
         }

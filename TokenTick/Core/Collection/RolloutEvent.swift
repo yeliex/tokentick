@@ -51,6 +51,7 @@ struct RolloutEvent: Decodable {
     }
     struct Count: Decodable {
         let info: Info?
+        let rate_limits: SourceJSON?
         struct Info: Codable, Equatable {
             let total_token_usage: TokenUsage
             let last_token_usage: TokenUsage
@@ -93,7 +94,7 @@ struct RolloutEvent: Decodable {
 
 struct RolloutParserState: Codable {
     // 解析状态可丢弃重建；版本变化只触发重扫，不改写事实。
-    static let currentVersion = 2
+    static let currentVersion = 3
     var version = currentVersion
     var session: RolloutEvent.Session?
     var turnID: String?

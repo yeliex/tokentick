@@ -65,6 +65,9 @@ extension UsageStore {
                 }
                 try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES ('prices_last_success_date', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                                arguments: [date])
+                if inserted > 0 {
+                    try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES ('pricing_rebuild_pending', 'true') ON CONFLICT(key) DO UPDATE SET value = 'true'")
+                }
                 return PriceSyncReport(date: date, alreadySynced: false, models: prices.count, insertedSnapshots: inserted,
                                        unsupportedContextModels: prices.filter { $0.contextRule == .unsupported && $0.standard != .unknown }.map(\.model),
                                            missingPriceModels: prices.filter { $0.standard == .unknown && $0.fast == .unknown }.map(\.model))
@@ -73,8 +76,8 @@ extension UsageStore {
     }
 
     static func modelPrice(db: Database, model: String, date: String) throws -> ModelPrice? {
-        guard let row = try Row.fetchOne(db, sql: "SELECT * FROM prices WHERE model = ? AND date <= ? ORDER BY date DESC LIMIT 1",
-                                        arguments: [model, date]) else { return nil }
+        guard let row = try Row.fetchOne(db, sql: "SELECT * FROM prices WHERE model = ? AND date = COALESCE((SELECT MAX(date) FROM prices WHERE model = ? AND date <= ?), (SELECT MIN(date) FROM prices WHERE model = ?))",
+                                        arguments: [model, model, date, model]) else { return nil }
         let json: String = row["source_json"]
         let source = try JSONDecoder().decode(PriceSource.self, from: Data(json.utf8))
         func rates(_ prefix: String) -> PriceRates {

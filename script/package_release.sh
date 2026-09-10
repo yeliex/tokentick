@@ -16,7 +16,7 @@ for SCHEME in TokenTick tokentick; do
   BUILD_LOG="$LOG_DIR/release-$SCHEME-build.log"
   if xcodebuild -project "$PROJECT_ROOT/TokenTick.xcodeproj" -scheme "$SCHEME" \
     -configuration Release -destination 'generic/platform=macOS' \
-    -derivedDataPath "$BUILD_DIR" ONLY_ACTIVE_ARCH=NO \
+    -derivedDataPath "$BUILD_DIR" ARCHS=arm64 \
     CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual build >"$BUILD_LOG" 2>&1; then
     echo "$SCHEME Release 构建成功。"
   else
@@ -50,9 +50,8 @@ CLI_EXECUTABLE="$PACKAGE_DIR/bin/tokentick"
 /usr/bin/codesign --verify --strict "$CLI_EXECUTABLE"
 /usr/bin/codesign -dvvv "$PACKAGE_DIR/TokenTick.app" >"$PACKAGE_DIR/App-signature.txt" 2>&1
 /usr/bin/codesign -dvvv "$CLI_EXECUTABLE" >"$PACKAGE_DIR/CLI-signature.txt" 2>&1
-for ARCH in arm64 x86_64; do
-  /usr/bin/lipo "$APP_EXECUTABLE" -verify_arch "$ARCH"
-  /usr/bin/lipo "$CLI_EXECUTABLE" -verify_arch "$ARCH"
+for EXECUTABLE in "$APP_EXECUTABLE" "$CLI_EXECUTABLE"; do
+  [ "$(/usr/bin/lipo -archs "$EXECUTABLE")" = "arm64" ] || { echo "产物必须仅包含 arm64。" >&2; exit 1; }
 done
 "$CLI_EXECUTABLE" --help >"$LOG_DIR/release-cli-help.log"
 

@@ -51,7 +51,7 @@ struct UsageTrendView: View {
                         .foregroundStyle(.tint.opacity(0.8))
                         .cornerRadius(3)
                         .accessibilityLabel(date)
-                        .accessibilityValue(showMoney ? UsageFormatting.money(day.knownAmountNanoUSD) : UsageFormatting.tokens(day.totalTokens))
+                        .accessibilityValue(showMoney ? UsageFormatting.money(day.knownAmountNanoUSD) : UsageFormatting.exactTokens(day.totalTokens))
                     }
                 }
                 .chartXSelection(value: $selectedDate)
@@ -63,6 +63,17 @@ struct UsageTrendView: View {
                         let key = selectedDate.formatted(dateStyle)
                         if days.contains(where: { $0.group == key && (!showMoney || $0.knownAmountNanoUSD != nil) }) {
                             selectDay?(key)
+                        }
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks { value in
+                        AxisGridLine()
+                        AxisTick()
+                        AxisValueLabel {
+                            if let number = value.as(Double.self) {
+                                Text(showMoney ? number.formatted() : number.formatted(.number.notation(.compactName).precision(.fractionLength(0...2)).locale(Locale(identifier: "en_US"))))
+                            }
                         }
                     }
                 }

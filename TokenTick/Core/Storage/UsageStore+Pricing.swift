@@ -15,7 +15,7 @@ public struct RepriceReport: Codable, Sendable {
 
 private struct RepriceCheckpoint: Codable {
     // 计价算法或断点格式变化时递增，避免恢复时混合新旧计算结果。
-    static let currentVersion = 1
+    static let currentVersion = 2
     static let key = "reprice_checkpoint"
     let version: Int
     let fromDate: String?
@@ -39,6 +39,12 @@ private struct RepriceCheckpoint: Codable {
 }
 
 extension UsageStore {
+    func needsRepricing() throws -> Bool {
+        try pool.read { db in
+            try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'pricing_algorithm'") != "2"
+                || String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'pricing_rebuild_pending'") == "true"
+        }
+    }
     /// 明确重算才覆盖已有价格与金额；相同依据的中断任务从已提交批次恢复，报告包含此前批次。
     public func repriceUsage(fromDate: String? = nil) throws -> RepriceReport {
         try UsageQuery(fromDate: fromDate).validate()
@@ -62,6 +68,10 @@ extension UsageStore {
                                                arguments: [checkpoint.lastID, fromDate, fromDate])
                     if rows.isEmpty {
                         try db.execute(sql: "DELETE FROM app_metadata WHERE key = ?", arguments: [RepriceCheckpoint.key])
+                        if fromDate == nil {
+                            try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES ('pricing_algorithm', '2') ON CONFLICT(key) DO UPDATE SET value = '2'")
+                            try db.execute(sql: "DELETE FROM app_metadata WHERE key = 'pricing_rebuild_pending'")
+                        }
                         return 0
                     }
                     for row in rows {

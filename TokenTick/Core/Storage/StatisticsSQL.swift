@@ -65,7 +65,7 @@ enum StatisticsSQL {
                 u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount,
                 tokentick_known_amount(u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount) AS known_amount
             FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id
-            WHERE \(predicate)
+            WHERE (u.source = 'local' OR u.thread_id IS NOT NULL) AND (\(predicate))
         ), compact AS MATERIALIZED (
             SELECT day, account_id, thread_id, project_name, model,
                 SUM(total_tokens) AS total_tokens, SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens,

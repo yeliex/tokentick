@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 enum StoreSchema {
-    static let tables = ["threads", "scan_files", "prices", "usage", "api_daily_usage", "limit_windows", "statistics"]
+    static let tables = ["threads", "scan_files", "prices", "usage", "api_daily_usage", "weekly_limit_observations", "statistics"]
 
     static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
@@ -188,6 +188,41 @@ enum StoreSchema {
                     unattributed_tokens, record_count, known_amount, unpriced_records
                 FROM statistics WHERE 0;
                 CREATE INDEX statistics_rebuild_timezone ON statistics_rebuild(timezone);
+                """)
+        }
+        migrator.registerMigration("v5.weekly-limit-observations") { db in
+            try db.execute(sql: """
+                CREATE TABLE weekly_limit_observations (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    scope_key TEXT NOT NULL,
+                    account_id TEXT,
+                    limit_id TEXT NOT NULL,
+                    observed_at REAL NOT NULL,
+                    resets_at INTEGER NOT NULL,
+                    used_percent REAL NOT NULL CHECK(used_percent >= 0),
+                    source_json TEXT NOT NULL
+                );
+                CREATE INDEX weekly_limit_order ON weekly_limit_observations(scope_key, limit_id, observed_at, id);
+                INSERT INTO weekly_limit_observations
+                SELECT 'migrated:' || json_array(account_id, limit_id, window_kind, resets_at),
+                    'account:' || account_id, account_id, limit_id, last_observed_at, resets_at, used_percent, source_json
+                FROM limit_windows WHERE window_duration_mins = 10080;
+                DROP TABLE limit_windows;
+                DELETE FROM app_metadata WHERE key LIKE 'api_limits:%' OR key LIKE 'api_last_observed:%';
+                ALTER TABLE api_daily_usage RENAME TO api_daily_usage_before_v5;
+                CREATE TABLE api_daily_usage (
+                    account_id TEXT CHECK(account_id IS NULL OR account_id != ''),
+                    start_date TEXT NOT NULL,
+                    tokens INTEGER NOT NULL CHECK(tokens >= 0),
+                    fetched_at REAL NOT NULL
+                );
+                CREATE UNIQUE INDEX api_daily_identity ON api_daily_usage(IFNULL(account_id, ''), start_date);
+                INSERT INTO api_daily_usage SELECT * FROM api_daily_usage_before_v5;
+                DROP TABLE api_daily_usage_before_v5;
+                UPDATE app_metadata SET value = CAST(value AS INTEGER) + 1 WHERE key = 'statistics_revision';
+                UPDATE app_metadata SET value = 'true' WHERE key = 'statistics_dirty';
+                DELETE FROM app_metadata WHERE key LIKE 'statistics_cache_revision:%' OR key LIKE 'statistics_rebuild_checkpoint:%';
+                DELETE FROM statistics_rebuild;
                 """)
         }
         return migrator

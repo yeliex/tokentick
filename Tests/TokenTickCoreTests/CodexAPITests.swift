@@ -14,20 +14,18 @@ struct CodexAPITests {
         let limits = try JSONDecoder().decode(CodexRateLimits.self, from: Data(Self.limits.utf8))
         let daily = try JSONDecoder().decode(CodexDailyUsage.self, from: Data(Self.daily.utf8))
         #expect(daily.summary.lifetimeTokens == 9_007_199_254_740_993)
-        for _ in 0..<2 {
+        for attempt in 0..<2 {
             let report = try store.saveAPIObservation(limits: limits, daily: daily, observedAt: Date(timeIntervalSince1970: 100))
             #expect(report.dailyBucketCount == 2)
-            #expect(report.savedWindows == 2)
+            #expect(report.savedWindows == (attempt == 0 ? 1 : 0))
+            #expect(report.currentLimits?.windows.count == 2)
         }
         #expect(try store.tableCounts()["api_daily_usage"] == 2)
-        #expect(try store.tableCounts()["limit_windows"] == 2)
+        #expect(try store.tableCounts()["weekly_limit_observations"] == 1)
         #expect(try store.usageSummaries().isEmpty)
-        let windows = try store.limitWindows()
-        #expect(windows.allSatisfy { $0.limitID == "codex" && $0.tokens == nil && $0.inputAmount == nil })
-        #expect(windows.first(where: { $0.kind == "primary" })?.startsAt == 2000)
-        let output = try JSONSerialization.jsonObject(with: JSONEncoder().encode(windows)) as? [[String: Any]]
-        #expect(output?.first?["tokens"] is NSNull)
-        #expect(output?.first?["inputAmount"] is NSNull)
+        #expect(try store.weeklyLimitHistory().rows.isEmpty)
+        #expect(try store.status().apiLastReport?.currentLimits == nil)
+
     }
 
     @Test func missingOrEmptyBucketsPreserveHistoryAndOlderObservationsCannotRegressIt() throws {
@@ -41,7 +39,7 @@ struct CodexAPITests {
         let oldDaily = try JSONDecoder().decode(CodexDailyUsage.self, from: Data(Self.daily.replacingOccurrences(of: "\"tokens\":400", with: "\"tokens\":1").utf8))
         _ = try store.saveAPIObservation(limits: oldLimits, daily: oldDaily, observedAt: Date(timeIntervalSince1970: 50))
         #expect(try store.apiDailyUsage().first?.tokens == 400)
-        #expect(try store.limitWindows().first(where: { $0.kind == "primary" })?.lastUsedPercent == 12)
+        #expect(try store.status().apiLastReport?.observedAt == 100)
         for value in ["null", "[]"] {
             let empty = try JSONDecoder().decode(CodexDailyUsage.self, from: Data("{\"summary\":{},\"dailyUsageBuckets\":\(value)}".utf8))
             let report = try store.saveAPIObservation(limits: limits, daily: empty, observedAt: Date(timeIntervalSince1970: 200))
@@ -50,34 +48,16 @@ struct CodexAPITests {
         }
     }
 
-    @Test func earlyResetCreatesAnotherWindowAndMissingWindowShapeIsNotInvented() throws {
+    @Test func realTimeSnapshotsAreNotRestoredAndMissingWeeklyBoundaryIsNotInvented() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
-        for text in [Self.limits, Self.limits.replacingOccurrences(of: "20000", with: "15000")] {
-            let limits = try JSONDecoder().decode(CodexRateLimits.self, from: Data(text.utf8))
-            _ = try store.saveAPIObservation(limits: limits, daily: nil, observedAt: Date())
-        }
-        #expect(try store.limitWindows().count == 3)
-        let missing = try JSONDecoder().decode(CodexRateLimits.self, from: Data(#"{"accountId":"account-b","rateLimits":{"limitId":"codex","primary":{"usedPercent":0,"resetsAt":null}}}"#.utf8))
+        let missing = try JSONDecoder().decode(CodexRateLimits.self, from: Data(#"{"accountId":"account-b","rateLimits":{"limitId":"codex","primary":{"usedPercent":0,"windowDurationMins":10080,"resetsAt":null}}}"#.utf8))
         let report = try store.saveAPIObservation(limits: missing, daily: nil, observedAt: Date())
         #expect(report.skippedWindows == 1)
-        #expect(try store.limitWindows().count == 3)
-    }
-
-    @Test func latestWindowSelectionDoesNotPreferAnOlderLaterResetOrRecoverMissingWindows() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
-        let before = try JSONDecoder().decode(CodexRateLimits.self, from: Data(Self.limits.utf8))
-        _ = try store.saveAPIObservation(limits: before, daily: nil, observedAt: Date(timeIntervalSince1970: 100))
-        let after = try JSONDecoder().decode(CodexRateLimits.self, from: Data(Self.limits.replacingOccurrences(of: "20000", with: "15000").utf8))
-        _ = try store.saveAPIObservation(limits: after, daily: nil, observedAt: Date(timeIntervalSince1970: 200))
-        #expect(try store.limitWindows(currentOnly: true).first(where: { $0.kind == "primary" })?.resetsAt == 15000)
-        let empty = try JSONDecoder().decode(CodexRateLimits.self, from: Data(#"{"accountId":"account-a","rateLimits":{},"rateLimitsByLimitId":{}}"#.utf8))
-        _ = try store.saveAPIObservation(limits: empty, daily: nil, observedAt: Date(timeIntervalSince1970: 300))
-        #expect(try store.limitWindows(currentOnly: true).isEmpty)
-        #expect(try store.limitWindows().count == 3)
+        #expect(report.currentLimits?.windows.count == 1)
+        #expect(try store.tableCounts()["weekly_limit_observations"] == 0)
+        #expect(try store.status().apiLastReport?.currentLimits == nil)
     }
 
     @Test func invalidDailyResponseRollsBackAndUnknownAccountDoesNotAcquireOtherAccountsHistory() throws {
@@ -93,12 +73,13 @@ struct CodexAPITests {
                 try store.saveAPIObservation(limits: limits, daily: daily, observedAt: Date())
             }
         }
-        #expect(try store.limitWindows().isEmpty)
+        #expect(try store.tableCounts()["weekly_limit_observations"] == 0)
         let unknown = try JSONDecoder().decode(CodexRateLimits.self, from: Data(Self.limits.replacingOccurrences(of: "\"account-a\"", with: "null").utf8))
         let daily = try JSONDecoder().decode(CodexDailyUsage.self, from: Data(Self.daily.utf8))
         let report = try store.saveAPIObservation(limits: unknown, daily: daily, observedAt: Date())
-        #expect(!report.accountAvailable && report.dailyBucketCount == nil)
-        #expect(try store.apiDailyUsage().isEmpty)
+        #expect(!report.accountAvailable && report.dailyBucketCount == 2)
+        #expect(try store.apiDailyUsage().count == 2)
+        #expect(try store.apiDailyUsage().allSatisfy { $0.accountID == nil })
     }
 
     @Test(arguments: ["switched", "unsupported", "success"])
@@ -139,7 +120,7 @@ struct CodexAPITests {
         #expect(report.issue?.contains("secret-must-not-leak") != true)
         #expect(report.dailyBucketCount == (mode == "success" ? 2 : nil))
         #expect(try store.apiDailyUsage().count == (mode == "success" ? 2 : 0))
-        #expect(try store.limitWindows().allSatisfy { $0.accountID == (mode == "switched" ? "account-b" : "account-a") })
+        #expect(report.currentLimits?.accountID == (mode == "switched" ? "account-b" : "account-a"))
         if mode == "success" {
             let raw = try await store.pool.read { db in
                 try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'api_daily:account-a'")

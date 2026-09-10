@@ -13,20 +13,13 @@ final class ApplicationModel {
     var status: StoreStatus?
     var lastSync: SynchronizationReport?
     var today: UsageSummary?
-    var limits: [LimitWindow] = []
+    var currentLimits: CurrentLimitSnapshot?
     var error: String?
     var refreshID = 0
     var automaticSyncIssue: String?
     var automaticSyncEnabled = UserDefaults.standard.object(forKey: "automaticSyncEnabled") as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(automaticSyncEnabled, forKey: "automaticSyncEnabled")
-            configureAutomaticSync()
-        }
-    }
-    var codexDirectory: String {
-        get { UserDefaults.standard.string(forKey: "codexDirectory") ?? LocalUsageScanner.defaultCodexHome.path }
-        set {
-            UserDefaults.standard.set(newValue, forKey: "codexDirectory")
             configureAutomaticSync()
         }
     }
@@ -61,7 +54,7 @@ final class ApplicationModel {
         guard store != nil, automaticSyncEnabled, ProcessInfo.processInfo.environment["TOKENTICK_AUTOSYNC"] != "0" else { return }
         let controller = AutomaticSyncController(app: self)
         automatic = controller
-        controller.start(home: URL(fileURLWithPath: codexDirectory, isDirectory: true))
+        controller.start()
     }
 
     func synchronize(_ scope: SynchronizationScope = .all) {
@@ -69,12 +62,18 @@ final class ApplicationModel {
         isSyncing = true
         automatic?.started(scope)
         error = nil
-        let home = URL(fileURLWithPath: codexDirectory, isDirectory: true)
+        let home = LocalUsageScanner.defaultCodexHome
         syncTask = Task { [self] in
             defer { isSyncing = false; progress = nil; syncTask = nil; automatic?.finished() }
             do {
                 lastSync = try await UsageSynchronizer(store: store).synchronize(scope: scope, codexHome: home) { [weak self] progress in
                     Task { @MainActor in self?.progress = progress }
+                }
+                if let snapshot = lastSync?.api?.currentLimits {
+                    currentLimits = snapshot
+                } else if let snapshot = lastSync?.scan?.currentLimits,
+                          currentLimits.map({ $0.source == "local" && snapshot.observedAt > $0.observedAt }) ?? true {
+                    currentLimits = snapshot
                 }
             } catch is CancellationError { error = "同步已取消，已提交的数据保留。" }
             catch { self.error = error.localizedDescription }
@@ -92,15 +91,11 @@ final class ApplicationModel {
                 let date = Date().formatted(Date.ISO8601FormatStyle(timeZone: zone).year().month().day().dateSeparator(.dash))
                 let today = try store.usageReport(UsageQuery(grouping: .total, fromDate: date, throughDate: date)).rows.first
                 let status = try store.status()
-                let limits = try status.apiLastReport?.accountID.map {
-                    try store.limitWindowPage(LimitQuery(account: .account($0), latestOnly: true)).rows
-                } ?? []
-                return (status, try store.lastSynchronizationReport(), today, limits)
+                return (status, try store.lastSynchronizationReport(), today)
             }.value
             status = result.0
             lastSync = result.1
             today = result.2
-            limits = result.3
             refreshID += 1
         } catch { self.error = error.localizedDescription }
     }

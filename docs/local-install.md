@@ -1,6 +1,6 @@
 # TokenTick 安装说明
 
-此包用于本地构建和安装验证，要求 macOS 26 或更新版本。App 与 CLI 均包含 arm64 和 x86_64；构建包含某架构不代表已经在对应设备运行验证。
+此包用于本地构建和安装验证，要求 macOS 26 或更新版本。仅支持 Apple Silicon，App 与 CLI 均只包含 arm64。
 
 App、CLI 和嵌套资源包固定使用 ad-hoc 签名，无需付费 Apple Developer Program、签名证书或开发者团队。`BUILD.txt` 记录 `signing=ad-hoc`、`notarized=false`，App 与 CLI 的签名明细分别保存在 `App-signature.txt` 和 `CLI-signature.txt`。这与 Shuttle 的直接分发方式一致，未公证不作为发布阻塞条件。
 

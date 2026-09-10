@@ -16,8 +16,10 @@ struct RolloutParser {
     var state: RolloutParserState
     let identity: RolloutIdentity
     private let decoder = JSONDecoder()
+    var currentLimits: CurrentLimitSnapshot?
 
     mutating func consume(_ data: Data, line: Int) throws -> CollectedUsage? {
+        currentLimits = nil
         if data.allSatisfy({ $0 == 32 || $0 == 13 || $0 == 9 }) { return nil }
         let event = try decoder.decode(RolloutEvent.self, from: data)
         switch event.payload {
@@ -76,6 +78,11 @@ struct RolloutParser {
             return nil
         case .other: return nil
         case .count(let count):
+            if let raw = count.rate_limits, let session = state.session,
+               try !isInherited(event, session: session), let timestamp = event.timestamp.flatMap(Self.parseDate) {
+                currentLimits = try CurrentLimitSnapshot.log(raw: raw, observedAt: timestamp.timeIntervalSince1970,
+                    threadID: session.id, fileName: identity.fileName, line: line)
+            }
             guard let info = count.info else { return nil }
             guard let session = state.session else { throw ParseError.missingSession }
             let inherited = try isInherited(event, session: session)

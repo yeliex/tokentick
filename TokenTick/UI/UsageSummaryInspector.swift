@@ -49,17 +49,17 @@ struct UsageSummaryInspector: View {
                 if let modelError { Text(modelError).foregroundStyle(.secondary) }
                 ForEach(models, id: \.group) { model in
                     Button { navigate(.threads, query.focused(on: .model, value: model.group)) } label: {
-                        LabeledContent(model.group ?? "未知模型", value: UsageFormatting.tokens(model.totalTokens))
+                        LabeledContent(model.group ?? "未知模型", value: UsageFormatting.tokens(model.totalTokens)).help(UsageFormatting.exactTokens(model.totalTokens))
                     }.buttonStyle(.plain)
                 }
             }
             Section("Token 分项") {
-                UsageDetailField("总量", value: UsageFormatting.tokens(row.summary.totalTokens))
-                UsageDetailField("输入（含缓存）", value: UsageFormatting.tokens(row.summary.inputTokens))
-                UsageDetailField("缓存读取", value: UsageFormatting.tokens(row.summary.cachedInputTokens))
-                UsageDetailField("缓存写入", value: UsageFormatting.tokens(row.summary.cacheWriteInputTokens))
-                UsageDetailField("输出（含推理）", value: UsageFormatting.tokens(row.summary.outputTokens))
-                UsageDetailField("推理", value: UsageFormatting.tokens(row.summary.reasoningOutputTokens))
+                UsageDetailField("总量", value: UsageFormatting.tokens(row.summary.totalTokens)).help(UsageFormatting.exactTokens(row.summary.totalTokens))
+                UsageDetailField("输入（含缓存）", value: UsageFormatting.tokens(row.summary.inputTokens)).help(UsageFormatting.exactTokens(row.summary.inputTokens))
+                UsageDetailField("缓存读取", value: UsageFormatting.tokens(row.summary.cachedInputTokens)).help(UsageFormatting.exactTokens(row.summary.cachedInputTokens))
+                UsageDetailField("缓存写入", value: UsageFormatting.tokens(row.summary.cacheWriteInputTokens)).help(UsageFormatting.exactTokens(row.summary.cacheWriteInputTokens))
+                UsageDetailField("输出（含推理）", value: UsageFormatting.tokens(row.summary.outputTokens)).help(UsageFormatting.exactTokens(row.summary.outputTokens))
+                UsageDetailField("推理", value: UsageFormatting.tokens(row.summary.reasoningOutputTokens)).help(UsageFormatting.exactTokens(row.summary.reasoningOutputTokens))
             }
             Section("已知金额 · USD") {
                 UsageDetailField("输入", value: UsageFormatting.money(row.summary.inputAmountNanoUSD))

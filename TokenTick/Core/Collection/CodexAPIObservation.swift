@@ -44,13 +44,6 @@ struct CodexRateLimits: Codable, Sendable {
         let usedPercent: Double
         let windowDurationMins: Int64?
         let resetsAt: Int64?
-
-        var startsAt: Int64? {
-            guard let duration = windowDurationMins, duration > 0, let reset = resetsAt else { return nil }
-            let seconds = duration.multipliedReportingOverflow(by: 60)
-            let start = reset.subtractingReportingOverflow(seconds.partialValue)
-            return seconds.overflow || start.overflow ? nil : start.partialValue
-        }
     }
 }
 
@@ -63,6 +56,7 @@ public struct APISyncReport: Codable, Sendable {
     public let skippedWindows: Int
     public let reconciliation: String
     public let issue: String?
+    public var currentLimits: CurrentLimitSnapshot? = nil
 
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
@@ -74,49 +68,5 @@ public struct APISyncReport: Codable, Sendable {
         try values.encode(skippedWindows, forKey: .skippedWindows)
         try values.encode(reconciliation, forKey: .reconciliation)
         try values.encode(issue, forKey: .issue)
-    }
-}
-
-public struct LimitWindow: Codable, Sendable, Identifiable {
-    public struct ID: Hashable, Sendable {
-        public let account: String
-        public let bucket: String
-        public let kind: String
-        public let reset: Int64
-    }
-    public var id: ID { ID(account: accountID, bucket: limitID, kind: kind, reset: resetsAt) }
-    public let accountID: String
-    public let limitID: String
-    public let kind: String
-    public let startsAt: Int64
-    public let resetsAt: Int64
-    public let durationMinutes: Int64
-    public let lastUsedPercent: Double
-    public let lastObservedAt: Double
-    public let tokens: Int64?
-    public let inputAmount: Int64?
-    public let outputAmount: Int64?
-    public let cacheReadAmount: Int64?
-    public let cacheWriteAmount: Int64?
-    public let unpricedTokens: Int64?
-    public let sourceJSON: String?
-
-    public func encode(to encoder: any Encoder) throws {
-        var values = encoder.container(keyedBy: CodingKeys.self)
-        try values.encode(accountID, forKey: .accountID)
-        try values.encode(limitID, forKey: .limitID)
-        try values.encode(kind, forKey: .kind)
-        try values.encode(startsAt, forKey: .startsAt)
-        try values.encode(resetsAt, forKey: .resetsAt)
-        try values.encode(durationMinutes, forKey: .durationMinutes)
-        try values.encode(lastUsedPercent, forKey: .lastUsedPercent)
-        try values.encode(lastObservedAt, forKey: .lastObservedAt)
-        try values.encode(tokens, forKey: .tokens)
-        try values.encode(inputAmount, forKey: .inputAmount)
-        try values.encode(outputAmount, forKey: .outputAmount)
-        try values.encode(cacheReadAmount, forKey: .cacheReadAmount)
-        try values.encode(cacheWriteAmount, forKey: .cacheWriteAmount)
-        try values.encode(unpricedTokens, forKey: .unpricedTokens)
-        try values.encode(sourceJSON, forKey: .sourceJSON)
     }
 }

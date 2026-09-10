@@ -13,10 +13,10 @@ struct AutomaticSyncTests {
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(9)) == nil)
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(10)) == .local)
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(69)) == nil)
-        #expect(schedule.takeDueScope(now: start.addingTimeInterval(70)) == .local)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(70)) == nil)
         schedule.recovered(now: start.addingTimeInterval(90))
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(90)) == .local)
-        #expect(schedule.takeDueScope(now: start.addingTimeInterval(300)) == .all)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(300)) == .remote)
         // 睡眠期间漏过多个周期，恢复只合并为一次，不重放所有错过的计时器。
         schedule.recovered(now: start.addingTimeInterval(10_000))
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(10_000)) == .all)
@@ -36,8 +36,24 @@ struct AutomaticSyncTests {
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(115)) == nil)
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(116)) == .local)
         schedule.started(.api, now: start.addingTimeInterval(200))
-        #expect(schedule.takeDueScope(now: start.addingTimeInterval(300)) == .local)
-        #expect(schedule.takeDueScope(now: start.addingTimeInterval(500)) == .all)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(300)) == nil)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(500)) == .remote)
+    }
+
+    @Test func watcherFailureEnablesShortFallbackAndRecoveryRestoresLongInterval() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var schedule = AutomaticSyncSchedule(now: start)
+        schedule.watcherAvailable(false, now: start)
+        schedule.started(.all, now: start)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(59)) == nil)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(60)) == .local)
+        schedule.watcherAvailable(true, now: start.addingTimeInterval(61))
+        schedule.started(.local, now: start.addingTimeInterval(61))
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(121)) == nil)
+        for second in stride(from: 300, through: 1800, by: 300) {
+            #expect(schedule.takeDueScope(now: start.addingTimeInterval(Double(second))) == .remote)
+        }
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(1861)) == .local)
     }
 
     @Test func openingCurrentStoreAndReadingFactsDoesNotWaitForScanLock() throws {

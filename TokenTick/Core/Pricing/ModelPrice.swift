@@ -50,16 +50,16 @@ struct ModelPrice: Codable, Equatable, Sendable {
 
 struct PriceSource: Codable, Equatable, Sendable {
     let url: String
-    let cost: PriceJSON
-    let experimental: PriceJSON?
+    let cost: SourceJSON
+    let experimental: SourceJSON?
     let combinationRule: String?
     let combinationSource: String?
     let contextRule: ModelPrice.ContextRule
 }
 
-/// 保留全部价格与模式字段，数字以十进制解码，避免经过 Double 丢失单价精度。
-indirect enum PriceJSON: Codable, Equatable, Sendable {
-    case object([String: PriceJSON]), array([PriceJSON]), number(Decimal), string(String), bool(Bool), null
+/// 保留统计来源的扩展字段，数字以十进制解码，避免经过 Double 丢失单价精度。
+indirect enum SourceJSON: Codable, Equatable, Sendable {
+    case object([String: SourceJSON]), array([SourceJSON]), number(Decimal), string(String), bool(Bool), null
 
     init(from decoder: any Decoder) throws {
         let value = try decoder.singleValueContainer()
@@ -67,8 +67,8 @@ indirect enum PriceJSON: Codable, Equatable, Sendable {
         else if let bool = try? value.decode(Bool.self) { self = .bool(bool) }
         else if let number = try? value.decode(Decimal.self) { self = .number(number) }
         else if let string = try? value.decode(String.self) { self = .string(string) }
-        else if let object = try? value.decode([String: PriceJSON].self) { self = .object(object) }
-        else { self = .array(try value.decode([PriceJSON].self)) }
+        else if let object = try? value.decode([String: SourceJSON].self) { self = .object(object) }
+        else { self = .array(try value.decode([SourceJSON].self)) }
     }
 
     func encode(to encoder: any Encoder) throws {

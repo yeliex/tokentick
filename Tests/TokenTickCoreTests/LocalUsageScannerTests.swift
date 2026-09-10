@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import GRDB
 import libzstd
@@ -5,6 +6,19 @@ import Testing
 @testable import TokenTickCore
 
 struct LocalUsageScannerTests {
+    @Test func codexHomeReadsRuntimeEnvironmentEachTime() {
+        let saved = getenv("CODEX_HOME").map { String(cString: $0) }
+        defer {
+            if let saved { setenv("CODEX_HOME", saved, 1) } else { unsetenv("CODEX_HOME") }
+        }
+        setenv("CODEX_HOME", "/tmp/tokentick-first", 1)
+        #expect(LocalUsageScanner.defaultCodexHome.path == "/tmp/tokentick-first")
+        setenv("CODEX_HOME", "/tmp/tokentick-second", 1)
+        #expect(LocalUsageScanner.defaultCodexHome.path == "/tmp/tokentick-second")
+        unsetenv("CODEX_HOME")
+        #expect(LocalUsageScanner.defaultCodexHome == FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex", isDirectory: true))
+    }
+
     @Test func appendingPartialLineAndRestartDoesNotLoseOrDuplicateUsage() throws {
         let fixture = try Fixture()
         defer { fixture.clean() }

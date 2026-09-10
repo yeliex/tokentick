@@ -6,17 +6,15 @@ struct MenuBarView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(ApplicationModel.self) private var app
 
-    private var activeLimits: [LimitWindow] {
-        guard let account = app.status?.apiLastReport?.accountID else { return [] }
+    private var activeLimits: [CurrentLimitWindow] {
         let now = Int64(Date().timeIntervalSince1970)
-        return app.limits.filter { $0.accountID == account && $0.limitID == "codex" && $0.resetsAt > now }
-            .sorted { $0.kind < $1.kind }
+        return app.currentLimits?.windows.filter { $0.resetsAt.map { $0 > now } ?? true } ?? []
     }
 
     var body: some View {
         Text(ApplicationInfo.name)
         if let today = app.today {
-            Text("今日 \(today.totalTokens.formatted(.number.notation(.compactName))) tokens")
+            Text("今日 \(UsageFormatting.tokens(today.totalTokens)) tokens").help(UsageFormatting.exactTokens(today.totalTokens))
             Text("已知金额 \(UsageFormatting.money(today.knownAmountNanoUSD))")
         } else { Text("今日暂无用量数据") }
         if app.isSyncing {
@@ -30,8 +28,8 @@ struct MenuBarView: View {
         }
         if activeLimits.isEmpty { Text("暂无额度数据") }
         ForEach(activeLimits) { limit in
-            Text("\(limit.kind == "primary" ? "主窗口" : "次窗口")最近观测已用 \(limit.lastUsedPercent.formatted())%")
-            Text("重置于 \(UsageFormatting.timestamp(Double(limit.resetsAt)))")
+            Text("\(limit.limitID) · \(limit.durationMinutes.map { "\($0) 分钟" } ?? limit.kind)最近观测已用 \(limit.usedPercent.formatted())%")
+            Text("重置于 \(UsageFormatting.timestamp(limit.resetsAt.map(Double.init)))")
         }
         Button("同步用量") { app.synchronize() }.disabled(app.isSyncing || app.store == nil)
         Divider()

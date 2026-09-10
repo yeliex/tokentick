@@ -1,25 +1,19 @@
 import Foundation
 import GRDB
 
-public enum LimitWindowKind: String, CaseIterable, Sendable { case primary, secondary }
-
 public struct LimitQuery: Sendable, Hashable {
     public var timezone: String?
     public var fromDate: String?
     public var throughDate: String?
     public var account: UsageAccountScope
     public var limitID: String?
-    public var kind: LimitWindowKind?
-    public var latestOnly: Bool
     public var limit: Int
     public var offset: Int
 
     public init(timezone: String? = nil, fromDate: String? = nil, throughDate: String? = nil,
-                account: UsageAccountScope = .all, limitID: String? = nil, kind: LimitWindowKind? = nil,
-                latestOnly: Bool = false, limit: Int = 100, offset: Int = 0) {
+                account: UsageAccountScope = .all, limitID: String? = nil, limit: Int = 100, offset: Int = 0) {
         self.timezone = timezone; self.fromDate = fromDate; self.throughDate = throughDate
-        self.account = account; self.limitID = limitID; self.kind = kind; self.latestOnly = latestOnly
-        self.limit = limit; self.offset = offset
+        self.account = account; self.limitID = limitID; self.limit = limit; self.offset = offset
     }
 
     func boundary(_ date: String?, afterDay: Bool, timezone: TimeZone) throws -> Double? {
@@ -33,55 +27,68 @@ public struct LimitQuery: Sendable, Hashable {
     }
 }
 
-public struct LimitWindowPage: Encodable, Sendable {
+public struct WeeklyLimitReset: Codable, Sendable, Identifiable {
+    public let id: String
+    public let accountID: String?
+    public let scopeKey: String
+    public let limitID: String
+    public let scheduledResetAt: Int64
+    public let detectedAt: Double
+    public let lastObservedAt: Double
+    public let usedPercentBeforeReset: Double
+    public let kind: String
+    public let sourceJSON: String
+}
+
+public struct WeeklyLimitHistory: Encodable, Sendable {
     public let timezone: String
-    public let fromDate: String?
-    public let throughDate: String?
-    public let latestOnly: Bool
-    public let rows: [LimitWindow]
+    public let rows: [WeeklyLimitReset]
     public let hasMore: Bool
-    public let amountUnit = "nanoUSD"
-    public let coverage = "observed_windows; last percentage is not a final percentage"
+    public let coverage = "last_observation_before_reset; exact_final_usage_is_unknown"
 }
 
 extension UsageStore {
-    /// 日期选择与窗口 [starts_at, resets_at) 重叠的记录，不把跨日窗口拆分或按比例分摊。
-    public func limitWindowPage(_ query: LimitQuery = LimitQuery()) throws -> LimitWindowPage {
+    /// 先按完整时间线识别边界，再按重置日期筛选；补入乱序历史会重新形成正确相邻关系。
+    public func weeklyLimitHistory(_ query: LimitQuery = LimitQuery()) throws -> WeeklyLimitHistory {
         try UsageQuery(fromDate: query.fromDate, throughDate: query.throughDate, limit: query.limit, offset: query.offset).validate()
         let identifier = try query.timezone ?? statisticsTimezone()
         guard let timezone = TimeZone(identifier: identifier) else { throw UsageQueryError.invalidTimezone }
         let from = try query.boundary(query.fromDate, afterDay: false, timezone: timezone)
         let until = try query.boundary(query.throughDate, afterDay: true, timezone: timezone)
         return try pool.read { db in
-            var clauses = ["1"]
-            if let from, let until, from >= until { clauses.append("0") }
+            var clauses = ["previous_reset IS NOT NULL", "(resets_at != previous_reset OR (used_percent = 0 AND previous_percent > 0))"]
             var arguments: StatementArguments = ["limit": query.limit + 1, "offset": query.offset]
             switch query.account {
             case .all: break
-            case .unknown: clauses.append("0")
+            case .unknown: clauses.append("account_id IS NULL")
             case .account(let id): clauses.append("account_id = :account"); arguments += ["account": id]
             }
-            if query.latestOnly {
-                clauses.append("last_observed_at = (SELECT CAST(value AS REAL) FROM app_metadata WHERE key = 'api_last_observed:' || account_id)")
-            }
-            if let from { clauses.append("resets_at > :from"); arguments += ["from": from] }
-            if let until { clauses.append("starts_at < :until"); arguments += ["until": until] }
             if let id = query.limitID { clauses.append("limit_id = :bucket"); arguments += ["bucket": id] }
-            if let kind = query.kind { clauses.append("window_kind = :kind"); arguments += ["kind": kind.rawValue] }
+            let eventTime = "CASE WHEN observed_at >= previous_reset AND resets_at > previous_reset THEN previous_reset ELSE observed_at END"
+            if let from { clauses.append("\(eventTime) >= :from"); arguments += ["from": from] }
+            if let until { clauses.append("\(eventTime) < :until"); arguments += ["until": until] }
             let rows = try Row.fetchAll(db, sql: """
-                SELECT * FROM limit_windows WHERE \(clauses.joined(separator: " AND "))
-                ORDER BY last_observed_at DESC, resets_at DESC, account_id, limit_id, window_kind
-                LIMIT :limit OFFSET :offset
+                WITH ordered AS (
+                    SELECT *, LAG(id) OVER timeline AS previous_id,
+                        LAG(observed_at) OVER timeline AS previous_observed,
+                        LAG(resets_at) OVER timeline AS previous_reset,
+                        LAG(used_percent) OVER timeline AS previous_percent,
+                        LAG(source_json) OVER timeline AS previous_source
+                    FROM weekly_limit_observations
+                    WINDOW timeline AS (PARTITION BY scope_key, limit_id ORDER BY observed_at, id)
+                )
+                SELECT *, CASE
+                    WHEN observed_at >= previous_reset AND resets_at > previous_reset THEN 'natural'
+                    WHEN account_id IS NOT NULL AND used_percent < previous_percent THEN 'manual'
+                    ELSE 'unconfirmed' END AS reset_kind
+                FROM ordered WHERE \(clauses.joined(separator: " AND "))
+                ORDER BY observed_at DESC, id LIMIT :limit OFFSET :offset
                 """, arguments: arguments)
-            return LimitWindowPage(timezone: timezone.identifier, fromDate: query.fromDate, throughDate: query.throughDate,
-                latestOnly: query.latestOnly, rows: rows.prefix(query.limit).map { row in
-                    LimitWindow(accountID: row["account_id"], limitID: row["limit_id"], kind: row["window_kind"],
-                        startsAt: row["starts_at"], resetsAt: row["resets_at"], durationMinutes: row["window_duration_mins"],
-                        lastUsedPercent: row["used_percent"], lastObservedAt: row["last_observed_at"], tokens: row["tokens"],
-                        inputAmount: row["input_amount"], outputAmount: row["output_amount"],
-                        cacheReadAmount: row["cache_read_amount"], cacheWriteAmount: row["cache_write_amount"],
-                        unpricedTokens: row["unpriced_tokens"], sourceJSON: row["source_json"])
-                }, hasMore: rows.count > query.limit)
+            return WeeklyLimitHistory(timezone: identifier, rows: rows.prefix(query.limit).map { row in
+                WeeklyLimitReset(id: row["id"], accountID: row["account_id"], scopeKey: row["scope_key"], limitID: row["limit_id"],
+                    scheduledResetAt: row["previous_reset"], detectedAt: row["observed_at"], lastObservedAt: row["previous_observed"],
+                    usedPercentBeforeReset: row["previous_percent"], kind: row["reset_kind"], sourceJSON: row["previous_source"])
+            }, hasMore: rows.count > query.limit)
         }
     }
 }

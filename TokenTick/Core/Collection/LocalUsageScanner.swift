@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import Darwin
 import GRDB
 
 public struct ScanReport: Codable, Sendable {
@@ -15,6 +16,11 @@ public struct ScanReport: Codable, Sendable {
     public var scannedBytes: UInt64 = 0
     public var issues: [ScanIssue] = []
     public var issueCount = 0
+    public var currentLimits: CurrentLimitSnapshot? = nil
+    private enum CodingKeys: String, CodingKey {
+        case discoveredFiles, scannedFiles, unchangedFiles, refreshedThreads, catalogAvailable,
+             insertedRequests, upgradedRequests, duplicateRequests, inheritedEvents, scannedBytes, issues, issueCount
+    }
 
     mutating func addIssue(_ issue: ScanIssue) {
         issueCount += 1
@@ -40,8 +46,9 @@ public struct LocalUsageScanner: Sendable {
     public init(store: UsageStore) { self.store = store }
 
     public static var defaultCodexHome: URL {
-        if let configured = ProcessInfo.processInfo.environment["CODEX_HOME"] {
-            return URL(fileURLWithPath: configured, isDirectory: true)
+        if let value = getenv("CODEX_HOME"), !String(cString: value).isEmpty {
+            let configured = (String(cString: value) as NSString).expandingTildeInPath
+            return URL(fileURLWithPath: configured, isDirectory: true).standardizedFileURL
         }
         return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex", isDirectory: true)
     }
@@ -155,6 +162,7 @@ public struct LocalUsageScanner: Sendable {
         let inheritedBefore = parser.state.inheritedEvents
         let startingOffset = offset
         var batch: [CollectedUsage] = []
+        var quotaBatch: [CurrentLimitSnapshot] = []
         var linesSinceCommit = 0
         var failed = false
         while true {
@@ -164,6 +172,10 @@ public struct LocalUsageScanner: Sendable {
                 let hasLine = try autoreleasepool {
                     guard let data = try reader.nextLine() else { return false }
                     if let usage = try parser.consume(data, line: line + 1) { batch.append(usage) }
+                    if let limits = parser.currentLimits {
+                        if limits.windows.contains(where: { $0.durationMinutes == 10_080 }) { quotaBatch.append(limits) }
+                        if report.currentLimits.map({ limits.observedAt > $0.observedAt }) ?? true { report.currentLimits = limits }
+                    }
                     line += 1
                     offset = reader.offset
                     linesSinceCommit += 1
@@ -178,13 +190,14 @@ public struct LocalUsageScanner: Sendable {
                 break
             }
             if linesSinceCommit >= 512 {
-                try store.commitScan(batch, identity: identity, url: url, line: line, offset: offset,
+                try store.commitScan(batch, limits: quotaBatch, identity: identity, url: url, line: line, offset: offset,
                                      file: snapshot, state: parser.state, completed: false, report: &report)
                 batch.removeAll(keepingCapacity: true)
+                quotaBatch.removeAll(keepingCapacity: true)
                 linesSinceCommit = 0
             }
         }
-        try store.commitScan(batch, identity: identity, url: url, line: line, offset: offset,
+        try store.commitScan(batch, limits: quotaBatch, identity: identity, url: url, line: line, offset: offset,
                              file: snapshot, state: parser.state, completed: !failed, report: &report)
         report.scannedBytes += offset - startingOffset
         report.inheritedEvents += parser.state.inheritedEvents - inheritedBefore

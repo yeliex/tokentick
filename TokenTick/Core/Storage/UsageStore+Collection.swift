@@ -19,7 +19,7 @@ extension UsageStore {
         }
     }
 
-    func commitScan(_ usages: [CollectedUsage], identity: RolloutIdentity, url: URL, line: Int, offset: UInt64,
+    func commitScan(_ usages: [CollectedUsage], limits: [CurrentLimitSnapshot] = [], identity: RolloutIdentity, url: URL, line: Int, offset: UInt64,
                     file: FileSnapshot, state: RolloutParserState, completed: Bool, report: inout ScanReport) throws {
         var file = file
         file.completed = completed
@@ -44,6 +44,7 @@ extension UsageStore {
                 case .duplicate: duplicates += 1
                 }
             }
+            for snapshot in limits { _ = try Self.saveWeeklyObservations(snapshot, db: db) }
             let threadID = identity.threadID.uuidString.lowercased()
             // 名称由最新 Codex thread 缓存更新，不从路径猜出一个无法核验的项目名。
             try db.execute(sql: "INSERT INTO threads(thread_id) VALUES (?) ON CONFLICT DO NOTHING", arguments: [threadID])

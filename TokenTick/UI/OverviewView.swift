@@ -9,9 +9,9 @@ struct OverviewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 HStack(alignment: .top, spacing: 32) {
-                    metric("Token 用量", value: UsageFormatting.tokens(model.total?.totalTokens), detail: timezone)
+                    metric("Token 用量", value: UsageFormatting.tokens(model.total?.totalTokens), detail: timezone).help(UsageFormatting.exactTokens(model.total?.totalTokens))
                     metric("已知金额", value: UsageFormatting.money(model.total?.knownAmountNanoUSD), detail: "按公开价格换算 · USD")
-                    metric("未定价 Tokens", value: UsageFormatting.tokens(model.total?.unpricedTokens), detail: "金额或计价依据不完整")
+                    metric("未定价 Tokens", value: UsageFormatting.tokens(model.total?.unpricedTokens), detail: "金额或计价依据不完整").help(UsageFormatting.exactTokens(model.total?.unpricedTokens))
                 }
                 UsageTrendView(days: model.days) { focus(.day, $0) }
                     .padding(22).background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 18))
@@ -20,7 +20,7 @@ struct OverviewView: View {
                     contribution("项目贡献", rows: model.projects, grouping: .project)
                 }
                 if model.unknownDateTokens > 0 {
-                    Label("\(model.unknownDateTokens.formatted()) tokens 无法确定日期，未绘入趋势。", systemImage: "calendar.badge.exclamationmark")
+                    Label("\(UsageFormatting.tokens(model.unknownDateTokens)) tokens 无法确定日期，未绘入趋势。", systemImage: "calendar.badge.exclamationmark").help(UsageFormatting.exactTokens(model.unknownDateTokens))
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Text("金额是 API 等值金额，不等同于订阅账单；未知金额以 — 表示。")
@@ -46,7 +46,7 @@ struct OverviewView: View {
                     HStack {
                         Text(row.group ?? "未知归属").lineLimit(1).help(row.group ?? "未知归属")
                         Spacer(minLength: 12)
-                        Text(UsageFormatting.tokens(row.totalTokens)).monospacedDigit().foregroundStyle(.secondary)
+                        TokenText(value: row.totalTokens).monospacedDigit().foregroundStyle(.secondary)
                     }.font(.callout).contentShape(Rectangle())
                 }.buttonStyle(.plain).help("查看该范围的任务")
                 Divider()

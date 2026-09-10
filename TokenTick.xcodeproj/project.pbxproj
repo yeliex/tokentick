@@ -349,6 +349,7 @@
 				"MACOSX_DEPLOYMENT_TARGET" = "26.0";
 				"SWIFT_VERSION" = "6.0";
 				"SDKROOT" = "macosx";
+				"ARCHS" = "arm64";
 				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
 				"ONLY_ACTIVE_ARCH" = "NO";
 				"GCC_C_LANGUAGE_STANDARD" = "gnu17";
@@ -497,6 +498,7 @@
 				"MACOSX_DEPLOYMENT_TARGET" = "26.0";
 				"SWIFT_VERSION" = "6.0";
 				"SDKROOT" = "macosx";
+				"ARCHS" = "arm64";
 				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
 				"ONLY_ACTIVE_ARCH" = "YES";
 				"GCC_C_LANGUAGE_STANDARD" = "gnu17";

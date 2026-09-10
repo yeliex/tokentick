@@ -22,7 +22,7 @@ struct APISyncStateTests {
         #expect(try reopened.status().apiLastReport?.issue == failure.issue)
         #expect(try reopened.status().apiLastReport?.observedAt == failure.observedAt)
         #expect(try reopened.apiDailyUsage().count == 2)
-        #expect(try reopened.limitWindows().count == 2)
+        #expect(try reopened.tableCounts()["weekly_limit_observations"] == 1)
         #expect(try reopened.usageSummaries().isEmpty)
     }
 
@@ -33,12 +33,12 @@ struct APISyncStateTests {
         let first = try JSONDecoder().decode(CodexRateLimits.self, from: Data(CodexAPITests.limits.utf8))
         _ = try store.saveAPIObservation(limits: first, daily: nil, observedAt: Date(timeIntervalSince1970: 100))
         let second = try JSONDecoder().decode(CodexRateLimits.self, from: Data(#"{"accountId":"account-b","rateLimits":{},"rateLimitsByLimitId":{}}"#.utf8))
-        _ = try store.saveAPIObservation(limits: second, daily: nil, observedAt: Date(timeIntervalSince1970: 200))
+        let current = try store.saveAPIObservation(limits: second, daily: nil, observedAt: Date(timeIntervalSince1970: 200))
         let account = try #require(store.status().apiLastReport?.accountID)
         #expect(account == "account-b")
-        #expect(try store.limitWindowPage(LimitQuery(account: .account(account), latestOnly: true)).rows.isEmpty)
-        #expect(try store.limitWindows(currentOnly: true).count == 2)
-        #expect(try store.limitWindows().allSatisfy { $0.accountID == "account-a" })
+        #expect(current.currentLimits?.windows.isEmpty == true)
+        #expect(try store.status().apiLastReport?.currentLimits == nil)
+        #expect(try store.tableCounts()["weekly_limit_observations"] == 1)
     }
 
     @Test func olderReportsCannotRegressNewerFailureAndSuccessCanRecover() throws {

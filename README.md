@@ -2,7 +2,7 @@
 
 Codex 用量与成本统计，专为 macOS 开发。
 
-TokenTick 从本地 Codex 日志采集统计数据，记录每个任务、每天、每个项目和每个模型的 token 用量，并按历史模型价格换算美元金额。服务端每日总量与额度周期单独记录，跨设备差额仍待口径核实。
+TokenTick 从本地 Codex 日志采集统计数据，记录每个任务、每天、每个项目和每个模型的 token 用量，并按历史模型价格换算美元金额。服务端每日总量独立保存；周额度记录重置前观测，实时额度保留内存。未归属任务的 API 用量不混入本地统计。仅支持 macOS 26+ Apple Silicon。
 
 ## 项目状态
 
@@ -65,7 +65,7 @@ xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
 
 `sync --scope all|local|prices|api` 与 App 使用相同流程，保存最近同步报告，各来源失败互不清空已有数据。价格成功同步后仅重算本次价格日期及之后的记录；手动 `reprice` 仍可重算全部历史。App 启动时自动同步，可从工具栏或数据状态页重试；已接入文件变动通知、定时补扫和睡眠恢复，设置中可关闭自动同步。开发验证可用 `TOKENTICK_DATABASE` 指定独立数据库，`TOKENTICK_AUTOSYNC=0` 关闭本次启动自动同步，不改变持久设置。
 
-也可省略 `--codex-home`，默认读取环境变量 `CODEX_HOME` 或 `~/.codex`。省略 `--database` 时使用 `~/Library/Application Support/TokenTick/usage.sqlite`。`scan` 只读 Codex 数据，写入 TokenTick 自己的数据库；存在解析问题时返回 1，参数错误返回 2。统计时区默认采用数据库首次初始化／升级时的系统时区并保存，价格日期始终使用 UTC。
+每次操作读取进程当前环境变量 `CODEX_HOME`，默认 `~/.codex`；不提供目录配置或 `--codex-home`。省略 `--database` 时使用 `~/Library/Application Support/TokenTick/usage.sqlite`。`scan` 只读 Codex 数据，写入 TokenTick 自己的数据库；存在解析问题时返回 1，参数错误返回 2。统计时区默认采用数据库首次初始化／升级时的系统时区并保存，价格日期始终使用 UTC。
 
 统计缓存与范围查询：
 
@@ -98,7 +98,7 @@ xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
 
 不同归属条件取交集，同一维度不允许重复指定。标题／ID 搜索按普通文本匹配，不区分大小写与音调符号，`%`、`_` 不作为通配符。`--sort automatic|tokens|amount|name` 在分页前排序；默认日汇总按日期降序，其余汇总按 tokens 降序，明细按发生时间降序。相同排序值使用分组键或记录 ID 保持顺序稳定。两种查询均返回 `hasMore`；金额排序使用已知分项金额，不代表缺价记录的完整成本。交叉筛选直接查询 SQLite 事实，普通维度汇总继续使用统计缓存，不持久化所有筛选组合。
 
-App 默认在运行期间自动同步：文件变化合并后采集，每分钟核对本地文件，每五分钟刷新远端统计，价格每日成功获取一次。设置中可关闭；取消当前同步后至少 60 秒不自动重启。休眠恢复后补扫，退出 App 后停止，不安装后台 daemon。`TOKENTICK_AUTOSYNC=0` 仍可用于隔离运行验证。
+App 默认在运行期间自动同步：文件变化合并后采集，监听正常时每 30 分钟兜底核对，监听不可用时每分钟核对，每五分钟独立刷新远端统计，价格每日成功获取一次。设置中可关闭；取消当前同步后至少 60 秒不自动重启。休眠恢复后补扫，退出 App 后停止，不安装后台 daemon。`TOKENTICK_AUTOSYNC=0` 仍可用于隔离运行验证。
 
 价格同步与重算：
 
@@ -108,7 +108,7 @@ App 默认在运行期间自动同步：文件变化合并后采集，每分钟�
 .build/DerivedData/Build/Products/Debug/tokentick reprice --database .build/audit/usage.sqlite
 ```
 
-价格按 UTC 采集日保存，每天成功一次，只记录价格变化。新扫描的请求自动匹配已有历史价格；`reprice` 显式重算已有用量。首次采价以前的日期不会套用今日价格；模式、缓存分项或价格缺失时，保留可算分项，总金额仍为空。重算报告列出未定价原因。
+价格按 UTC 采集日保存，每天成功一次，只记录价格变化。新扫描的请求自动匹配已有历史价格；`reprice` 显式重算已有用量。早于该模型首份快照的历史使用首份价格；之后仍按日期匹配历史快照；模式、缓存分项或价格缺失时，保留可算分项，总金额仍为空。重算报告列出未定价原因。
 
 重算每批 512 条连同进度一起提交，中断后再次执行同范围重算会恢复；完成报告包含此前已提交批次。用量事实、价格快照、范围或内部断点版本变化时，从头重新核对；已经完成的任务再次执行仍是完整重算。详见[维护任务恢复](docs/maintenance-recovery.md)。
 
@@ -120,9 +120,11 @@ App 默认在运行期间自动同步：文件变化合并后采集，每分钟�
 .build/DerivedData/Build/Products/Debug/tokentick limits --database .build/audit/usage.sqlite
 ```
 
-`limits` 支持 `--from`／`--through`（含首尾日期）、`--timezone`、`--account`、`--limit-id`、`--window primary|secondary` 与 `--limit`／`--offset` 分页；返回 `hasMore`。日期匹配与所选本地日期范围重叠的窗口，不拆分或按比例分配周期用量。`--latest` 仅查询每个账号最近一次观测中存在的窗口，不代表此刻仍有效，也不恢复最近快照中缺失的旧窗口。每行包含已保存的来源 JSON，缺失的 tokens 和分项金额显式输出 `null`。
+`limits` 查询历史周额度重置，支持 `--from`／`--through`、`--timezone`、`--account`／`--unknown-account`、`--limit-id` 和分页。百分比是重置前最后观测，不保证最终用量。未知账号日志按任务分开保存，不能把百分比相加。`current-limits` 通过 Codex app-server 显式联网读取所有当前额度；App 当前额度只保留在内存。
 
-`sync-api` 启动短期 Codex app-server，通过 stdio 读取统计；需要本机安装且已登录的 Codex CLI，可用 `--codex-bin` 指定其路径。TokenTick 不读取或复制认证文件，认证由 Codex 自己管理。日桶保存原始日期和整数 tokens；目前账号归属、日边界和 token 可比口径尚未确认，服务端总量单独显示，不与本地相加。额度百分比为最后观测值，周期 tokens／金额缺乏归属证据时保持 NULL。查询不会触发联网或创建常驻进程。
+`sync-api` 使用短期 Codex app-server 读取统计，认证由已登录的 Codex CLI 管理，支持 `--codex-bin`。日桶保留整数 tokens、原日期和可空账号，不与本地相加；账号读取期间切换时不保存本次日桶。全局保留未知账号的本地用量，按账号筛选时只包含明确匹配的记录。
+
+界面 token 用量统一使用 K／M／B／T（十进制、最多两位小数），悬停可查精确整数；数据库与 CLI JSON 保留完整数值。
 
 两个 scheme 都以 macOS 26.0 为最低版本。App 与 CLI 的开发和分发均使用 ad-hoc 签名，不要求付费 Apple Developer Program、开发者团队或证书，不提交 Apple 公证；安装方式见下文。Core 由本地 Swift Package 的 TokenTickCore 模块编译，新增 Core 文件自动进入模块；`TokenTickApp.swift` 与 `cli.swift` 分别只加入对应 Xcode target。
 
@@ -132,7 +134,7 @@ App 默认在运行期间自动同步：文件变化合并后采集，每分钟�
 ./script/package_release.sh
 ```
 
-脚本构建 arm64／x86_64 的 App 和 CLI，在最终组装后完成 ad-hoc 签名及验证，生成 `.build/releases/local-*/TokenTick-*-local-*.zip` 和 SHA-256 校验文件。包内包括安装说明、依赖许可证、源码提交和工具链信息；每次使用独立目录，不覆盖已有验证包，不安装到系统目录或发布 GitHub Release。
+脚本只构建 arm64 的 App 和 CLI，在最终组装后完成 ad-hoc 签名及验证，生成 `.build/releases/local-*/TokenTick-*-local-*.zip` 和 SHA-256 校验文件。包内包括安装说明、依赖许可证、源码提交和工具链信息；每次使用独立目录，不覆盖已有验证包，不安装到系统目录或发布 GitHub Release。
 
 CLI 可直接运行，也可按[安装说明](docs/local-install.md)安装到个人 `~/.local/bin`。分发方式参考 Shuttle：固定使用 ad-hoc 签名，未公证属于既定分发方式，不再作为发布阻塞项。首次下载后，macOS 可能要求在“系统设置 → 隐私与安全性”中选择“仍要打开”。其他功能、真实系统和安装验收仍按[验收状态](docs/acceptance-status.md)执行。
 

@@ -10,7 +10,6 @@ extension UsageStore {
         encoder.outputFormatting = [.sortedKeys]
         let limitsJSON = try limitsSourceJSON ?? String(decoding: encoder.encode(limits), as: UTF8.self)
         let dailyJSON = try dailySourceJSON ?? daily.map { String(decoding: try encoder.encode($0), as: UTF8.self) }
-        let rawLimits = try JSONSerialization.jsonObject(with: Data(limitsJSON.utf8)) as? [String: Any]
         let account = limits.accountId.flatMap { $0.isEmpty ? nil : $0 }
         let buckets = limits.rateLimitsByLimitId ?? limits.rateLimits.limitId.map { [$0: limits.rateLimits] } ?? [:]
         for (key, snapshot) in buckets {
@@ -21,58 +20,34 @@ extension UsageStore {
         }
         return try FileWriteLock(url: databaseURL.appendingPathExtension("write.lock")).withLock {
             try pool.write { db in
-                var saved = 0
-                var skipped = 0
-                if let account {
-                    let observed = observedAt.timeIntervalSince1970
-                    for (key, snapshot) in buckets {
-                        let rawBucket = (rawLimits?["rateLimitsByLimitId"] as? [String: Any])?[key]
-                            ?? (limits.rateLimitsByLimitId == nil ? rawLimits?["rateLimits"] : nil)
-                        let json = try rawBucket.map {
-                            String(decoding: try JSONSerialization.data(withJSONObject: $0, options: [.sortedKeys]), as: UTF8.self)
-                        } ?? String(decoding: encoder.encode(snapshot), as: UTF8.self)
-                        for (kind, candidate) in [("primary", snapshot.primary), ("secondary", snapshot.secondary)] {
-                            guard let window = candidate else { continue }
-                            guard let start = window.startsAt, let reset = window.resetsAt,
-                                  let duration = window.windowDurationMins else { skipped += 1; continue }
-                            try db.execute(sql: """
-                                INSERT INTO limit_windows(account_id, limit_id, window_kind, resets_at,
-                                    window_duration_mins, starts_at, used_percent, last_observed_at, source_json)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                ON CONFLICT(account_id, limit_id, window_kind, resets_at) DO UPDATE SET
-                                    window_duration_mins = excluded.window_duration_mins, starts_at = excluded.starts_at,
-                                    used_percent = excluded.used_percent, last_observed_at = excluded.last_observed_at,
-                                    source_json = excluded.source_json
-                                WHERE excluded.last_observed_at >= limit_windows.last_observed_at
-                                """, arguments: [account, key, kind, reset, duration, start, window.usedPercent, observed, json])
-                            saved += db.changesCount
-                        }
-                    }
-                    for bucket in daily?.dailyUsageBuckets ?? [] {
-                        try db.execute(sql: """
-                            INSERT INTO api_daily_usage(account_id, start_date, tokens, fetched_at) VALUES (?, ?, ?, ?)
-                            ON CONFLICT(account_id, start_date) DO UPDATE SET tokens = excluded.tokens, fetched_at = excluded.fetched_at
-                            WHERE excluded.fetched_at >= api_daily_usage.fetched_at
-                            """, arguments: [account, bucket.startDate, bucket.tokens, observed])
-                    }
-                    let dateKey = "api_last_observed:\(account)"
-                    let previous = try Double.fetchOne(db, sql: "SELECT CAST(value AS REAL) FROM app_metadata WHERE key = ?", arguments: [dateKey])
+                let snapshot = try CurrentLimitSnapshot.parse(Data(limitsJSON.utf8), accountID: account,
+                    observedAt: observedAt.timeIntervalSince1970, source: "api", scopeKey: account.map { "account:" + $0 } ?? "api:unknown")
+                let saved = try Self.saveWeeklyObservations(snapshot, db: db)
+                let skipped = snapshot.windows.filter { $0.durationMinutes == 10_080 && $0.resetsAt == nil }.count
+                let observed = observedAt.timeIntervalSince1970
+                for bucket in daily?.dailyUsageBuckets ?? [] {
+                    try db.execute(sql: """
+                        INSERT INTO api_daily_usage(account_id, start_date, tokens, fetched_at) VALUES (?, ?, ?, ?)
+                        ON CONFLICT DO UPDATE SET tokens = excluded.tokens, fetched_at = excluded.fetched_at
+                        WHERE excluded.fetched_at >= api_daily_usage.fetched_at
+                        """, arguments: [account, bucket.startDate, bucket.tokens, observed])
+                }
+                if let dailyJSON {
+                    let key = account.map { "api_daily:" + $0 } ?? "api_daily:unknown"
+                    let previous = try Double.fetchOne(db, sql: "SELECT CAST(value AS REAL) FROM app_metadata WHERE key = ?", arguments: [key + ":observed"])
                     if previous.map({ observed >= $0 }) ?? true {
-                        for (key, value) in [(dateKey, String(observed)), ("api_limits:\(account)", limitsJSON),
-                                             ("api_daily:\(account)", dailyJSON)] {
-                            guard let value else { continue }
-                            try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                                           arguments: [key, value])
+                        for (key, value) in [(key, dailyJSON), (key + ":observed", String(observed))] {
+                            try db.execute(sql: "INSERT INTO app_metadata(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", arguments: [key,value])
                         }
                     }
                 }
-                // 接口日桶没有时区／token 口径字段，历史日志也没有账号证据。
-                // 在这些契约确定前只保存服务端事实，不创建会与本地重复的 API 差额。
-                let report = APISyncReport(accountID: account, observedAt: observedAt.timeIntervalSince1970,
+                // 无法归属到任务的服务端桶独立保存，不加入本地统计或猜测差额。
+                var report = APISyncReport(accountID: account, observedAt: observedAt.timeIntervalSince1970,
                                            accountAvailable: account != nil,
-                                           dailyBucketCount: account == nil ? nil : daily?.dailyUsageBuckets?.count,
+                                           dailyBucketCount: daily?.dailyUsageBuckets?.count,
                                            savedWindows: saved, skippedWindows: skipped,
-                                           reconciliation: "unverified_account_and_daily_semantics", issue: issue)
+                                           reconciliation: "unattributed_api_excluded_from_local_totals", issue: issue)
+                report.currentLimits = snapshot
                 try Self.saveAPIReport(report, db: db)
                 return report
             }
@@ -83,7 +58,7 @@ extension UsageStore {
         guard observedAt.timeIntervalSince1970.isFinite else { throw CodexAPIError.invalidStatistics }
         let report = APISyncReport(accountID: nil, observedAt: observedAt.timeIntervalSince1970,
             accountAvailable: false, dailyBucketCount: nil, savedWindows: 0, skippedWindows: 0,
-            reconciliation: "unverified_account_and_daily_semantics", issue: issue)
+            reconciliation: "unattributed_api_excluded_from_local_totals", issue: issue)
         try FileWriteLock(url: databaseURL.appendingPathExtension("write.lock")).withLock {
             try pool.write { db in try Self.saveAPIReport(report, db: db) }
         }
@@ -99,10 +74,6 @@ extension UsageStore {
                        arguments: [json])
     }
 
-    public func limitWindows(limit: Int = 100, currentOnly: Bool = false) throws -> [LimitWindow] {
-        try limitWindowPage(LimitQuery(latestOnly: currentOnly, limit: min(max(limit, 1), 10_000))).rows
-    }
-
     public func apiDailyUsage(limit: Int = 100) throws -> [APIDailyBucket] {
         try pool.read { db in
             try Row.fetchAll(db, sql: "SELECT * FROM api_daily_usage ORDER BY start_date DESC, account_id LIMIT ?",
@@ -114,7 +85,7 @@ extension UsageStore {
 }
 
 public struct APIDailyBucket: Codable, Sendable {
-    public let accountID: String
+    public let accountID: String?
     public let date: String
     public let tokens: Int64
     public let fetchedAt: Double

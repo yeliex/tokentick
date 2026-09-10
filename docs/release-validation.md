@@ -1,5 +1,8 @@
 # Release 本地验证
 
+> 2026-09-10 范围调整：当前以 [需求文档](requirements.md) 为准。仅支持 macOS 26+ arm64；目录动态读取 CODEX_HOME；监听优先；首份价格覆盖更早历史；全局保留本地未知账号用量，未归属任务的 API 用量不参与统计；历史仅周额度重置前观测，所有实时额度保留内存；token 使用 K／M／B／T。下文先前 Intel、目录设置、API 差额、全类型历史窗口及精细 UI 验收计划已被替代，历史验证记录仅供追溯。
+
+
 当前分发决定（2026-09-10）：按用户要求参考 Shuttle，固定使用 ad-hoc 签名和 ZIP 直接分发，不使用付费 Apple Developer Program、不提交公证。首次下载后的“仍要打开”属于安装流程；公证不再是发布验收项。下文早期 Developer ID 试验保留为历史证据，其证书入口和公证待办已废弃；当前状态见 [验收状态](acceptance-status.md)。
 
 验证日期：2026-09-10。环境为 Apple M2 Pro、macOS 27、Xcode 27 beta（27A5252f），在 arm64 宿主机运行。App／CLI 源码提交 `3932dac0246a74d7e7d45bf035d673bc5fc68ab8`，本轮另加入打包脚本和文档；包内 `BUILD.txt` 如实标记源码有未提交修改。

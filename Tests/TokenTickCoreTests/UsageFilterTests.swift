@@ -117,7 +117,7 @@ struct UsageFilterTests {
                       ('b', 'a', ?, '2026-09-09', 30, 'm2', 'local', '{}'),
                       ('c', 'a', ?, '2026-09-09', 40, 'm1', 'local', '{}'),
                       ('d', 'b', ?, '2026-09-09', 80, 'unknown', 'local', '{}'),
-                      ('e', NULL, NULL, '2026-09-09', 90, NULL, 'api', '{}');
+                      ('e', NULL, NULL, '2026-09-09', 90, NULL, 'local', '{}');
                     UPDATE usage SET input_amount = 6 WHERE thread_id = 'a' AND model = 'm1';
                     UPDATE usage SET input_amount = 100, amount = 100 WHERE thread_id = 'b';
                     """, arguments: [time, time, time, time])

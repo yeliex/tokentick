@@ -17,11 +17,11 @@ struct UsageTableView: View {
                         if isThread { Text(row.thread?.projectName ?? "未知项目").font(.caption).foregroundStyle(.secondary) }
                     }.help(row.title)
                 }.width(min: 180, ideal: 340)
-                TableColumn("Tokens") { row in Text(UsageFormatting.tokens(row.summary.totalTokens)).monospacedDigit() }
+                TableColumn("Tokens") { row in TokenText(value: row.summary.totalTokens).monospacedDigit() }
                     .width(min: 105, ideal: 125)
                 TableColumn("已知金额") { row in Text(UsageFormatting.money(row.summary.knownAmountNanoUSD)).monospacedDigit() }
                     .width(min: 90, ideal: 110)
-                TableColumn("未定价 Tokens") { row in Text(UsageFormatting.tokens(row.summary.unpricedTokens)).foregroundStyle(.secondary).monospacedDigit() }
+                TableColumn("未定价 Tokens") { row in TokenText(value: row.summary.unpricedTokens).foregroundStyle(.secondary).monospacedDigit() }
                     .width(min: 105, ideal: 130)
             }
             Divider()

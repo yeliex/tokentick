@@ -6,6 +6,7 @@ public struct AutomaticSyncSchedule: Sendable {
     private var remoteDue: Date
     private var localAllowed: Date
     private var changedAt: Date?
+    private var localInterval: TimeInterval = 1_800
 
     public init(now: Date = Date()) {
         localDue = now; remoteDue = now; localAllowed = now
@@ -24,20 +25,27 @@ public struct AutomaticSyncSchedule: Sendable {
         changedAt = now
     }
 
+    public mutating func watcherAvailable(_ available: Bool, now: Date = Date()) {
+        localInterval = available ? 1_800 : 60
+        localDue = min(localDue, now.addingTimeInterval(localInterval))
+    }
+
     public mutating func takeDueScope(now: Date = Date()) -> SynchronizationScope? {
         guard now >= nextCheck else { return nil }
-        let scope: SynchronizationScope = now >= remoteDue ? .all : .local
+        let local = now >= max(localAllowed, min(localDue, changedAt ?? .distantFuture))
+        let remote = now >= remoteDue
+        let scope: SynchronizationScope = remote ? (local ? .all : .remote) : .local
         started(scope, now: now)
         return scope
     }
 
     public mutating func started(_ scope: SynchronizationScope, now: Date = Date()) {
         if scope == .all || scope == .local {
-            localDue = now.addingTimeInterval(60)
+            localDue = now.addingTimeInterval(localInterval)
             localAllowed = now.addingTimeInterval(10)
             changedAt = nil
         }
-        if scope == .all || scope == .api { remoteDue = now.addingTimeInterval(300) }
+        if scope == .all || scope == .api || scope == .remote { remoteDue = now.addingTimeInterval(300) }
     }
 
     public mutating func cancelled(now: Date = Date()) {

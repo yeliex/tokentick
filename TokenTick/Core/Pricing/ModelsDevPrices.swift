@@ -52,8 +52,8 @@ struct ModelsDevPrices {
         struct Provider: Decodable { let models: [String: Entry] }
         struct Entry: Decodable {
             let id: String
-            let cost: PriceJSON?
-            let experimental: PriceJSON?
+            let cost: SourceJSON?
+            let experimental: SourceJSON?
         }
     }
     private struct Tier: Decodable {
@@ -65,7 +65,7 @@ struct ModelsDevPrices {
     }
 }
 
-private extension PriceJSON {
+private extension SourceJSON {
     subscript(_ index: Int) -> Self {
         guard case .array(let values) = self, values.indices.contains(index) else { return .null }
         return values[index]

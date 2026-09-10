@@ -1,13 +1,9 @@
 import TokenTickCore
 import SwiftUI
 import AppKit
-import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @Environment(ApplicationModel.self) private var app
-    @State private var directory = ""
-    @State private var choosingDirectory = false
-    @State private var directoryError: String?
     @State private var storage: StorageSummary?
     @State private var storageError: String?
     @State private var storageRefresh = 0
@@ -27,23 +23,10 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("数据来源") {
-                TextField("Codex 目录", text: $directory)
-                HStack {
-                    Button("选择目录…") { choosingDirectory = true }
-                    Button("保存目录") {
-                        let path = (directory as NSString).expandingTildeInPath
-                        var isDirectory: ObjCBool = false
-                        guard !path.isEmpty, FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
-                              isDirectory.boolValue, FileManager.default.isReadableFile(atPath: path) else {
-                            directoryError = "请选择存在且可读取的目录。"; return
-                        }
-                        directory = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL.path
-                        app.codexDirectory = directory; directoryError = nil
-                    }
-                }
-                if let directoryError { Text(directoryError).font(.caption).foregroundStyle(.red) }
+                Text("Codex 目录由 CODEX_HOME 环境变量决定，未设置时使用 ~/.codex。")
+                    .font(.caption).foregroundStyle(.secondary)
                 Toggle("应用运行时自动同步", isOn: Binding(get: { app.automaticSyncEnabled }, set: { app.automaticSyncEnabled = $0 }))
-                Text("文件变化合并后采集；每分钟核对本地日志，每五分钟刷新额度和日用量。价格每日成功获取一次。休眠恢复后补扫，退出后停止。")
+                Text("目录监听触发采集；监听正常时每 30 分钟兜底核对，失效时每分钟核对。每五分钟刷新远端数据，价格每日获取一次。")
                     .font(.caption).foregroundStyle(.secondary)
                 if let issue = app.automaticSyncIssue { Text(issue).font(.caption).foregroundStyle(.secondary) }
             }
@@ -86,7 +69,7 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 580, height: 640)
-        .task { directory = app.codexDirectory; directoryError = nil; await app.start() }
+        .task { await app.start() }
         .task(id: "\(app.refreshID):\(storageRefresh)") {
             guard let store = app.store else { return }
             do {
@@ -96,12 +79,6 @@ struct SettingsView: View {
             } catch {
                 guard !Task.isCancelled else { return }
                 storageError = error.localizedDescription
-            }
-        }
-        .fileImporter(isPresented: $choosingDirectory, allowedContentTypes: [.folder]) { result in
-            switch result {
-            case .success(let url): directory = url.path; directoryError = nil
-            case .failure(let error): directoryError = error.localizedDescription
             }
         }
     }

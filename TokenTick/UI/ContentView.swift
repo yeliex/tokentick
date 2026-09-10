@@ -160,6 +160,7 @@ struct ContentView: View {
                     Text(app.status?.timezone ?? "UTC").foregroundStyle(.secondary)
                     Spacer()
                     Text("\(UsageFormatting.tokens(dashboard.total?.totalTokens)) tokens").monospacedDigit()
+                        .help(UsageFormatting.exactTokens(dashboard.total?.totalTokens))
                 }.font(.callout).padding(16)
                 if section == .daily {
                     UsageTrendView(days: dashboard.days) { date in

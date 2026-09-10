@@ -10,7 +10,7 @@ public struct StatisticsRebuildReport: Codable, Sendable {
 
 private struct StatisticsRebuildCheckpoint: Codable {
     // 聚合口径或断点结构改变时递增，使此前的中间结果重新计算。
-    static let currentVersion = 1
+    static let currentVersion = 2
     let version: Int
     let revision: Int64
     var lastID: Int64 = 0

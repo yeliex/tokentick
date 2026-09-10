@@ -38,7 +38,7 @@ struct UsageRecordsView: View {
                         }.width(min: 145, ideal: 170)
                         TableColumn("模型") { row in Text(row.model ?? "未知").lineLimit(1).help(row.model ?? "未知") }
                             .width(min: 100, ideal: 140)
-                        TableColumn("Tokens") { row in Text(UsageFormatting.tokens(row.totalTokens)).monospacedDigit() }
+                        TableColumn("Tokens") { row in TokenText(value: row.totalTokens).monospacedDigit() }
                             .width(min: 80, ideal: 100)
                         TableColumn("已知 USD") { row in Text(UsageFormatting.money(row.knownAmountNanoUSD)).monospacedDigit() }
                             .width(min: 70, ideal: 90)
@@ -112,12 +112,12 @@ private struct UsageRecordDetail: View {
                 UsageDetailField("长上下文计价", value: record.isLongContext.map { $0 ? "是" : "否" } ?? "未知")
             }
             Section("Tokens") {
-                UsageDetailField("总量", value: UsageFormatting.tokens(record.totalTokens))
-                UsageDetailField("输入（含缓存）", value: UsageFormatting.tokens(record.inputTokens))
-                UsageDetailField("缓存读取", value: UsageFormatting.tokens(record.cacheReadTokens))
-                UsageDetailField("缓存写入", value: UsageFormatting.tokens(record.cacheWriteTokens))
-                UsageDetailField("输出（含推理）", value: UsageFormatting.tokens(record.outputTokens))
-                UsageDetailField("推理", value: UsageFormatting.tokens(record.reasoningTokens))
+                UsageDetailField("总量", value: UsageFormatting.tokens(record.totalTokens)).help(UsageFormatting.exactTokens(record.totalTokens))
+                UsageDetailField("输入（含缓存）", value: UsageFormatting.tokens(record.inputTokens)).help(UsageFormatting.exactTokens(record.inputTokens))
+                UsageDetailField("缓存读取", value: UsageFormatting.tokens(record.cacheReadTokens)).help(UsageFormatting.exactTokens(record.cacheReadTokens))
+                UsageDetailField("缓存写入", value: UsageFormatting.tokens(record.cacheWriteTokens)).help(UsageFormatting.exactTokens(record.cacheWriteTokens))
+                UsageDetailField("输出（含推理）", value: UsageFormatting.tokens(record.outputTokens)).help(UsageFormatting.exactTokens(record.outputTokens))
+                UsageDetailField("推理", value: UsageFormatting.tokens(record.reasoningTokens)).help(UsageFormatting.exactTokens(record.reasoningTokens))
             }
             Section("实际费率 · USD / 百万 tokens") {
                 UsageDetailField("输入", value: record.inputPrice ?? "未知")

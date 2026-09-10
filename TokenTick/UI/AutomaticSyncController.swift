@@ -14,9 +14,9 @@ final class AutomaticSyncController {
 
     init(app: ApplicationModel) { self.app = app }
 
-    func start(home: URL) {
+    func start() {
         stop()
-        self.home = home
+        self.home = LocalUsageScanner.defaultCodexHome
         schedule = AutomaticSyncSchedule()
         suspended = false
         watch()
@@ -39,7 +39,7 @@ final class AutomaticSyncController {
     }
 
     func started(_ scope: SynchronizationScope) { schedule.started(scope); arm() }
-    func finished() { if watcher == nil { watch() }; arm() }
+    func finished() { refreshHome(); if watcher == nil { watch() }; arm() }
     func cancelled() { schedule.cancelled(); arm() }
 
     private func watch() {
@@ -50,7 +50,20 @@ final class AutomaticSyncController {
                 Task { @MainActor in self?.changed() }
             }
             app?.automaticSyncIssue = nil
-        } catch { app?.automaticSyncIssue = error.localizedDescription }
+            schedule.watcherAvailable(true)
+        } catch {
+            app?.automaticSyncIssue = error.localizedDescription
+            schedule.watcherAvailable(false)
+        }
+    }
+
+    private func refreshHome() {
+        let current = LocalUsageScanner.defaultCodexHome
+        guard current != home else { return }
+        home = current
+        watch()
+        schedule = AutomaticSyncSchedule()
+        schedule.watcherAvailable(watcher != nil)
     }
 
     private func changed() {
@@ -63,6 +76,7 @@ final class AutomaticSyncController {
     private func recover() {
         guard home != nil else { return }
         suspended = false
+        refreshHome()
         watch()
         schedule.recovered()
         arm()
@@ -71,10 +85,13 @@ final class AutomaticSyncController {
     private func arm() {
         timer?.cancel(); timer = nil
         guard home != nil, !suspended, let app, !app.isSyncing else { return }
-        let delay = max(0.01, schedule.nextCheck.timeIntervalSinceNow)
+        // 只检查进程当前环境和监听状态，不按这个频率扫描目录。
+        let delay = min(30, max(0.01, schedule.nextCheck.timeIntervalSinceNow))
         timer = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
             guard let self, let app = self.app, !app.isSyncing, !self.suspended else { return }
+            self.refreshHome()
+            if self.watcher == nil { self.watch() }
             if let scope = self.schedule.takeDueScope() { app.synchronize(scope) }
             else { self.arm() }
         }

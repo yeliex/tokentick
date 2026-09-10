@@ -20,7 +20,7 @@ struct UsageRecordTests {
                     case .project: .project(summary.group)
                     default: .model(summary.group)
                     }
-                    let records = try fixture.store.usageRecords(query, scope: scope).rows
+                    let records = try fixture.store.usageRecords(query, scope: scope).rows.filter { $0.source == "local" || $0.threadID != nil }
                     #expect(records.reduce(Int64(0)) { $0 + $1.totalTokens } == summary.totalTokens)
                     #expect(records.count == summary.records)
                 }

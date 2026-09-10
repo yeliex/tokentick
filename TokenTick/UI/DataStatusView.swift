@@ -20,9 +20,9 @@ struct DataStatusView: View {
             }
             Section("模型价格") {
                 LabeledContent("最近同步日期", value: app.status?.priceLastSuccessDate ?? "尚未同步")
-                Button("同步价格并重算当日金额") { app.synchronize(.prices) }.disabled(app.isSyncing)
+                Button("同步价格并重算历史金额") { app.synchronize(.prices) }.disabled(app.isSyncing)
                 ForEach(models.filter { $0.unpricedRecords > 0 }, id: \.group) { model in
-                    LabeledContent(model.group ?? "未知模型", value: "\(model.unpricedTokens.formatted()) tokens 未定价")
+                    LabeledContent(model.group ?? "未知模型", value: "\(UsageFormatting.tokens(model.unpricedTokens)) tokens 未定价").help(UsageFormatting.exactTokens(model.unpricedTokens))
                 }
             }
             Section("服务端统计") {
@@ -32,7 +32,7 @@ struct DataStatusView: View {
                     LabeledContent("最近接口尝试", value: UsageFormatting.timestamp(report.observedAt))
                     LabeledContent("本次额度账号", value: report.accountID ?? "未确认")
                     LabeledContent("本次日桶", value: report.dailyBucketCount.map { "\($0) 条" } ?? "未取得")
-                    LabeledContent("本次保存窗口", value: "\(report.savedWindows) 条 · \(report.skippedWindows) 条缺少边界")
+                    LabeledContent("本次保存周额度观测", value: "\(report.savedWindows) 条 · \(report.skippedWindows) 条缺少边界")
                     if let issue = report.issue {
                         Label(issue, systemImage: "exclamationmark.triangle").font(.callout).textSelection(.enabled)
                     }
@@ -43,11 +43,11 @@ struct DataStatusView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 ForEach(Array(days.enumerated()), id: \.offset) { _, day in
                     LabeledContent {
-                        Text("\(day.tokens.formatted()) tokens")
+                        TokenText(value: day.tokens)
                     } label: {
                         VStack(alignment: .leading) {
                             Text(day.date)
-                            Text("账号 \(day.accountID.prefix(8))…").font(.caption).foregroundStyle(.secondary).help(day.accountID)
+                            Text(day.accountID.map { "账号 \($0.prefix(8))…" } ?? "未知账号").font(.caption).foregroundStyle(.secondary).help(day.accountID ?? "未知账号")
                         }
                     }
                 }

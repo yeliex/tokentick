@@ -22,6 +22,61 @@ struct UsageStoreTests {
         #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("Backups").path))
     }
 
+    @Test func weeklyMigrationKeepsWeekEvidenceAndBacksUpOldFiveHourHistory() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("usage.sqlite")
+        let old = try DatabaseQueue(path: url.path)
+        try StoreSchema.migrator.migrate(old, upTo: "v4.statistics-recovery")
+        try old.write { db in
+            try db.execute(sql: """
+                INSERT INTO limit_windows(account_id,limit_id,window_kind,starts_at,resets_at,window_duration_mins,used_percent,last_observed_at,source_json) VALUES
+                ('a','codex','primary',0,18000,300,10,100,'{}'),
+                ('a','codex','secondary',0,604800,10080,90,100,'{}');
+                INSERT INTO api_daily_usage VALUES ('a','2026-09-09',123,100);
+                INSERT INTO app_metadata VALUES ('api_limits:a','{}'), ('statistics_cache_revision:UTC','0');
+                """)
+        }
+        try old.close()
+        let store = try UsageStore(databaseURL: url)
+        #expect(try store.tableCounts()["weekly_limit_observations"] == 1)
+        #expect(try store.apiDailyUsage().first?.tokens == 123)
+        try store.pool.read { db throws -> Void in
+            #expect(try !db.tableExists("limit_windows"))
+            #expect(try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key='api_limits:a'") == nil)
+            #expect(try !UsageStore.statisticsAreCurrent(db, timezone: "UTC"))
+        }
+        let backups = try FileManager.default.contentsOfDirectory(at: root.appendingPathComponent("Backups"), includingPropertiesForKeys: nil)
+        let backup = try DatabaseQueue(path: #require(backups.first(where: { $0.pathExtension == "sqlite" })).path)
+        #expect(try backup.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM limit_windows") } == 2)
+    }
+
+    @Test func globalKeepsLocalUnknownAccountsAndAllAggregatesExcludeUnassignedAPI() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        try store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO threads(thread_id,title,project_name) VALUES ('t','任务','项目');
+                INSERT INTO usage(dedup_key,account_id,thread_id,usage_date,total_tokens,source,evidence_json) VALUES
+                ('local-known','a','t','2026-09-09',10,'local','{}'),
+                ('local-unknown',NULL,'t','2026-09-09',20,'local','{}'),
+                ('api-unassigned','a',NULL,'2026-09-09',100,'api','{}'),
+                ('api-assigned','a','t','2026-09-09',5,'api','{}');
+                """)
+        }
+        for cached in [false, true] {
+            if cached { _ = try store.rebuildStatistics(timezone: "UTC") }
+            for grouping in UsageGrouping.allCases {
+                #expect(try store.usageReport(UsageQuery(grouping: grouping, timezone: "UTC")).rows.reduce(0) { $0 + $1.totalTokens } == 35)
+            }
+            #expect(try store.usageReport(UsageQuery(grouping: .total, timezone: "UTC", account: .account("a"))).rows.first?.totalTokens == 15)
+            #expect(try store.usageReport(UsageQuery(grouping: .total, timezone: "UTC", account: .unknown)).rows.first?.totalTokens == 20)
+        }
+        #expect(try store.usageRecords().rows.count == 4)
+    }
+
     @Test func unknownFutureMigrationRefusesToOpen() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -99,7 +154,9 @@ struct UsageStoreTests {
             #expect(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM statistics_rebuild") == 0)
             return try ["usage", "statistics", "app_metadata"].map { try Row.fetchAll(db, sql: "SELECT * FROM \($0) ORDER BY 1") }
         }
-        #expect(before == after)
+        #expect(before[0] == after[0] && before[1] == after[1])
+        #expect(try current.pool.read { try String.fetchOne($0, sql: "SELECT value FROM app_metadata WHERE key = 'reprice_checkpoint'") } == "{\"keep\":true}")
+        #expect(try !current.status().cacheCurrent)
         let backups = try FileManager.default.contentsOfDirectory(at: root.appendingPathComponent("Backups"), includingPropertiesForKeys: nil)
         let backup = try DatabaseQueue(path: #require(backups.first(where: { $0.pathExtension == "sqlite" })).path)
         try backup.read { db in

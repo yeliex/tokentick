@@ -18,13 +18,13 @@ struct PriceStoreTests {
         #expect(try save("2026-09-11").alreadySynced)
         #expect(try store.tableCounts()["prices"] == 2)
         try store.pool.read { db throws -> Void in
-            #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-08") == nil)
+            #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-08")?.standard.input == 10)
             #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-10")?.standard.input == 10)
             #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-12")?.standard.input == 12)
         }
     }
 
-    @Test func repricingDoesNotBackdatePricesAndPreservesFacts() throws {
+    @Test func firstSnapshotPricesEarlierRequestsWithoutChangingFacts() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
@@ -39,14 +39,16 @@ struct PriceStoreTests {
                     """, arguments: [date, date])
             }
         }
+        #expect(try store.needsRepricing())
         let first = try store.repriceUsage()
+        #expect(try !store.needsRepricing())
         #expect(first.examined == 2)
-        #expect(first.fullyPriced == 1)
-        #expect(first.unpriced == 1)
+        #expect(first.fullyPriced == 2)
+        #expect(first.unpriced == 0)
         #expect(try store.repriceUsage().changed == 0)
         try store.pool.read { db throws -> Void in
             let rows = try Row.fetchAll(db, sql: "SELECT * FROM usage ORDER BY usage_date")
-            #expect(rows[0]["amount"] as Int64? == nil)
+            #expect(rows[0]["amount"] as Int64? == 10_100_000)
             #expect(rows[1]["amount"] as Int64? == 10_100_000)
             #expect(rows[1]["input_price"] as String? == "10")
             #expect(rows[1]["cache_write_amount"] as Int64? == 2_500_000)

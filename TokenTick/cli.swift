@@ -61,11 +61,14 @@ struct TokenTickCommand {
                 let report = try await CodexAPIClient.synchronize(store: store, executable: options.codexExecutable, codexHome: options.codexHome)
                 try printJSON(report)
                 if report.issue != nil || !report.accountAvailable { exit(1) }
+            case "current-limits":
+                let store = try UsageStore(databaseURL: options.database)
+                let report = try await CodexAPIClient.synchronize(store: store, executable: options.codexExecutable, codexHome: options.codexHome)
+                try printJSON(report.currentLimits)
             case "limits":
-                try printJSON(UsageStore(databaseURL: options.database).limitWindowPage(LimitQuery(
+                try printJSON(UsageStore(databaseURL: options.database).weeklyLimitHistory(LimitQuery(
                     timezone: options.timezone, fromDate: options.fromDate, throughDate: options.throughDate,
-                    account: options.account, limitID: options.limitID, kind: options.windowKind,
-                    latestOnly: options.latestLimits, limit: options.limit, offset: options.offset)))
+                    account: options.account, limitID: options.limitID, limit: options.limit, offset: options.offset)))
             case "api-usage":
                 try printJSON(APIUsageOutput(rows: UsageStore(databaseURL: options.database).apiDailyUsage(limit: options.limit)))
             case "status": try printJSON(UsageStore(databaseURL: options.database).status())
@@ -111,7 +114,7 @@ struct TokenTickCommand {
     private struct Options {
         var command: String
         var database = UsageStore.defaultDatabaseURL
-        var codexHome = LocalUsageScanner.defaultCodexHome
+        var codexHome: URL { LocalUsageScanner.defaultCodexHome }
         var codexExecutable: URL?
         var grouping = UsageGrouping.day
         var scope = SynchronizationScope.all
@@ -125,14 +128,12 @@ struct TokenTickCommand {
         var limit = 100
         var json = false
         var limitID: String?
-        var windowKind: LimitWindowKind?
-        var latestLimits = false
 
         init(arguments: [String]) throws {
             command = arguments.first ?? "help"
             if ["--help", "-h"].contains(command) { command = "help" }
             if command == "--version" { command = "version" }
-            guard ["help", "version", "scan", "sync", "usage", "status", "prices", "sync-prices", "reprice", "sync-api", "limits", "api-usage", "rebuild", "records"].contains(command) else {
+            guard ["help", "version", "scan", "sync", "usage", "status", "prices", "sync-prices", "reprice", "sync-api", "current-limits", "limits", "api-usage", "rebuild", "records"].contains(command) else {
                 throw CommandError.invalid("不支持的命令：\(command)。")
             }
             var index = 1
@@ -140,7 +141,6 @@ struct TokenTickCommand {
                 let option = arguments[index]
                 index += 1
                 if option == "--json" { json = true; continue }
-                if option == "--latest", command == "limits" { latestLimits = true; continue }
                 if option == "--unknown-account", ["usage", "records", "limits"].contains(command) {
                     guard account == .all else { throw CommandError.invalid("账号筛选参数不能重复。") }
                     account = .unknown
@@ -160,12 +160,10 @@ struct TokenTickCommand {
                 index += 1
                 switch option {
                 case "--database": database = URL(fileURLWithPath: (value as NSString).expandingTildeInPath)
-                case "--codex-home" where ["scan", "sync-api", "sync"].contains(command):
-                    codexHome = URL(fileURLWithPath: (value as NSString).expandingTildeInPath, isDirectory: true)
-                case "--codex-bin" where command == "sync-api" || command == "sync":
+                case "--codex-bin" where ["sync-api", "current-limits", "sync"].contains(command):
                     codexExecutable = URL(fileURLWithPath: (value as NSString).expandingTildeInPath)
                 case "--scope" where command == "sync":
-                    guard let scope = SynchronizationScope(rawValue: value) else { throw CommandError.invalid("同步范围为 all、local、prices 或 api。") }
+                    guard let scope = SynchronizationScope(rawValue: value) else { throw CommandError.invalid("同步范围为 all、local、prices、api 或 remote。") }
                     self.scope = scope
                 case let flag where ["usage", "records"].contains(command) && ["--thread", "--project", "--model", "--day"].contains(flag):
                     switch option {
@@ -179,9 +177,6 @@ struct TokenTickCommand {
                     guard let order = UsageSort(rawValue: value) else { throw CommandError.invalid("排序为 automatic、tokens、amount 或 name。") }
                     sort = order
                 case "--limit-id" where command == "limits": limitID = value
-                case "--window" where command == "limits":
-                    guard let kind = LimitWindowKind(rawValue: value) else { throw CommandError.invalid("窗口为 primary 或 secondary。") }
-                    windowKind = kind
                 case "--group" where command == "usage":
                     guard let group = UsageGrouping(rawValue: value) else { throw CommandError.invalid("无效的统计维度。") }
                     grouping = group
@@ -223,7 +218,7 @@ struct TokenTickCommand {
     用法：tokentick <命令> [参数]
 
       scan       增量采集 sessions 与 archived_sessions（含 .jsonl.zst）
-      sync       采集、价格、API 与统计缓存；--scope all|local|prices|api
+      sync       采集、价格、API 与统计缓存；--scope all|local|prices|api|remote
       usage      查询用量；--group total|day|thread|project|model，--limit 100
       records    分页查看用量明细与证据（JSON）
       rebuild    从事实表重建统计缓存；--timezone Asia/Shanghai
@@ -232,14 +227,15 @@ struct TokenTickCommand {
       reprice    按请求日期的历史价格重算分项金额
       sync-api   通过 Codex app-server 保存每日总量和额度观测
       api-usage  查看服务端每日总量缓存（当前不与本地相加）
-      limits     查看已观测额度周期，百分比为最后观测值
+      limits     查看历史周额度重置，百分比为重置前最后观测值
+      current-limits 从接口读取所有实时额度（JSON）
       status     输出来源状态、统计时区、事实／缓存版本与表记录数
       --version  显示版本
       --help     显示帮助
 
     通用参数：--database <SQLite 路径>，--json
-    scan／sync-api／sync 参数：--codex-home <Codex 数据目录>
-    sync-api／sync 参数：--codex-bin <Codex 可执行文件路径>
+    Codex 目录每次从 CODEX_HOME 读取，未设置时为 ~/.codex。
+    sync-api／current-limits／sync 参数：--codex-bin <Codex 可执行文件路径>
     usage／records 参数：--from YYYY-MM-DD --through YYYY-MM-DD（含首尾日期）
                 --timezone <IANA 时区> --offset 0 --account <账号 ID> 或 --unknown-account
     usage／records 组合筛选：--thread <ID> --project <名称> --model <模型> --day YYYY-MM-DD
@@ -247,9 +243,9 @@ struct TokenTickCommand {
     未知归属：--unknown-thread／--unknown-project／--unknown-model／--unknown-date
     不同维度取交集，同一维度不能重复；排序后分页。
     limits 参数：--from YYYY-MM-DD --through YYYY-MM-DD --timezone <IANA 时区>
-                --account <账号 ID> --limit-id <额度桶> --window primary|secondary
-                --latest（每账号最近一次快照）--limit 100 --offset 0
-    额度日期匹配与所选日期有重叠的周期，不拆分窗口或推算 token／金额。
+                --account <账号 ID> 或 --unknown-account，--limit-id <额度桶>
+                --limit 100 --offset 0
+    额度日期按检测到的周额度重置筛选，不从百分比推算 token／金额。
     scan 存在解析问题时返回 1；参数错误返回 2。
     缺失价格和模式保持未知，金额单位为 nanoUSD（1 USD = 10^9 nanoUSD）。
     """
