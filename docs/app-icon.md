@@ -38,7 +38,7 @@ Debug 和通用 Release 构建成功，分别核对生成的 Info plist、Aqua�
 
 证据位于 `.build/research/icon-composer/app-verification.json`、`app-debug-catalog.json`、`app-release-catalog.json` 和 `app-<default|dark>-<26|27>-<32|256>.png`；构建日志为 `.build/logs/native-icon-app-build.log`、`.build/logs/native-icon-release-build.log`。原型及官方资料也保留在该研究目录，不进入分发包。
 
-干净提交 `b8aa16dd19cc` 已经 `script/package_release.sh --sign 'Developer ID Application: Yexin Wang (47YTFN9LPP)'` 生成通用签名验证包：`.build/releases/signed-3EeOjY/TokenTick-0.1.0-signed-b8aa16dd19cc.zip`。App／CLI 签名与双架构检查通过；ZIP SHA-256、包内图标资源字节、Info plist、CLI 在 `/tmp` 下使用独立空库启动和 v4 schema 均已核对，证据为同目录 `verification.json`。该包尚未公证，不代表 Gatekeeper 或系统交互验收通过。
+历史验证（当前已改为 ad-hoc 分发）：干净提交 `b8aa16dd19cc` 曾经 `script/package_release.sh --sign 'Developer ID Application: Yexin Wang (47YTFN9LPP)'` 生成通用签名验证包：`.build/releases/signed-3EeOjY/TokenTick-0.1.0-signed-b8aa16dd19cc.zip`。App／CLI 签名与双架构检查通过；ZIP SHA-256、包内图标资源字节、Info plist、CLI 在 `/tmp` 下使用独立空库启动和 v4 schema 均已核对，证据为同目录 `verification.json`。该包尚未公证，不代表 Gatekeeper 或系统交互验收通过。
 
 ## 剩余验收
 

@@ -1,5 +1,7 @@
 # Release 本地验证
 
+当前分发决定（2026-09-10）：按用户要求参考 Shuttle，固定使用 ad-hoc 签名和 ZIP 直接分发，不使用付费 Apple Developer Program、不提交公证。首次下载后的“仍要打开”属于安装流程；公证不再是发布验收项。下文早期 Developer ID 试验保留为历史证据，其证书入口和公证待办已废弃；当前状态见 [验收状态](acceptance-status.md)。
+
 验证日期：2026-09-10。环境为 Apple M2 Pro、macOS 27、Xcode 27 beta（27A5252f），在 arm64 宿主机运行。App／CLI 源码提交 `3932dac0246a74d7e7d45bf035d673bc5fc68ab8`，本轮另加入打包脚本和文档；包内 `BUILD.txt` 如实标记源码有未提交修改。
 
 ## 产物与安装
@@ -67,7 +69,7 @@ Gatekeeper `spctl --assess --type execute` 返回拒绝（退出码 3）。当�
 
 原始证据位于 `.build/audit/compressed-release-8zwdg2zg/verification.json` 及同目录的 CLI JSON、time 和 stderr；脚本为 `.build/audit/compressed-release-benchmark.py`。运行日志 `.build/logs/compressed-release-benchmark.log`，Release 价格测试日志 `.build/logs/release-pricing-tests.log`。这关闭了压缩日志及现有历史价格的本机 Release 基线缺口，不替代多设备 API 对账、完整原生 UI 和外部平台／分发验收。
 
-## Developer ID 签名验证
+## 历史 Developer ID 签名验证（已不采用）
 
 同日继续核对本机签名环境，存在有效的 `Developer ID Application: Yexin Wang (47YTFN9LPP)`。`package_release.sh --sign '<完整证书名称>'` 显式选择证书；默认不传参数仍使用 ad-hoc。最终组装后先签署 GRDB 资源包，再分别签署 App 与独立 CLI，使用 Apple 安全时间戳，两个可执行文件保留 hardened runtime，不新增沙盒或权限例外。
 
@@ -88,3 +90,15 @@ App 与 CLI 的 Gatekeeper 评估均返回退出码 3、`source=Unnotarized Deve
 测试数据明确为隔离输入：先保存 13 tokens 并生成统计缓存，持扫描锁再提交 7 tokens，使旧缓存过期；随后追加 11 tokens 但暂不提交。新 CLI 返回 20 tokens，耗时 0.0110 秒，既不返回过期缓存的 13，也不读取未提交后的 31。提交待写事务但继续持有扫描锁时，再启动的 CLI 返回 31 tokens，耗时 0.0111 秒；释放扫描锁后查询仍为 31，耗时 0.0102 秒。耗时包含进程启动，数据规模很小，不作为全历史查询性能基准；数据库完整性检查为 `ok`。
 
 这补充了现有单进程持锁测试，验证新 CLI 在真正的跨进程扫描锁与 SQLite 写事务并存时仍可读取已提交快照。没有修改真实 Codex 日志或产品默认数据库。脚本位于 `.build/audit/wal-reader-benchmark.py`，原始 CLI 输出及计时位于 `.build/audit/wal-reader-nvwwtqab/verification.json` 和同目录文件。
+
+## 当前 ad-hoc 分发验证（2026-09-10）
+
+按用户要求核对 Shuttle 的 `scripts/package-macos.mjs`（`codesign --sign -`）和 README 的首次打开说明后，TokenTick 移除付费证书入口。当前打包命令仅为 `./script/package_release.sh`，显式对 GRDB 资源包、App 和 CLI 使用 ad-hoc 签名。工程原本没有配置开发者团队，本次未加入账号、证书、认证或公证依赖。
+
+- App／CLI 的通用 Release 构建和最终签名均通过。产物为 `.build/releases/local-MZvTj9/TokenTick-0.1.0-local-f00d272aa59c.zip`；基于 `f00d272aa59c` 和本次打包／文档修改，构建信息如实记录 `source_dirty=true`。
+- 解压至带空格目录后，App 与 CLI 的 arm64／x86_64 均为 `Signature=adhoc`、`TeamIdentifier=not set`，没有 `Authority` 证书链；嵌套资源包同样为 ad-hoc，全部架构的严格签名验证通过。双架构签名验证不等于 Intel 真机执行。
+- ZIP SHA-256 为 `c1b706cbac8d876061a1ee87e0fbca44bb955253f7d6c785848395dd8d006176`，重新计算一致。包内包含新的安装说明。
+- 解压后的 CLI 从 `/tmp` 使用隔离空库执行 `status` 成功，迁移到 `v4.statistics-recovery`，SQLite 完整性为 `ok`。旧 `--sign` 入口和未知参数均在构建前退出 2，Shell 语法与 diff 检查通过。
+- 证据为同目录 `verification.json`、`cli-status.json`、ZIP 内 `BUILD.txt` 和两份签名明细；构建日志为 `.build/logs/release-TokenTick-build.log`、`.build/logs/release-tokentick-build.log`。
+
+不提交 Apple 公证、不发布 GitHub Release。当前不把 Gatekeeper 自动放行列为分发条件；首次下载后的“仍要打开”流程已写入安装说明，但本次未进行浏览器下载及原生确认交互验收。其他 API、UI、性能与 macOS 26／Intel 真机验收保持原范围。

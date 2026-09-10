@@ -1,12 +1,18 @@
-# TokenTick Release 验证包
+# TokenTick 安装说明
 
 此包用于本地构建和安装验证，要求 macOS 26 或更新版本。App 与 CLI 均包含 arm64 和 x86_64；构建包含某架构不代表已经在对应设备运行验证。
 
-签名方式以 `BUILD.txt` 为准：`ad-hoc` 是本机临时签名；`developer-id` 是带 Apple 安全时间戳的 Developer ID 签名，App 与 CLI 的签名明细分别保存在 `App-signature.txt` 和 `CLI-signature.txt`。签名不等于公证；当前脚本生成的包仍标记 `notarized=false`，不能作为已经通过 Gatekeeper 的正式下载版本。不通过关闭系统安全检查或删除隔离属性绕过分发验收。
+App、CLI 和嵌套资源包固定使用 ad-hoc 签名，无需付费 Apple Developer Program、签名证书或开发者团队。`BUILD.txt` 记录 `signing=ad-hoc`、`notarized=false`，App 与 CLI 的签名明细分别保存在 `App-signature.txt` 和 `CLI-signature.txt`。这与 Shuttle 的直接分发方式一致，未公证不作为发布阻塞条件。
 
 ## App
 
 解压后可直接打开 `TokenTick.app`；长期使用时，退出已运行的 TokenTick，再将其放入个人 `~/Applications` 目录。升级时替换 App，不删除数据库。首次启动会自动采集本机 Codex 日志；验证专用数据可通过 `TOKENTICK_DATABASE` 和 `TOKENTICK_AUTOSYNC=0` 隔离。
+
+### 首次下载后打开
+
+通过浏览器下载的包可能被 macOS 阻止打开。确认来自 TokenTick 仓库的发布包后，先尝试打开 App，再进入“系统设置 → 隐私与安全性”，选择“仍要打开”并确认。流程见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。受管理的 Mac 可能限制此操作，需要遵循设备管理员的策略。
+
+CLI 是独立可执行文件，下载后的首次执行也可能需要单独确认；App 的确认不代表 CLI 自动获准。安装脚本不会关闭 Gatekeeper 或清除隔离属性。若提示文件损坏，应先重新下载并核对校验值。
 
 ## CLI
 
