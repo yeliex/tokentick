@@ -42,6 +42,22 @@ struct LimitQueryTests {
         #expect(try UsageStore(databaseURL: store.databaseURL).weeklyLimitHistory().rows.map(\.id) == ids)
     }
 
+    @Test func driftingDeadlinesDoNotCreateResetsAndPartialDropsKeepManualResetEvidence() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        for (observed, reset, percent) in [(100.0, 700, 0.0), (110, 710, 0), (120, 720, 30), (130, 730, 40), (140, 730, 5)] {
+            let snapshot = CurrentLimitSnapshot(accountID: "a", observedAt: observed, source: "api", scopeKey: "account:a",
+                windows: [CurrentLimitWindow(limitID: "codex", kind: "secondary", usedPercent: percent, durationMinutes: 10080, resetsAt: Int64(reset))], sourceJSON: "{}")
+            try store.pool.write { db in _ = try UsageStore.saveWeeklyObservations(snapshot, db: db) }
+        }
+        let rows = try store.weeklyLimitHistory().rows
+        #expect(rows.count == 1)
+        #expect(rows.first?.kind == "manual" && rows.first?.usedPercentBeforeReset == 40)
+        #expect(rows.first?.detectedAt == 140)
+        #expect(try store.tableCounts()["weekly_limit_observations"] == 5)
+    }
+
     @Test func logOnlyQuotaBackfillsWeeklyHistoryWithoutTokenUsageOrDuplicateRescans() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

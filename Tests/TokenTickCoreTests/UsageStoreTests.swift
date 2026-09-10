@@ -86,6 +86,7 @@ struct UsageStoreTests {
             try db.execute(sql: "INSERT INTO grdb_migrations (identifier) VALUES ('v999.future')")
         }
         #expect(throws: UsageStore.StoreError.newerSchema) { try UsageStore(databaseURL: url) }
+        #expect(UsageStore.StoreError.newerSchema.localizedDescription.contains("请更新 TokenTick"))
         #expect(try store.pool.read { db in try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations") }.contains("v999.future"))
     }
 

@@ -56,7 +56,8 @@ extension UsageStore {
         let from = try query.boundary(query.fromDate, afterDay: false, timezone: timezone)
         let until = try query.boundary(query.throughDate, afterDay: true, timezone: timezone)
         return try pool.read { db in
-            var clauses = ["previous_reset IS NOT NULL", "(resets_at != previous_reset OR (used_percent = 0 AND previous_percent > 0))"]
+            // 未使用的额度桶会不断移动截止时间；截止时间变化本身不证明发生了重置。
+            var clauses = ["previous_reset IS NOT NULL", "((observed_at >= previous_reset AND resets_at > previous_reset) OR used_percent < previous_percent)"]
             var arguments: StatementArguments = ["limit": query.limit + 1, "offset": query.offset]
             switch query.account {
             case .all: break
@@ -69,8 +70,7 @@ extension UsageStore {
             if let until { clauses.append("\(eventTime) < :until"); arguments += ["until": until] }
             let rows = try Row.fetchAll(db, sql: """
                 WITH ordered AS (
-                    SELECT *, LAG(id) OVER timeline AS previous_id,
-                        LAG(observed_at) OVER timeline AS previous_observed,
+                    SELECT *, LAG(observed_at) OVER timeline AS previous_observed,
                         LAG(resets_at) OVER timeline AS previous_reset,
                         LAG(used_percent) OVER timeline AS previous_percent,
                         LAG(source_json) OVER timeline AS previous_source
@@ -79,7 +79,7 @@ extension UsageStore {
                 )
                 SELECT *, CASE
                     WHEN observed_at >= previous_reset AND resets_at > previous_reset THEN 'natural'
-                    WHEN account_id IS NOT NULL AND used_percent < previous_percent THEN 'manual'
+                    WHEN account_id IS NOT NULL AND observed_at < previous_reset AND used_percent < previous_percent THEN 'manual'
                     ELSE 'unconfirmed' END AS reset_kind
                 FROM ordered WHERE \(clauses.joined(separator: " AND "))
                 ORDER BY observed_at DESC, id LIMIT :limit OFFSET :offset

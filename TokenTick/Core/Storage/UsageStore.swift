@@ -5,8 +5,13 @@ public final class UsageStore: Sendable {
     let pool: DatabasePool
     public let databaseURL: URL
 
-    public enum StoreError: Error, Equatable {
+    public enum StoreError: Error, LocalizedError, Equatable {
         case newerSchema
+        public var errorDescription: String? {
+            switch self {
+            case .newerSchema: "数据库由更新版本创建，请更新 TokenTick 后再打开。已有数据未修改。"
+            }
+        }
     }
 
     public static var defaultDatabaseURL: URL {
