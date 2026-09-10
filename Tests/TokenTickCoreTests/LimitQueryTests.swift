@@ -4,19 +4,94 @@ import Testing
 @testable import TokenTickCore
 
 struct LimitQueryTests {
-    @Test func naturalAndEarlyRecoveryUseConfirmedAccountTimelineAndStablePagination() throws {
+    @Test func idleZerosWaitForUsageAndRecoveryDiffersFromWindowStart() throws {
         let f = try Fixture(); defer { f.clean() }
-        // 第二次零值是独立后续观测；未使用新窗口的截止漂移不形成额外重置。
-        for (time, reset, percent) in [(100.0, 200, 80.0), (201, 900, 0), (300, 900, 50),
-                                       (350, 1000, 0), (360, 1010, 0), (370, 1020, 0), (400, 1100, 2)].reversed() {
-            try f.add(time, reset, percent)
+        let week = 604800
+        try f.add(100, week + 100, 100)
+        for time in [1000,1300,1600] { try f.add(Double(time), week + time, 0) }
+        var rows = try f.store.weeklyLimitHistory().rows
+        #expect(rows.count == 1)
+        // 第一条消息时的零值早于首次正用量；两者对应同一固定窗口。
+        try f.add(1800, week + 1800, 0)
+        try f.add(1900, week + 1800, 1)
+        try f.add(2000, week + 1801, 2)
+        rows = try f.store.weeklyLimitHistory().rows
+        #expect(rows.count == 2)
+        let window = try #require(rows.first)
+        #expect(window.startedAtInferred == 1800 && window.firstObservedAt == 1800)
+        #expect(window.firstPositiveAt == 1900 && window.recoveryObservedAt == 1000)
+        #expect(window.lastUsedPercent == 2 && window.finalUsedPercent == nil)
+        #expect(window.totalTokens == nil && window.amountNanoUSD == nil)
+        #expect(rows.last?.lastUsedPercent == 100)
+    }
+
+    @Test func deadlineJitterAndPercentDropsDoNotSplitAWindow() throws {
+        let f = try Fixture(); defer { f.clean() }
+        let week = 604800
+        for (time,reset,percent) in [(100.0,week+100,40.0),(110,week+102,5),(120,week+113,41),
+                                     (130,week+113,6),(140,week+113,7)] {
+            try f.add(time,reset,percent)
         }
         let rows = try f.store.weeklyLimitHistory().rows
-        #expect(rows.filter { $0.kind == "natural" }.count == 1)
-        let early = try #require(rows.first { $0.kind == "manual_suspected" })
-        #expect(early.usedPercentBeforeReset == 50 && early.resetAfter == 300 && early.resetBefore == 350)
-        #expect(early.confirmedAt == 360 && early.resetAt == nil && early.finalUsedPercent == nil)
-        #expect(early.totalTokens == nil && early.amountNanoUSD == nil)
+        #expect(rows.count == 1 && rows[0].scheduledResetAt == week+113)
+        #expect(rows[0].lastUsedPercent == 7 && rows[0].peakUsedPercent == 41)
+        #expect(rows[0].recoveryObservedAt == nil)
+        // 同一天真正开始的另一窗口保留；不能按日合并。
+        try f.add(4000,week+4000,0); try f.add(4010,week+4000,1)
+        #expect(try f.store.weeklyLimitHistory().rows.count == 2)
+    }
+
+    @Test func earlierDeadlineEvidenceKeepsPublishedWindowIdentity() throws {
+        let f = try Fixture(); defer { f.clean() }
+        try f.add(100,700,10); try f.add(110,701,20)
+        let before = try #require(f.store.weeklyLimitHistory().rows.first)
+        try f.add(90,699,5)
+        let after = try #require(f.store.weeklyLimitHistory().rows.first)
+        #expect(after.id == before.id && after.firstObservedAt == 90 && after.lastUsedPercent == 20)
+    }
+
+    @Test func expiredForkAndKnownAccountDeadlineConflictsDoNotCreateWindows() throws {
+        let f = try Fixture(); defer { f.clean() }
+        try f.add(100, 200, 80)
+        try f.add(201, 180, 5); try f.add(202, 190, 8)
+        try f.add(203, 900, 2, exclusion: "fork_replay")
+        try f.add(204, 900, 2, scope: "thread:one")
+        try f.add(204, 800, 95, scope: "thread:two")
+        let result = try f.store.weeklyLimitHistory()
+        #expect(result.rows.count == 1 && result.rows[0].lastUsedPercent == 80)
+        #expect(result.excludedObservations["expired"] == 2)
+        #expect(result.excludedObservations["fork_replay"] == 1)
+        #expect(result.excludedObservations["conflicting_deadlines"] == 2)
+    }
+
+    @Test func globalWindowMergesEvidenceWhileAccountQueriesNeverBorrowUnknownUsage() throws {
+        let f = try Fixture(); defer { f.clean() }
+        try f.add(100, 200, 80, account: nil, scope: "thread:x")
+        try f.add(110, 201, 85, account: "a")
+        var global = try f.store.weeklyLimitHistory().rows
+        #expect(global.count == 1 && global[0].lastUsedPercent == 85)
+        #expect(global[0].accountID == nil && global[0].unknownAccountObservations == 1)
+        #expect(global[0].observedAccountIDs == ["a"])
+        #expect(try f.store.weeklyLimitHistory(LimitQuery(account: .account("a"))).rows.first?.lastUsedPercent == 85)
+        try f.add(120, 202, 90, account: nil, scope: "thread:y")
+        global = try f.store.weeklyLimitHistory().rows
+        #expect(global.count == 1 && global[0].lastUsedPercent == 90)
+        #expect(try f.store.weeklyLimitHistory(LimitQuery(account: .account("a"))).rows.first?.lastUsedPercent == 85)
+        #expect(try f.store.weeklyLimitHistory(LimitQuery(account: .account("b"))).rows.isEmpty)
+        #expect(try f.store.weeklyLimitHistory(LimitQuery(account: .unknown)).rows.first?.lastUsedPercent == 90)
+        try f.add(120, 202, 92, account: nil, scope: "thread:z")
+        let conflict = try #require(f.store.weeklyLimitHistory().rows.first)
+        #expect(conflict.lastUsedPercent == nil && conflict.conflictingObservations == 1)
+        #expect(conflict.peakUsedPercent == 92)
+    }
+
+    @Test func anchoredToleranceDoesNotChainAndPaginationIsStableAfterLateObservations() throws {
+        let f = try Fixture(); defer { f.clean() }
+        for (time,reset) in [(100.0,700),(110,730),(120,760),(130,790)].reversed() {
+            try f.add(time,reset,10)
+        }
+        let rows = try f.store.weeklyLimitHistory().rows
+        #expect(rows.count == 2)
         var ids: [String] = []
         for offset in rows.indices {
             let page = try f.store.weeklyLimitHistory(LimitQuery(limit: 1, offset: offset))
@@ -24,65 +99,9 @@ struct LimitQueryTests {
             #expect(page.hasMore == (offset < rows.count - 1))
         }
         #expect(ids == rows.map(\.id) && Set(ids).count == rows.count)
-        #expect(try f.store.weeklyLimitHistory(LimitQuery(account: .unknown)).rows.isEmpty)
-        #expect(try f.store.weeklyLimitHistory(LimitQuery(limitID: "other")).rows.isEmpty)
         #expect(try UsageStore(databaseURL: f.store.databaseURL).weeklyLimitHistory().rows.map(\.id) == ids)
-    }
-
-    @Test func isolatedDropDoesNotReplaceLastCredibleUsageAndSustainedSameDeadlineIsUnconfirmed() throws {
-        let f = try Fixture(); defer { f.clean() }
-        for (time, percent) in [(100.0,40.0),(110,5),(120,41)] { try f.add(time, 700, percent) }
-        var rows = try f.store.weeklyLimitHistory().rows
-        #expect(rows.count == 1 && rows[0].kind == "observed")
-        #expect(rows[0].usedPercentBeforeReset == 41 && rows[0].peakUsedPercent == 41)
-        try f.add(130, 700, 6); try f.add(140, 700, 7)
-        rows = try f.store.weeklyLimitHistory().rows
-        #expect(rows.contains { $0.kind == "drop_unconfirmed" && $0.usedPercentBeforeReset == 41 })
-        #expect(!rows.contains { $0.kind == "manual_suspected" || $0.kind == "natural" })
-    }
-
-    @Test func expiredForkAndSameInstantConflictsDoNotGenerateResets() throws {
-        let f = try Fixture(); defer { f.clean() }
-        try f.add(100, 200, 80)
-        try f.add(201, 180, 5)
-        try f.add(202, 190, 8)
-        try f.add(203, 900, 0, exclusion: "fork_replay")
-        try f.add(204, 900, 0, scope: "thread:one")
-        try f.add(204, 800, 95, scope: "thread:two")
-        let result = try f.store.weeklyLimitHistory()
-        #expect(result.rows.count == 1 && result.rows[0].kind == "observed")
-        #expect(result.rows[0].usedPercentBeforeReset == 80)
-        #expect(result.excludedObservations["expired"] == 2)
-        #expect(result.excludedObservations["fork_replay"] == 1)
-        #expect(result.excludedObservations["conflicting_or_isolated_drop_points"] == 1)
-    }
-
-    @Test func unknownWindowsMergeEvidenceWithoutClaimingAnAccountOrReset() throws {
-        let f = try Fixture(); defer { f.clean() }
-        try f.add(100, 200, 80, account: nil, scope: "thread:x")
-        try f.add(110, 201, 85, account: nil, scope: "thread:y")
-        try f.add(110, 200, 90, account: nil, scope: "thread:z")
-        let rows = try f.store.weeklyLimitHistory(LimitQuery(account: .unknown)).rows
-        #expect(rows.count == 1 && rows[0].kind == "unattributed")
-        #expect(rows[0].accountID == nil && rows[0].usedPercentBeforeReset == nil)
-        #expect(rows[0].peakUsedPercent == 90 && rows[0].observationCount == 3)
-        #expect(try f.store.weeklyLimitHistory(LimitQuery(account: .account("a"))).rows.isEmpty)
-        try f.add(120, 200, 91, account: nil, scope: "thread:x")
-        try f.add(120, 200, 92, account: nil, scope: "thread:y")
-        let conflict = try #require(f.store.weeklyLimitHistory(LimitQuery(account: .unknown)).rows.first)
-        #expect(conflict.usedPercentBeforeReset == nil && conflict.conflictingObservations > 0)
-    }
-
-    @Test func deadlineToleranceIsAnchoredAndGapsDoNotInventWeeklyResets() throws {
-        let f = try Fixture(); defer { f.clean() }
-        for (time,reset,percent) in [(100.0, 700, 10.0),(110,701,11),(120,702,12),(130,703,13)] {
-            try f.add(time,reset,percent)
-        }
-        let rows = try f.store.weeklyLimitHistory().rows
-        #expect(rows.count == 2 && rows.contains { $0.kind == "boundary_changed" })
-        #expect(!rows.contains { $0.kind == "natural" })
         try f.add(2_000_000, 2_000_100, 5)
-        #expect(try f.store.weeklyLimitHistory().rows.filter { $0.kind == "gap_unconfirmed" }.count == 1)
+        #expect(try f.store.weeklyLimitHistory().rows.count == 3)
     }
 
     @Test func failedCachePublicationRollsBackAndRebuildDoesNotAlterUsage() throws {
@@ -97,7 +116,7 @@ struct LimitQueryTests {
         #expect(throws: (any Error).self) { try f.store.weeklyLimitHistory() }
         #expect(try f.store.pool.read { try Row.fetchAll($0, sql: "SELECT * FROM weekly_limit_cycles") } == before)
         try f.store.pool.write { try $0.execute(sql: "DROP TRIGGER fail_weekly") }
-        #expect(try f.store.weeklyLimitHistory().rows.contains { $0.kind == "natural" })
+        #expect(try f.store.weeklyLimitHistory().rows.count == 2)
         #expect(try f.store.tableCounts()["usage"] == 0)
     }
 
@@ -127,8 +146,82 @@ struct LimitQueryTests {
         }
         #expect(snapshot.windows.count == 3)
         let rows = try f.store.weeklyLimitHistory().rows
-        #expect(rows.count == 1 && rows[0].limitID == "codex" && rows[0].usedPercentBeforeReset == 80)
+        #expect(rows.count == 1 && rows[0].limitID == "codex" && rows[0].lastUsedPercent == 80)
         #expect(try f.store.weeklyLimitHistory(LimitQuery(limitID: "codex_bengalfox")).rows.isEmpty)
+    }
+
+    @Test func approvedMonthLogSampleProducesTwelveWindowsAndTheirLastUsage() throws {
+        let f = try Fixture(); defer { f.clean() }
+        // 2026-08-10 至 09-10 已核对日志的起始、正用量及末尾观测，账号已匿名化。
+        let observations: [(Double, Int, Double, String?)] = [
+            (1786415513.645, 1787020305, 0, nil),
+            (1786415632.137, 1787020308, 1, nil),
+            (1786544108.538, 1787020308, 88, nil),
+            (1786415646.982, 1787020308, 1, nil),
+            (1786415652.986, 1787020308, 1, nil),
+            (1786593765.714, 1787197186, 1, nil),
+            (1787194850.402, 1787197187, 100, nil),
+            (1786593809.952, 1787197186, 1, nil),
+            (1786593816.673, 1787197186, 1, nil),
+            (1787199823.959, 1787804607, 0, nil),
+            (1787200514.570, 1787804612, 1, nil),
+            (1787532223.128, 1787804612, 78, nil),
+            (1787200518.008, 1787804612, 1, nil),
+            (1787200521.137, 1787804612, 1, nil),
+            (1787532231.520, 1788137022, 0, nil),
+            (1787532761.460, 1788137022, 1, nil),
+            (1787667179.303, 1788137022, 43, nil),
+            (1787532779.354, 1788137022, 1, nil),
+            (1787532783.135, 1788137022, 1, nil),
+            (1787667193.979, 1788271979, 0, nil),
+            (1787710809.187, 1788271986, 1, nil),
+            (1787834244.658, 1788271986, 43, nil),
+            (1787710813.524, 1788271986, 1, nil),
+            (1787710960.965, 1788271986, 1, nil),
+            (1787881147.562, 1788485938, 0, nil),
+            (1787881309.045, 1788485947, 1, nil),
+            (1787915756.196, 1788485947, 50, nil),
+            (1787881315.844, 1788485947, 1, nil),
+            (1787881317.243, 1788485947, 1, nil),
+            (1788058312.541, 1788662655, 0, nil),
+            (1788058693.655, 1788662655, 1, nil),
+            (1788143316.686, 1788662655, 5, nil),
+            (1788058715.449, 1788662655, 1, nil),
+            (1788058724.101, 1788662655, 1, nil),
+            (1788143318.043, 1788748109, 0, nil),
+            (1788144899.900, 1788748118, 1, nil),
+            (1788748112.449, 1788748118, 100, nil),
+            (1788144902.788, 1788748118, 1, nil),
+            (1788144911.593, 1788748118, 1, nil),
+            (1788163084.880, 1788767880, 0, nil),
+            (1788163087.903, 1788767884, 3, nil),
+            (1788228574.368, 1788767884, 41, nil),
+            (1788163090.548, 1788767884, 4, nil),
+            (1788163093.065, 1788767884, 4, nil),
+            (1788748133.354, 1789352923, 0, nil),
+            (1788748476.051, 1789352923, 1, nil),
+            (1788975581.749, 1789352923, 42, nil),
+            (1788748483.243, 1789352923, 1, nil),
+            (1788748489.758, 1789352923, 1, nil),
+            (1788832193.437, 1789436850, 0, nil),
+            (1788832364.723, 1789436850, 1, nil),
+            (1788998601.495, 1789436850, 100, "a"),
+            (1788832372.892, 1789436850, 1, nil),
+            (1788832501.350, 1789436850, 1, nil),
+            (1788999804.818, 1789604604, 0, "a"),
+            (1789000441.342, 1789604620, 1, nil),
+            (1789023905.214, 1789604620, 19, nil),
+            (1789000448.918, 1789604620, 1, nil),
+            (1789000454.505, 1789604620, 1, nil)
+        ]
+        for (time,reset,percent,account) in observations.reversed() {
+            try f.add(time,reset,percent,account:account,scope:account.map { "account:" + $0 } ?? "thread:sample")
+        }
+        let rows = try f.store.weeklyLimitHistory(LimitQuery(timezone:"Asia/Shanghai",fromDate:"2026-08-10",throughDate:"2026-09-10")).rows.reversed()
+        let expectedStarts: [Int64] = [1786415508, 1786592386, 1787199812, 1787532222, 1787667186, 1787881147, 1788057855, 1788143318, 1788163084, 1788748123, 1788832050, 1788999820]
+        #expect(rows.count == 12)
+        #expect(rows.map(\.lastUsedPercent) == [88,100,78,43,43,50,5,100,41,42,100,19])
+        for (row,start) in zip(rows,expectedStarts) { #expect(abs(row.startedAtInferred-start)<=30) }
     }
 
     private struct Fixture {
@@ -162,8 +255,8 @@ struct LimitQueryTests {
         #expect(report.issueCount == 0 && report.insertedRequests == 0)
         #expect(report.currentLimits?.windows.count == 2)
         #expect(try store.tableCounts()["weekly_limit_observations"] == 2)
-        #expect(try store.weeklyLimitHistory().rows.first?.usedPercentBeforeReset == 75)
-        #expect(try store.weeklyLimitHistory(LimitQuery(fromDate: "2026-09-10", throughDate: "2026-09-10", account: .unknown)).rows.count == 1)
+        #expect(try store.weeklyLimitHistory().rows.first?.lastUsedPercent == 75)
+        #expect(try store.weeklyLimitHistory(LimitQuery(fromDate: "2026-09-03", throughDate: "2026-09-03", account: .unknown)).rows.count == 1)
         #expect(try LocalUsageScanner(store: store).scan(codexHome: root).scannedFiles == 0)
         #expect(try store.tableCounts()["weekly_limit_observations"] == 2)
         let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(report)) as? [String: Any]

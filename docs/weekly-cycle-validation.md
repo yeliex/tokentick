@@ -1,5 +1,7 @@
 # 主限额周窗口验证
 
+> 2026-09-10 最新实现：已按用户确认的七天窗口清单重做归并，区分归零观测与推算起算时间；最近一个月 12 个窗口已与真实库逐条对照。见 [最新方案](weekly-window-plan.md) 和 [实现验收](weekly-start-validation.md)。下文较早算法及测试记录按当时版本保留，不再代表当前口径。
+
 日期：2026-09-10。范围：主额度桶 `codex` 的 10,080 分钟周窗口；本机 macOS 27 Apple Silicon。实现规则见 [方案](weekly-reset-plan.md)，数据结构见 [需求](requirements.md)。
 
 ## 结论

@@ -296,6 +296,15 @@ enum StoreSchema {
             }
             try db.execute(sql: "UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key='weekly_revision'")
         }
+        migrator.registerMigration("v9.weekly-start-windows") { db in
+            // 仅重建派生缓存；原始用量、价格及额度观测不动，也不创建迁移备份。
+            try db.execute(sql: """
+                DELETE FROM weekly_limit_cycles;
+                ALTER TABLE weekly_limit_cycles ADD COLUMN query_scope TEXT NOT NULL DEFAULT 'all';
+                CREATE INDEX weekly_cycles_scope_start ON weekly_limit_cycles(query_scope,event_at,id);
+                DELETE FROM app_metadata WHERE key IN ('weekly_cache_revision','weekly_cache_exclusions');
+                """)
+        }
         return migrator
     }
 }

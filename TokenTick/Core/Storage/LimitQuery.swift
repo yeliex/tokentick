@@ -27,37 +27,46 @@ public struct LimitQuery: Sendable, Hashable {
     }
 }
 
-public struct WeeklyLimitReset: Codable, Sendable, Identifiable {
-    public let id: String
+public struct WeeklyLimitWindow: Codable, Sendable, Identifiable {
+    public var id: String
     public let accountID: String?
     public let scopeKey: String
     public let limitID: String
+    public let startedAtInferred: Int64
     public let scheduledResetAt: Int64
     public let firstObservedAt: Double
-    public let detectedAt: Double?
-    public let confirmedAt: Double?
-    public let resetAt: Double?
-    public let resetAfter: Double?
-    public let resetBefore: Double?
+    public let firstPositiveAt: Double
     public let lastObservedAt: Double
-    public let usedPercentBeforeReset: Double?
+    public let lastUsedPercent: Double?
     public let peakUsedPercent: Double
     public let observationCount: Int
     public let conflictingObservations: Int
-    public let kind: String
+    public let unknownAccountObservations: Int
+    public let observedAccountIDs: [String]
+    public let recoveryObservedAt: Double?
     public let sourceJSON: String
-    // 百分比不能换算 token 或金额；本地用量尚无可核验的账号及额度桶路由。
+    // 百分比不能换算 token 或金额；也没有证据把最后观测冒充最终用量。
     public var totalTokens: Int64? = nil
     public var amountNanoUSD: Int64? = nil
     public var finalUsedPercent: Double? = nil
 }
 
+extension UsageAccountScope {
+    var weeklyScopeKey: String {
+        switch self {
+        case .all: "all"
+        case .unknown: "unknown"
+        case .account(let id): "account:" + id
+        }
+    }
+}
+
 public struct WeeklyLimitHistory: Encodable, Sendable {
     public let timezone: String
-    public let rows: [WeeklyLimitReset]
+    public let rows: [WeeklyLimitWindow]
     public let hasMore: Bool
     public let excludedObservations: [String: Int]
-    public let coverage = "observed_weekly_windows; final_usage_and_bucket_token_attribution_unknown"
+    public let coverage = "weekly_windows_by_inferred_start; recovery_time_separate; final_usage_and_account_attribution_may_be_unknown"
 }
 
 extension UsageStore {
@@ -69,27 +78,22 @@ extension UsageStore {
         let until = try query.boundary(query.throughDate, afterDay: true, timezone: timezone)
         while true {
             try Task.checkCancellation()
-            try rebuildWeeklyCyclesIfNeeded()
+            try rebuildWeeklyCyclesIfNeeded(account: query.account)
             let result = try pool.read { db -> WeeklyLimitHistory? in
-                guard try Self.weeklyCycleRevision(db) == String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key='weekly_cache_revision'") else { return nil }
-                // 当前窗口由实时快照展示；过去截止但未有后续证据的窗口明确保持未确认。
-                var clauses = ["(event_at IS NOT NULL OR scheduled_reset_at <= :now)"]
-                var arguments: StatementArguments = ["limit": query.limit + 1, "offset": query.offset, "now": Date().timeIntervalSince1970]
-                switch query.account {
-                case .all: break
-                case .unknown: clauses.append("account_id IS NULL")
-                case .account(let id): clauses.append("account_id = :account"); arguments += ["account": id]
-                }
+                guard try Self.weeklyCycleRevision(db) == String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key=?", arguments: ["weekly_cache_revision:" + query.account.weeklyScopeKey]) else { return nil }
+                // 按已固定窗口的起算日期查询，包含当前已开始使用的窗口。
+                var clauses = ["query_scope = :scope"]
+                var arguments: StatementArguments = ["limit": query.limit + 1, "offset": query.offset, "scope": query.account.weeklyScopeKey]
                 if let id = query.limitID { clauses.append("limit_id = :bucket"); arguments += ["bucket": id] }
-                if let from { clauses.append("COALESCE(event_at,scheduled_reset_at) >= :from"); arguments += ["from": from] }
-                if let until { clauses.append("COALESCE(event_at,scheduled_reset_at) < :until"); arguments += ["until": until] }
+                if let from { clauses.append("event_at >= :from"); arguments += ["from": from] }
+                if let until { clauses.append("event_at < :until"); arguments += ["until": until] }
                 let rows = try String.fetchAll(db, sql: """
                     SELECT result_json FROM weekly_limit_cycles WHERE \(clauses.joined(separator: " AND "))
-                    ORDER BY COALESCE(event_at,scheduled_reset_at) DESC, id LIMIT :limit OFFSET :offset
+                    ORDER BY event_at DESC, id LIMIT :limit OFFSET :offset
                     """, arguments: arguments)
-                let summary = try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key='weekly_cache_exclusions'") ?? "{}"
+                let summary = try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key=?", arguments: ["weekly_cache_exclusions:" + query.account.weeklyScopeKey]) ?? "{}"
                 return WeeklyLimitHistory(timezone: identifier,
-                    rows: try rows.prefix(query.limit).map { try JSONDecoder().decode(WeeklyLimitReset.self, from: Data($0.utf8)) },
+                    rows: try rows.prefix(query.limit).map { try JSONDecoder().decode(WeeklyLimitWindow.self, from: Data($0.utf8)) },
                     hasMore: rows.count > query.limit,
                     excludedObservations: try JSONDecoder().decode([String: Int].self, from: Data(summary.utf8)))
             }
