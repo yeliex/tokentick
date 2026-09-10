@@ -102,3 +102,9 @@ App 与 CLI 的 Gatekeeper 评估均返回退出码 3、`source=Unnotarized Deve
 - 证据为同目录 `verification.json`、`cli-status.json`、ZIP 内 `BUILD.txt` 和两份签名明细；构建日志为 `.build/logs/release-TokenTick-build.log`、`.build/logs/release-tokentick-build.log`。
 
 不提交 Apple 公证、不发布 GitHub Release。当前不把 Gatekeeper 自动放行列为分发条件；首次下载后的“仍要打开”流程已写入安装说明，但本次未进行浏览器下载及原生确认交互验收。其他 API、UI、性能与 macOS 26／Intel 真机验收保持原范围。
+
+### 当前干净提交的 ad-hoc 包
+
+干净源码 `6bcaae14da6f` 已生成 `.build/releases/local-ll8XD3/TokenTick-0.1.0-local-6bcaae14da6f.zip`，包括设置草稿修复和文件通知循环修复。App／CLI 通用 Release 构建成功，ZIP 校验、带空格目录解压、App／CLI 全部架构及 GRDB 资源包严格签名验证均通过；所有签名均为 ad-hoc，没有开发者团队或证书链。
+
+包内 `BUILD.txt` 为 `source_dirty=false`、最低 macOS 26.0、arm64／x86_64；SHA-256 为 `bf4ef2306e3bd853cfc6ec6ce5ffa44a208534788df657ee2e21699eac3930b0`。CLI 从 `/tmp` 使用独立空库执行 `status` 成功，迁移到 v4、完整性 `ok`。证据为同目录 `verification.json` 和 `cli-status.json`。本次没有发布 GitHub Release，也没有把本机运行当作目标系统／下载确认流程通过。

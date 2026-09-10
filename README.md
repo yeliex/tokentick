@@ -63,7 +63,7 @@ xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
   --database .build/audit/usage.sqlite
 ```
 
-`sync --scope all|local|prices|api` 与 App 使用相同流程，保存最近同步报告，各来源失败互不清空已有数据。价格成功同步后仅重算本次价格日期及之后的记录；手动 `reprice` 仍可重算全部历史。App 启动时自动同步一次，可从工具栏或数据状态页重试；定时刷新与文件变动提示仍待接入。开发验证可用 `TOKENTICK_DATABASE` 指定独立数据库，`TOKENTICK_AUTOSYNC=0` 关闭本次启动自动同步，不改变持久设置。
+`sync --scope all|local|prices|api` 与 App 使用相同流程，保存最近同步报告，各来源失败互不清空已有数据。价格成功同步后仅重算本次价格日期及之后的记录；手动 `reprice` 仍可重算全部历史。App 启动时自动同步，可从工具栏或数据状态页重试；已接入文件变动通知、定时补扫和睡眠恢复，设置中可关闭自动同步。开发验证可用 `TOKENTICK_DATABASE` 指定独立数据库，`TOKENTICK_AUTOSYNC=0` 关闭本次启动自动同步，不改变持久设置。
 
 也可省略 `--codex-home`，默认读取环境变量 `CODEX_HOME` 或 `~/.codex`。省略 `--database` 时使用 `~/Library/Application Support/TokenTick/usage.sqlite`。`scan` 只读 Codex 数据，写入 TokenTick 自己的数据库；存在解析问题时返回 1，参数错误返回 2。统计时区默认采用数据库首次初始化／升级时的系统时区并保存，价格日期始终使用 UTC。
 
