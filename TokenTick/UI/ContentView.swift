@@ -84,7 +84,7 @@ struct ContentView: View {
                 if isUsage {
                     Picker("日期范围", selection: $period) {
                         ForEach(UsagePeriod.allCases) { Text($0.rawValue).tag($0) }
-                    }.frame(width: 130)
+                    }.frame(width: 130).accessibilityLabel("日期范围")
                     TextField("搜索任务标题或 ID", text: $filters.search)
                         .textFieldStyle(.roundedBorder).frame(width: 180)
                     Button { showingFilters.toggle() } label: { Label("筛选", systemImage: "line.3.horizontal.decrease") }
@@ -94,7 +94,7 @@ struct ContentView: View {
                         }
                     Picker("排序", selection: $sort) {
                         ForEach(UsageSort.allCases, id: \.self) { Text($0.title).tag($0) }
-                    }.frame(width: 155)
+                    }.frame(width: 155).accessibilityLabel("排序")
                 }
                 Button { app.synchronize() } label: { Label("同步", systemImage: "arrow.triangle.2.circlepath") }
                     .disabled(app.isSyncing || app.store == nil).keyboardShortcut("r")

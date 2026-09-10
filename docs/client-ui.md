@@ -218,3 +218,8 @@ Token 用量                已知金额                未定价用量
 - 原生点击自动同步开关可从 on 变为 off，关闭再打开设置仍为 off；最后恢复到原来的 on。该项证明开关交互与视图重新打开后的状态保持，不替代已有采集测试或真实睡眠／唤醒验收。
 - 当前系统 Tab 仅在文本框和列表间移动，与 macOS 的键盘导航模式有关（[Apple 快捷键说明](https://support.apple.com/en-ie/102650)）；已询问是否允许临时启用系统键盘导航及 VoiceOver，尚未改变这两项系统偏好，不把本次 Tab 检查计为完整无障碍验收。
 - 主窗口关闭后可以重新显示，但 Computer Use 未取得无窗口时的状态菜单：TokenTick 返回 `noWindowsAvailable`、SystemUIServer 返回超时；没有据此判定 App 菜单失败，也不把重新显示窗口当成菜单栏点击通过。状态菜单、完整键盘和 VoiceOver 项目仍待验收。
+
+### 工具栏可访问性名称（2026-09-10）
+
+- 原生 AX 观测发现，主窗口的日期范围和排序弹出控件仅暴露 `chevron.popup` 与当前值，未体现用途。两个 Picker 显式补上“日期范围”“排序”的可访问性标签，保留原生选择值及交互。
+- Debug 构建通过，日志 `.build/logs/toolbar-accessibility-build.log`。Computer Use 提示用户正在操作 App 后停止窗口控制，本次没有重启用户进程；新标签的原生 AX 和 VoiceOver 朗读仍待运行态复测，不能以构建结果替代。
