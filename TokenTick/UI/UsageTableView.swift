@@ -14,7 +14,7 @@ struct UsageTableView: View {
                 TableColumn(isThread ? "任务" : "名称") { row in
                     VStack(alignment: .leading, spacing: 3) {
                         Text(row.title).lineLimit(1)
-                        if isThread { Text(row.thread?.projectName ?? "未知项目").font(.caption).foregroundStyle(.secondary) }
+                        if isThread { Text(UsageFormatting.project(row.thread?.projectName)).font(.caption).foregroundStyle(.secondary) }
                     }.help(row.title)
                 }.width(min: 180, ideal: 340)
                 TableColumn("Tokens") { row in TokenText(value: row.summary.totalTokens).monospacedDigit() }

@@ -1,7 +1,7 @@
 # TokenTick 当前验收状态
 
 > 后续规则更新（2026-09-10）：内置 JSON 价格、无自动迁移备份、额外日志 Fast 证据及默认普通计价见 [最新验证](default-pricing-validation.md)。下文已注明日期的旧验证记录保留当时事实。
-更新：2026-09-10。按用户最新需求调整范围，以 [需求文档](requirements.md) 和 [执行目标](goal.md) 为准。当前范围验收通过，逐项完成证据见 [完成审计](completion-audit.md)。
+更新：2026-09-10。本地 MVP 验收通过；原始需求中的跨设备 API 补量及金额换算仍未完成。最新复核见 [范围与界面复核](scope-review-20260910.md)，需求及剩余目标以 [需求文档](requirements.md) 和 [执行目标](goal.md) 为准。先前完成证据见 [完成审计](completion-audit.md)。
 
 | 当前要求 | 实现与验证 |
 | --- | --- |

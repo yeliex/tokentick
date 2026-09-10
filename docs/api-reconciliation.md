@@ -1,9 +1,6 @@
 # API 日用量对账核验
 
-> 2026-09-10 范围调整：当前以 [需求文档](requirements.md) 为准。仅支持 macOS 26+ arm64；目录动态读取 CODEX_HOME；监听优先；首份价格覆盖更早历史；全局保留本地未知账号用量，未归属任务的 API 用量不参与统计；历史仅周额度重置前观测，所有实时额度保留内存；token 使用 K／M／B／T。下文先前 Intel、目录设置、API 差额、全类型历史窗口及精细 UI 验收计划已被替代，历史验证记录仅供追溯。
-
-
-核验日期：2026-09-10。目标仍是补齐跨设备用量，当前没有足够证据计算差额。
+核验日期：2026-09-10。跨设备用量补齐仍是原始需求中的未完成项，当前没有足够证据计算差额。已完成的本地功能与剩余 API 工作见 [最新复核](scope-review-20260910.md)。
 
 ## 已确认的接口
 
@@ -11,7 +8,9 @@
 
 本机 Codex CLI 为 0.152.1。本次只读探测在前后两个额度响应的账号一致时，取得 196 个日桶；实际字段仍是 `startDate` 和 `tokens`。完整响应留在忽略目录 `.build/research/api-semantics-20260910/observations.json`，脱离账号值的字段摘要在同目录 `summary.json`。
 
-本机生成的实验性协议还支持向同一方法传入 `threadId`，返回可空 `threadUsage`，包含估算 credits／USD 及按模型、speed 分组的 tokens 等字段。该协议对字段的定义不等同于服务端可用性。本次针对当前真实任务调用成功，但 `threadUsage` 为 null，不能据此补充任务用量或金额。原始生成协议位于 `.build/research/app-server-schema/v2/GetAccountTokenUsageResponse.json` 和 `NullableGetAccountTokenUsageParams.json`。
+本机生成的实验性协议还支持向同一方法传入 `threadId`，返回可空 `threadUsage`，包含估算 credits／USD 及按模型、speed 分组的 tokens 等字段。2026-09-10 追加探测当前任务和 4 个远端任务，5 次调用无 RPC 错误、前后账号一致，但 `threadUsage` 全部为 null；账号查询返回 196 个日桶。脱敏摘要位于 `.build/audit/current-scope-review/api-summary.json`。原始生成协议位于 `.build/research/app-server-schema/v2/GetAccountTokenUsageResponse.json` 和 `NullableGetAccountTokenUsageParams.json`。
+
+模型分组若实际返回有效输入／输出／缓存 tokens，可以基于价格表换算金额，不依赖服务端返回 USD。协议字段允许 NULL，累计分组缺少请求日期和上下文长度，因此不能无条件精确还原历史或长上下文费用。当前 App／CLI 尚未实现任务级读取、分组持久化、价格换算和去重对账；这些是实现缺口，服务端暂时返回 NULL 是另一个独立的数据限制。
 
 ## 尚缺的对账条件
 
