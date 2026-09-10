@@ -86,7 +86,7 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 580, height: 640)
-        .task { directory = app.codexDirectory; await app.start() }
+        .task { directory = app.codexDirectory; directoryError = nil; await app.start() }
         .task(id: "\(app.refreshID):\(storageRefresh)") {
             guard let store = app.store else { return }
             do {

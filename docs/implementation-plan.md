@@ -392,3 +392,9 @@ P5 剩余：自定义日期、任务搜索／排序、模型与项目交叉筛�
 - 按用户最新要求，参考 Shuttle 的 `scripts/package-macos.mjs` 和 README：统一使用 ad-hoc 签名、ZIP 直接分发及首次下载后的“仍要打开”流程。
 - 移除打包脚本的 `--sign` 和 Developer ID 分支，嵌套 GRDB 资源包、App 与 CLI 均显式 ad-hoc 签署；保留 hardened runtime、双架构校验、签名明细和 SHA-256。
 - 不再等待 notarytool profile，不使用付费 Developer Program，不提交公证。其余 API、客户端交互、性能及真实系统验收范围不变；新包证据见 [Release 验证](release-validation.md)。
+
+### P5 设置草稿恢复与原生开关（2026-09-10）
+
+- 恢复原生界面验收，发现无效目录保存失败后重新打开设置会残留错误；与目录草稿一起清空错误，未改变来源保存或扫描逻辑。
+- Debug 构建及原生失败／关闭／重开流程通过，目录选择器 Escape 取消无副作用；自动同步开关关闭、重开保留和恢复开启通过。详见 [客户端 UI](client-ui.md)。
+- 系统键盘导航和 VoiceOver 尚未开启，状态菜单的工具可访问性仍有限；上述项目及 API、性能、真实系统验收继续按清单推进。
