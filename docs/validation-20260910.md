@@ -1,8 +1,8 @@
 # 2026-09-10 真实历史数据验证
 
-使用默认数据库的 SQLite 一致副本验证，不修改正在使用的默认库。基线为 `4234b0b2ec869734f626f75f52edb4ef0f66fc0e`；后续本轮修复只改变周额度历史查询与不兼容数据库的错误说明。
+先使用默认数据库的 SQLite 一致副本独立验证；副本验证完成后，再启动新版 App 升级默认数据库。基线为 `4234b0b2ec869734f626f75f52edb4ef0f66fc0e`；后续本轮修复只改变周额度历史查询与不兼容数据库的错误说明。
 
-环境：Apple M2 Pro、32 GiB，macOS 27.0（26A5425a），Xcode 27.0（27A266a）。构建最低系统为 macOS 26.0，仅 arm64；这些结果不替代 macOS 26 实机验收。
+环境：Apple M2 Pro、32 GiB，macOS 27.0（26A5425a），Xcode 27.0（27A266a）。构建最低系统为 macOS 26.0，仅 arm64；用户随后确认按当前设备验收，无需额外 macOS 26 实机验收；最低部署版本保持 26.0。
 
 ## 数据与一致性
 
@@ -48,4 +48,14 @@
 - `.build/logs/current-history-fixes-tests.log`、`current-history-cli-build.log`：本轮修复测试与 CLI 构建。
 - `.build/releases/local-NtTiPp/`：基线提交的干净 arm64 Release ZIP 和校验文件。
 
-当前尚未完成新版的屏幕交互及 macOS 26 实机验收。Computer Use 初始化时已修复旧工作目录引用，临时路径映射已移除；随后屏幕捕获失败，需可用的已解锁桌面继续。默认 App 及其数据库尚未升级，不把副本验证当作实际安装完成。
+## 当前设备 App 升级与界面
+
+用户解锁后，`script/build_and_run.sh --verify` 成功启动当前 Debug App，日志为 `.build/logs/current-runtime-upgrade.log`。Computer Use 按完整 App 路径选择实例，避免误开旧解压包；初始化用的临时旧目录映射已移除。
+
+默认数据库实际迁移至 `v5.weekly-limit-observations`，`pricing_algorithm=2`，没有待重算标记，`statistics_dirty=false`。一次升级后采样有 168,987 条请求、20,656,353,773 tokens、147,165 条历史周额度观测；后续活跃日志持续增加，不作为固定快照基线。后续本地同步发现 1,540 个文件、仅扫描 2 个、跳过 1,538 个，新增 2 条请求，没有采集或同步问题。原始检查记录在 `.build/audit/current-default-upgrade.json`。
+
+原生界面已观察到：总览重算后显示 10.62B tokens、US$8,266.57 已知金额和 836.54M 未定价 tokens，提供精确整数辅助信息；额度页显示当前 3 个 API 窗口，包含 300／10080 分钟及额外桶，历史区域仅周额度，并明确标记疑似提前重置／未知归属证据。数值会随同步更新。
+
+设置页的目录选项移除已由源码和测试验证；本次菜单操作遇到工具元素失效及按键名称不支持，未补记新版设置页交互通过。其他精细 UI、完整键盘和 VoiceOver 不作为当前完成门槛。
+
+最新代码 `854f0ded9a31` 的干净 App／CLI Release 包位于 `.build/releases/local-wz3odX/`，构建、仅 arm64 和严格签名检查通过，日志 `.build/logs/current-package-final.log`。

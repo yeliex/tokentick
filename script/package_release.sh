@@ -76,4 +76,4 @@ ARCHIVE="$STAGING/$PACKAGE_NAME.zip"
 (cd "$STAGING" && /usr/bin/shasum -a 256 "$PACKAGE_NAME.zip" >"$PACKAGE_NAME.zip.sha256")
 echo "Release 验证包：$ARCHIVE"
 echo "校验文件：$ARCHIVE.sha256"
-echo "签名方式：ad-hoc，无需付费开发者账号，不提交公证。首次下载后的打开方式见包内 README.md；macOS 26 真机另行验收。"
+echo "签名方式：ad-hoc，无需付费开发者账号，不提交公证。首次下载后的打开方式见包内 README.md；最低系统 macOS 26，仅 Apple Silicon，按当前设备验收。"
