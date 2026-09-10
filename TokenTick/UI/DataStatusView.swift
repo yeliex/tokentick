@@ -22,7 +22,7 @@ struct DataStatusView: View {
                 LabeledContent("最近同步日期", value: app.status?.priceLastSuccessDate ?? "尚未同步")
                 Button("同步价格并重算历史金额") { app.synchronize(.prices) }.disabled(app.isSyncing)
                 ForEach(models.filter { $0.unpricedRecords > 0 }, id: \.group) { model in
-                    LabeledContent(model.group ?? "未知模型", value: "\(UsageFormatting.tokens(model.unpricedTokens)) tokens 未定价").help(UsageFormatting.exactTokens(model.unpricedTokens))
+                    LabeledContent(model.group ?? "其他", value: "\(UsageFormatting.tokens(model.unpricedTokens)) tokens 未定价").help(UsageFormatting.exactTokens(model.unpricedTokens))
                 }
             }
             Section("服务端统计") {

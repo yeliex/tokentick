@@ -44,6 +44,12 @@ public struct UsageRecord: Encodable, Sendable, Identifiable {
     public let lastKnownPath: String?
     public let evidenceJSON: String
 
+    public var pricingIsFast: Bool {
+        if let isFast { return isFast }
+        let proof = (try? JSONSerialization.jsonObject(with: Data(evidenceJSON.utf8))) as? [String: Any]
+        return (proof?["pricingMode"] as? [String: Any])?["isFast"] as? Bool ?? false
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id, accountID, threadID, title, projectName, turnID
         case requestID, responseID, occurredAt, usageDate, statisticalDate, model

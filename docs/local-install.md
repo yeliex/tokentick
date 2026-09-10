@@ -16,13 +16,14 @@ CLI 是独立可执行文件，下载后的首次执行也可能需要单独确�
 
 ## CLI
 
-可以直接执行解压目录中的 `bin/tokentick --help`。CLI 不需要 App 保持运行。
+可以直接执行解压目录中的 `bin/tokentick --help`。CLI 不需要 App 保持运行；必须随同保留 `TokenTick_TokenTickCore.bundle` 价格资源包。
 
 在解压目录中执行以下命令，可安装到个人目录；命令会替换该位置已有的 `tokentick`：
 
 ```sh
 mkdir -p "$HOME/.local/bin"
 install -m 755 bin/tokentick "$HOME/.local/bin/tokentick"
+ditto bin/TokenTick_TokenTickCore.bundle "$HOME/.local/bin/TokenTick_TokenTickCore.bundle"
 "$HOME/.local/bin/tokentick" --help
 ```
 

@@ -32,7 +32,8 @@ struct UsagePricing {
             }
         } else { nil }
         let rates: PriceRates
-        if let price, let isFast, let isLong {
+        if let price, let isLong {
+            let isFast = isFast ?? false
             rates = isLong ? (isFast ? price.fastLong : price.long) : (isFast ? price.fast : price.standard)
         } else { rates = .unknown }
         let input = try amount(tokens: ordinaryInput, rate: rates.input)

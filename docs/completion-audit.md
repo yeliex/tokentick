@@ -1,5 +1,6 @@
 # 当前范围完成审计
 
+> 后续规则更新（2026-09-10）：内置 JSON 价格、无自动迁移备份、额外日志 Fast 证据及默认普通计价见 [最新验证](default-pricing-validation.md)。下文已注明日期的旧验证记录保留当时事实。
 日期：2026-09-10。范围依据 [当前目标](goal.md)、[需求](requirements.md) 和用户后续更正。以下区分实现、测试、真实运行证据；历史记录中已撤销的 Intel、付费签名／公证、macOS 26 专机、推算 API 差额及精细 UI 门槛不参与当前判定。
 
 本次 `git diff 854f0ded9a31 HEAD -- TokenTick TokenTick.xcodeproj Package.swift Package.resolved Tests` 无差异：已构建和测试的代码仍为当前代码，后续变更仅为文档和打包提示。没有因文档更新重复执行全量测试。

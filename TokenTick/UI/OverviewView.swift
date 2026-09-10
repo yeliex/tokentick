@@ -44,7 +44,8 @@ struct OverviewView: View {
             ForEach(rows, id: \.group) { row in
                 Button { focus(grouping, row.group) } label: {
                     HStack {
-                        Text(row.group ?? "未知归属").lineLimit(1).help(row.group ?? "未知归属")
+                        Text(row.group ?? (grouping == .model ? "其他" : "未知归属"))
+                            .lineLimit(1).help(row.group ?? (grouping == .model ? "其他" : "未知归属"))
                         Spacer(minLength: 12)
                         TokenText(value: row.totalTokens).monospacedDigit().foregroundStyle(.secondary)
                     }.font(.callout).contentShape(Rectangle())

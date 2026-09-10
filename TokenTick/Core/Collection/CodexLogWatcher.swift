@@ -13,9 +13,9 @@ public final class CodexLogWatcher {
         init(root: String, changed: @escaping @Sendable () -> Void) { self.root = root; self.changed = changed }
         func relevant(_ path: String) -> Bool {
             // SQLite 只读连接也会更新共享内存锁；监听它会让扫描不断触发自身。
-            if path.hasPrefix(root + "/state_"), path.hasSuffix(".sqlite-shm") { return false }
+            if (path.hasPrefix(root + "/state_") || path.hasPrefix(root + "/logs_")), path.hasSuffix(".sqlite-shm") { return false }
             return path == root || path.hasPrefix(root + "/sessions") || path.hasPrefix(root + "/archived_sessions")
-                || path == root + "/.codex-global-state.json" || path.hasPrefix(root + "/state_")
+                || path == root + "/.codex-global-state.json" || path.hasPrefix(root + "/state_") || path.hasPrefix(root + "/logs_")
                 || path == root + "/session_index.jsonl"
         }
     }

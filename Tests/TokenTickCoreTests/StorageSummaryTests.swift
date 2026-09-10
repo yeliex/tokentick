@@ -57,6 +57,11 @@ struct StorageSummaryTests {
         let url = root.appendingPathComponent("usage.sqlite")
         let old = try DatabaseQueue(path: url.path)
         try old.write { db in try db.execute(sql: "CREATE TABLE retained(value TEXT); INSERT INTO retained VALUES ('history')") }
+        let backupDirectory = root.appendingPathComponent("Backups")
+        try FileManager.default.createDirectory(at: backupDirectory, withIntermediateDirectories: true)
+        let destination = try DatabaseQueue(path: backupDirectory.appendingPathComponent("before-migration-existing.sqlite").path)
+        try old.backup(to: destination)
+        try destination.close()
         try old.close()
         let store = try UsageStore(databaseURL: url)
         let summary = try store.storageSummary()

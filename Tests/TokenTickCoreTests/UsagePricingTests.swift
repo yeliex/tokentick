@@ -29,7 +29,7 @@ struct UsagePricingTests {
         #expect(result.rates.input == (input > 272_000 ? 20 : 10))
     }
 
-    @Test func unknownModesPricesAndCountersRemainUnknown() throws {
+    @Test func missingModeUsesStandardWhilePricesAndCountersRemainUnknown() throws {
         let tokens = TokenUsage(inputTokens: 1_000, outputTokens: 100, cachedInputTokens: 600, cacheWriteInputTokens: nil,
                                reasoningOutputTokens: nil, totalTokens: 1_100)
         let partial = try UsagePricing.calculate(tokens: tokens, isFast: false, price: fixturePrice())
@@ -38,7 +38,7 @@ struct UsagePricingTests {
         #expect(partial.cacheReadAmount == 600_000)
         #expect(partial.cacheWriteAmount == nil)
         #expect(partial.amount == nil)
-        #expect(try UsagePricing.calculate(tokens: tokens, isFast: nil, price: fixturePrice()).outputAmount == nil)
+        #expect(try UsagePricing.calculate(tokens: tokens, isFast: nil, price: fixturePrice()).outputAmount == 5_000_000)
         #expect(try UsagePricing.calculate(tokens: tokens, isFast: false, price: nil).amount == nil)
         let zero = TokenUsage(inputTokens: 0, outputTokens: 0, cachedInputTokens: nil, cacheWriteInputTokens: nil,
                              reasoningOutputTokens: nil, totalTokens: 0)

@@ -152,7 +152,7 @@ struct StatisticsTests {
         #expect(try fixture.store.rebuildStatistics(timezone: #require(TimeZone(identifier: "UTC")), onlyIfNeeded: true).rebuilt)
     }
 
-    @Test func v2UpgradeBacksUpFactsAndReplacesOnlyDerivedCache() throws {
+    @Test func v2UpgradeKeepsFactsWithoutBackupAndReplacesOnlyDerivedCache() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -171,10 +171,7 @@ struct StatisticsTests {
         let store = try UsageStore(databaseURL: url)
         #expect(try store.pool.read { try Row.fetchAll($0, sql: "SELECT * FROM usage") } == before)
         #expect(try store.tableCounts()["statistics"] == 0)
-        let backups = try FileManager.default.contentsOfDirectory(at: root.appendingPathComponent("Backups"), includingPropertiesForKeys: nil)
-        let backup = try DatabaseQueue(path: #require(backups.first(where: { $0.pathExtension == "sqlite" })).path)
-        #expect(try backup.read { try Row.fetchAll($0, sql: "SELECT * FROM usage") } == before)
-        #expect(try backup.read { try Int.fetchOne($0, sql: "SELECT total_tokens FROM statistics") } == 999)
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("Backups").path))
         #expect(try store.usageReport(UsageQuery(grouping: .total, timezone: "UTC")).rows.first?.totalTokens == 7)
     }
 

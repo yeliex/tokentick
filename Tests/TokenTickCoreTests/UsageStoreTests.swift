@@ -22,7 +22,7 @@ struct UsageStoreTests {
         #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("Backups").path))
     }
 
-    @Test func weeklyMigrationKeepsWeekEvidenceAndBacksUpOldFiveHourHistory() throws {
+    @Test func weeklyMigrationKeepsWeekEvidenceWithoutCreatingBackup() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -47,9 +47,7 @@ struct UsageStoreTests {
             #expect(try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key='api_limits:a'") == nil)
             #expect(try !UsageStore.statisticsAreCurrent(db, timezone: "UTC"))
         }
-        let backups = try FileManager.default.contentsOfDirectory(at: root.appendingPathComponent("Backups"), includingPropertiesForKeys: nil)
-        let backup = try DatabaseQueue(path: #require(backups.first(where: { $0.pathExtension == "sqlite" })).path)
-        #expect(try backup.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM limit_windows") } == 2)
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("Backups").path))
     }
 
     @Test func globalKeepsLocalUnknownAccountsAndAllAggregatesExcludeUnassignedAPI() throws {
@@ -90,7 +88,7 @@ struct UsageStoreTests {
         #expect(try store.pool.read { db in try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations") }.contains("v999.future"))
     }
 
-    @Test func migrationBacksUpExistingUnmigratedDatabase() throws {
+    @Test func migrationPreservesExistingDataWithoutBackup() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -100,13 +98,9 @@ struct UsageStoreTests {
             try db.execute(sql: "CREATE TABLE existing_data (value TEXT); INSERT INTO existing_data VALUES ('keep')")
         }
         _ = try UsageStore(databaseURL: url)
-        let backups = try FileManager.default.contentsOfDirectory(at: directory.appendingPathComponent("Backups"), includingPropertiesForKeys: nil)
-        let backup = try #require(backups.first(where: { $0.pathExtension == "sqlite" }))
-        var configuration = Configuration()
-        configuration.readonly = true
-        let restored = try DatabaseQueue(path: backup.path, configuration: configuration)
-        #expect(try restored.read { db in try String.fetchOne(db, sql: "SELECT value FROM existing_data") } == "keep")
-        #expect(try restored.read { db in try db.tableExists("usage") } == false)
+        let current = try UsageStore(databaseURL: url)
+        #expect(try current.pool.read { try String.fetchOne($0, sql: "SELECT value FROM existing_data") } == "keep")
+        #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("Backups").path))
     }
     @Test func restoredWALDatabaseWithoutSidecarsCanBeOpened() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -158,13 +152,7 @@ struct UsageStoreTests {
         #expect(before[0] == after[0] && before[1] == after[1])
         #expect(try current.pool.read { try String.fetchOne($0, sql: "SELECT value FROM app_metadata WHERE key = 'reprice_checkpoint'") } == "{\"keep\":true}")
         #expect(try !current.status().cacheCurrent)
-        let backups = try FileManager.default.contentsOfDirectory(at: root.appendingPathComponent("Backups"), includingPropertiesForKeys: nil)
-        let backup = try DatabaseQueue(path: #require(backups.first(where: { $0.pathExtension == "sqlite" })).path)
-        try backup.read { db in
-            let hasStaging = try db.tableExists("statistics_rebuild")
-            let saved = try ["usage", "statistics", "app_metadata"].map { try Row.fetchAll(db, sql: "SELECT * FROM \($0) ORDER BY 1") }
-            #expect(!hasStaging && saved == before)
-        }
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("Backups").path))
     }
 
 }

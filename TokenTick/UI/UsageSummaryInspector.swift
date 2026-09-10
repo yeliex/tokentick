@@ -49,7 +49,7 @@ struct UsageSummaryInspector: View {
                 if let modelError { Text(modelError).foregroundStyle(.secondary) }
                 ForEach(models, id: \.group) { model in
                     Button { navigate(.threads, query.focused(on: .model, value: model.group)) } label: {
-                        LabeledContent(model.group ?? "未知模型", value: UsageFormatting.tokens(model.totalTokens)).help(UsageFormatting.exactTokens(model.totalTokens))
+                        LabeledContent(model.group ?? "其他", value: UsageFormatting.tokens(model.totalTokens)).help(UsageFormatting.exactTokens(model.totalTokens))
                     }.buttonStyle(.plain)
                 }
             }

@@ -49,7 +49,7 @@ struct SettingsView: View {
             }
             if let storage, storage.backupCount > 0 {
                 Section("最近迁移备份") {
-                    Text("最近 \(storage.recentBackups.count) 份。迁移前自动保存一致快照，已有备份不会自动删除。")
+                    Text("最近 \(storage.recentBackups.count) 份。这些是旧版保留的备份；新迁移不再自动备份。")
                         .font(.caption).foregroundStyle(.secondary)
                     ForEach(storage.recentBackups) { backup in
                         VStack(alignment: .leading, spacing: 4) {

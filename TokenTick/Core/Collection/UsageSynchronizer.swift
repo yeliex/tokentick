@@ -52,17 +52,24 @@ public struct UsageSynchronizer: Sendable {
                 do {
                     let prices = try await PriceSynchronizer(store: store).synchronize()
                     report.prices = prices
-                    onProgress?(SynchronizationProgress(stage: .repricing, scan: nil))
-                    // 首份模型价格也覆盖更早历史；新快照或规则升级需要重算旧记录。
-                    if try prices.insertedSnapshots > 0 || store.needsRepricing() {
-                        report.reprice = try store.repriceUsage()
-                    }
                 } catch {
                     try Task.checkCancellation()
                     report.issues.append("价格：\(error.localizedDescription)")
                 }
             }
             try Task.checkCancellation()
+            // 内置价格和已存历史也能重算，不依赖当天网络请求成功。
+            if scope != .api {
+                do {
+                    if try store.needsRepricing() {
+                        onProgress?(SynchronizationProgress(stage: .repricing, scan: nil))
+                        report.reprice = try store.repriceUsage()
+                    }
+                } catch {
+                    try Task.checkCancellation()
+                    report.issues.append("计价：\(error.localizedDescription)")
+                }
+            }
             if scope == .all || scope == .api || scope == .remote {
                 onProgress?(SynchronizationProgress(stage: .api, scan: nil))
                 do {

@@ -43,7 +43,7 @@ extension UsageStore {
                 }
                 var inserted = 0
                 for price in prices {
-                    let previous = try Self.modelPrice(db: db, model: price.model, date: date)
+                    let previous = try Self.modelPrice(db: db, model: price.model, date: date, useDefaults: false)
                     if let previous, price.samePricing(as: previous) { continue }
                     let encoder = JSONEncoder()
                     encoder.outputFormatting = [.sortedKeys]
@@ -75,9 +75,9 @@ extension UsageStore {
         }
     }
 
-    static func modelPrice(db: Database, model: String, date: String) throws -> ModelPrice? {
+    static func modelPrice(db: Database, model: String, date: String, useDefaults: Bool = true) throws -> ModelPrice? {
         guard let row = try Row.fetchOne(db, sql: "SELECT * FROM prices WHERE model = ? AND date = COALESCE((SELECT MAX(date) FROM prices WHERE model = ? AND date <= ?), (SELECT MIN(date) FROM prices WHERE model = ?))",
-                                        arguments: [model, model, date, model]) else { return nil }
+                                        arguments: [model, model, date, model]) else { return useDefaults ? try BundledModelPrices.price(model: model) : nil }
         let json: String = row["source_json"]
         let source = try JSONDecoder().decode(PriceSource.self, from: Data(json.utf8))
         func rates(_ prefix: String) -> PriceRates {
@@ -88,9 +88,12 @@ extension UsageStore {
             return PriceRates(input: decimal("input_price"), output: decimal("output_price"),
                               cacheRead: decimal("cache_read_price"), cacheWrite: decimal("cache_write_price"))
         }
-        return ModelPrice(model: row["model"], date: row["date"], standard: rates(""), fast: rates("fast_"),
-                          long: rates("long_"), fastLong: rates("fast_long_"), longContextThreshold: row["long_context_threshold"],
-                          contextRule: source.contextRule, source: source)
+        let price = ModelPrice(model: row["model"], date: row["date"], standard: rates(""), fast: rates("fast_"),
+                               long: rates("long_"), fastLong: rates("fast_long_"), longContextThreshold: row["long_context_threshold"],
+                               contextRule: source.contextRule, source: source)
+        if useDefaults, price.standard == .unknown, price.fast == .unknown, price.long == .unknown, price.fastLong == .unknown,
+           let fallback = try BundledModelPrices.price(model: model) { return fallback }
+        return price
     }
 
     public func priceEntries(limit: Int = 100) throws -> [PriceEntry] {

@@ -15,7 +15,7 @@ public struct RepriceReport: Codable, Sendable {
 
 private struct RepriceCheckpoint: Codable {
     // 计价算法或断点格式变化时递增，避免恢复时混合新旧计算结果。
-    static let currentVersion = 2
+    static let currentVersion = 3
     static let key = "reprice_checkpoint"
     let version: Int
     let fromDate: String?
@@ -33,6 +33,7 @@ private struct RepriceCheckpoint: Codable {
         }
         let rows = try String.fetchCursor(db, sql: "SELECT json_array(\(columns.joined(separator: ","))) FROM prices ORDER BY model, date")
         var hash = SHA256()
+        hash.update(data: try BundledModelPrices.data.get())
         while let row = try rows.next() { hash.update(data: Data(row.utf8)) }
         return hash.finalize().map { String(format: "%02x", $0) }.joined()
     }
@@ -41,8 +42,9 @@ private struct RepriceCheckpoint: Codable {
 extension UsageStore {
     func needsRepricing() throws -> Bool {
         try pool.read { db in
-            try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'pricing_algorithm'") != "2"
+            try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'pricing_algorithm'") != "3"
                 || String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'pricing_rebuild_pending'") == "true"
+                || String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'pricing_defaults_hash'") != BundledModelPrices.fingerprint()
         }
     }
     /// 明确重算才覆盖已有价格与金额；相同依据的中断任务从已提交批次恢复，报告包含此前批次。
@@ -69,8 +71,9 @@ extension UsageStore {
                     if rows.isEmpty {
                         try db.execute(sql: "DELETE FROM app_metadata WHERE key = ?", arguments: [RepriceCheckpoint.key])
                         if fromDate == nil {
-                            try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES ('pricing_algorithm', '2') ON CONFLICT(key) DO UPDATE SET value = '2'")
+                            try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES ('pricing_algorithm', '3') ON CONFLICT(key) DO UPDATE SET value = '3'")
                             try db.execute(sql: "DELETE FROM app_metadata WHERE key = 'pricing_rebuild_pending'")
+                            try db.execute(sql: "INSERT INTO app_metadata(key,value) VALUES ('pricing_defaults_hash',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", arguments: [try BundledModelPrices.fingerprint()])
                         }
                         return 0
                     }
@@ -112,7 +115,22 @@ extension UsageStore {
         let storedFast: Bool? = row["is_fast"]
         let evidence: String = row["evidence_json"]
         let sourceTier = (try? JSONDecoder().decode(ModeEvidence.self, from: Data(evidence.utf8)))?.serviceTier
-        let fast = storedFast ?? CodexServiceTier.isFast(sourceTier)
+        let observedFast = storedFast ?? CodexServiceTier.isFast(sourceTier)
+        let thread: String? = row["thread_id"]
+        let turn: String? = row["turn_id"]
+        let trace = try observedFast == nil ? thread.flatMap { thread in
+            try turn.flatMap { turn in
+                try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key=?", arguments: ["fast_trace:\(thread):\(turn)"])
+            }
+        } : nil
+        let fast = observedFast ?? (trace == nil ? false : true)
+        var proof = (try? JSONSerialization.jsonObject(with: Data(evidence.utf8))) as? [String: Any] ?? [:]
+        var mode: [String: Any] = ["isFast": fast, "source": observedFast != nil ? "rollout" : (trace != nil ? "trace" : "default_standard")]
+        if let trace { mode["trace"] = try JSONSerialization.jsonObject(with: Data(trace.utf8)) }
+        proof["pricingMode"] = mode
+        if let price { proof["pricingPrice"] = ["model": price.model, "date": price.date, "url": price.source.url, "bundled": price.source.isBundled == true] }
+        else { proof.removeValue(forKey: "pricingPrice") }
+        let updatedEvidence = String(decoding: try JSONSerialization.data(withJSONObject: proof, options: [.sortedKeys]), as: UTF8.self)
         var result: UsagePricing.Result?
         if let input, let output {
             let tokens = TokenUsage(inputTokens: input, outputTokens: output, cachedInputTokens: row["cache_read_tokens"],
@@ -128,7 +146,6 @@ extension UsageStore {
             else if report.overflow > 0 { reason = "amount_overflow" }
             else if model == nil { reason = "missing_model" }
             else if price == nil { reason = "no_historical_price" }
-            else if fast == nil { reason = "unknown_fast_mode" }
             else if price?.contextRule == .unsupported { reason = "unsupported_context" }
             else if input == nil || output == nil || (row["cache_read_tokens"] as Int64?) == nil || (row["cache_write_tokens"] as Int64?) == nil {
                 reason = "missing_usage_breakdown"
@@ -139,10 +156,10 @@ extension UsageStore {
         else if [result?.inputAmount, result?.outputAmount, result?.cacheReadAmount, result?.cacheWriteAmount]
             .contains(where: { ($0 ?? 0) > 0 }) { report.partiallyPriced += 1 }
         else { report.unpriced += 1 }
-        let columns = ["is_fast", "is_long_context", "input_price", "output_price", "cache_read_price", "cache_write_price",
+        let columns = ["evidence_json", "is_fast", "is_long_context", "input_price", "output_price", "cache_read_price", "cache_write_price",
                        "input_amount", "output_amount", "cache_read_amount", "cache_write_amount", "amount"]
         let values: [(any DatabaseValueConvertible)?] = [
-            fast, result?.isLongContext,
+            updatedEvidence, observedFast, result?.isLongContext,
             result?.rates.input.map { NSDecimalNumber(decimal: $0).stringValue },
             result?.rates.output.map { NSDecimalNumber(decimal: $0).stringValue },
             result?.rates.cacheRead.map { NSDecimalNumber(decimal: $0).stringValue },

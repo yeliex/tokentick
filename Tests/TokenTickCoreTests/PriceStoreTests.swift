@@ -73,7 +73,8 @@ struct PriceStoreTests {
             let row = try #require(try Row.fetchOne(db, sql: "SELECT * FROM usage"))
             #expect(row["amount"] as Int64? == nil)
             #expect(row["total_tokens"] as Int64 == 110)
-            #expect(row["evidence_json"] as String == #"{"reason":"fixture"}"#)
+            let proof = try JSONSerialization.jsonObject(with: Data((row["evidence_json"] as String).utf8)) as? [String: Any]
+            #expect(proof?["reason"] as? String == "fixture")
         }
     }
 

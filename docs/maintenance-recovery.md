@@ -32,7 +32,7 @@ App 与 CLI 继续调用共享的 `repriceUsage(fromDate:)`，无需额外的恢
 
 ## 统计缓存重建
 
-App 与 CLI 共用 `rebuildStatistics`，每批按用量 ID 读取最多 8,192 条，在 SQLite 内复用已有统计 SQL 聚合，再将中间结果写入 `statistics_rebuild`。该表由 `v4.statistics-recovery` 迁移创建，属于内部恢复数据；升级前沿用一致备份，不修改已有七张业务表、事实或金额重算断点。
+App 与 CLI 共用 `rebuildStatistics`，每批按用量 ID 读取最多 8,192 条，在 SQLite 内复用已有统计 SQL 聚合，再将中间结果写入 `statistics_rebuild`。该表由 `v4.statistics-recovery` 迁移创建，属于内部恢复数据；当前升级不自动备份，依靠事务保证失败回滚，不修改已有七张业务表、事实或金额重算断点。
 
 每个时区在 `app_metadata` 的 `statistics_rebuild_checkpoint:<时区>` 保存最后提交 ID、事实版本和内部断点版本。批次聚合与断点同一事务提交；每批重新核对事实版本。用量变化、项目重新归属、旧版或损坏断点会废弃该时区的中间结果并从头重建。其他时区的中间结果不受影响。
 

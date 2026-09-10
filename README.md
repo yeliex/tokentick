@@ -77,7 +77,7 @@ xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
 
 `--group` 支持 `total|day|thread|project|model`，日期范围包含首尾两天；`--account <ID>` 与 `--unknown-account` 用于账号筛选。临时指定时区不会改变 App 的默认时区。缓存失效时自动重建；扫描者持锁时，已有连接直接查询已提交事实。只有日日期而无精确时间的数据，在不能换算的时区归到未知日期；范围查询排除它，并单独返回 `unknownDateTokens`。JSON 中 `records` 是统计记录数，API 日差额记录不被称为实际请求。`status` 显示缓存版本、时区和来源状态。
 
-`rebuild` 分批保存内部聚合进度；中断后再次执行相同时区会自动续算，用量或项目归属变化时重新计算。全部完成后才原子替换正式缓存，失败不会暴露部分结果。升级到统计恢复 schema 时会自动备份既有数据库。详见 [维护任务恢复](docs/maintenance-recovery.md)。
+`rebuild` 分批保存内部聚合进度；中断后再次执行相同时区会自动续算，用量或项目归属变化时重新计算。全部完成后才原子替换正式缓存，失败不会暴露部分结果。升级采用事务迁移，失败回滚，不自动备份大数据库；旧版备份保留。详见 [维护任务恢复](docs/maintenance-recovery.md)。
 
 请求级明细与证据：
 
@@ -158,3 +158,5 @@ swift test
 ```
 
 通过 `swift package add-dependency` 与 `swift package add-target-dependency` 管理外部依赖，并提交生成的 `Package.resolved`。Core 与测试的包管理入口是根目录 `Package.swift`，App 仍通过 Xcode 工程构建。
+
+默认模型价格维护在 [OpenAI JSON](TokenTick/Core/Pricing/openai-default-prices.json)，用于没有数据库价格历史的模型；API 历史优先。缺少 Fast 证据时补查 Codex trace，仍缺则按普通价格计费，观测字段和计价依据分开保存。详见 [验证说明](docs/default-pricing-validation.md)。

@@ -57,6 +57,11 @@ public struct LocalUsageScanner: Sendable {
                      onProgress: (@Sendable (ScanProgress) -> Void)? = nil) throws -> ScanReport {
         try FileWriteLock(url: store.databaseURL.appendingPathExtension("write.lock")).withLock {
             var report = ScanReport()
+            do { try CodexFastEvidence.collect(codexHome: codexHome, store: store) }
+            catch {
+                try Task.checkCancellation()
+                report.addIssue(ScanIssue(fileName: "logs_*.sqlite", line: nil, message: "Fast 证据：\(error.localizedDescription)"))
+            }
             var candidates: [UUID: [(URL, RolloutIdentity)]] = [:]
             for directory in ["sessions", "archived_sessions"] {
                 let root = codexHome.appendingPathComponent(directory, isDirectory: true)

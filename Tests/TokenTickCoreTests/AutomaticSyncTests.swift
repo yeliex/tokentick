@@ -115,11 +115,12 @@ struct AutomaticSyncTests {
         try await expectEvent(events.stream)
     }
 
-    @Test func sqliteSharedMemoryDoesNotTriggerScanningButDatabaseAndWALDo() async throws {
+    @Test(arguments: ["state_5", "logs_2"])
+    func sqliteSharedMemoryDoesNotTriggerScanningButDatabaseAndWALDo(name: String) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let files = ["state_5.sqlite-shm", "state_5.sqlite-wal", "state_5.sqlite"].map { root.appendingPathComponent($0) }
+        let files = ["\(name).sqlite-shm", "\(name).sqlite-wal", "\(name).sqlite"].map { root.appendingPathComponent($0) }
         for file in files { try Data("initial".utf8).write(to: file) }
         let count = Mutex(0)
         let watcher = try CodexLogWatcher(codexHome: root) { count.withLock { $0 += 1 } }

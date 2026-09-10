@@ -20,7 +20,7 @@ let package = Package(
       dependencies: [
         .product(name: "GRDB", package: "GRDB.swift"),
         .product(name: "libzstd", package: "zstd"),
-      ], path: "TokenTick/Core"),
+      ], path: "TokenTick/Core", resources: [.copy("Pricing/openai-default-prices.json")]),
     .testTarget(
       name: "TokenTickCoreTests",
       dependencies: ["TokenTickCore",.product(name: "GRDB", package: "GRDB.swift"),.product(name: "libzstd", package: "zstd"),]

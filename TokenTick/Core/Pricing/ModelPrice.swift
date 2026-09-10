@@ -49,6 +49,7 @@ struct ModelPrice: Codable, Equatable, Sendable {
 }
 
 struct PriceSource: Codable, Equatable, Sendable {
+    var isBundled: Bool? = nil
     let url: String
     let cost: SourceJSON
     let experimental: SourceJSON?

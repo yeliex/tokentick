@@ -29,7 +29,7 @@ public final class UsageStore: Sendable {
         var configuration = Configuration()
         configuration.busyMode = .timeout(5)
         // 已完成迁移的数据库可直接加入 WAL 读者，不等待扫描者持有的整文件锁。
-        // 需要迁移时仍在锁内重新核对并备份，不能沿用锁外检查结果执行迁移。
+        // 需要迁移时仍在锁内重新核对，不能沿用锁外检查结果执行迁移。
         if FileManager.default.fileExists(atPath: databaseURL.path) {
             let existing = try DatabaseQueue(path: databaseURL.path, configuration: configuration)
             let ready = try existing.read { db in
@@ -46,22 +46,13 @@ public final class UsageStore: Sendable {
         pool = try lock.withLock {
             if FileManager.default.fileExists(atPath: databaseURL.path) {
                 var readConfiguration = Configuration()
-                // 恢复的 WAL 备份可能没有 sidecar。连接须能创建 SQLite 自身的
+                // 已有 WAL 数据库可能没有 sidecar。连接须能创建 SQLite 自身的
                 // WAL/SHM，业务 schema 仍只读检查，确认兼容后才执行迁移。
                 readConfiguration.busyMode = .timeout(5)
                 let previous = try DatabaseQueue(path: databaseURL.path, configuration: readConfiguration)
-                let state = try previous.read { db in
-                    (try migrator.hasBeenSuperseded(db), try migrator.hasCompletedMigrations(db))
-                }
-                guard !state.0 else { throw StoreError.newerSchema }
-                if !state.1 {
-                    let backupDirectory = directory.appendingPathComponent("Backups", isDirectory: true)
-                    try FileManager.default.createDirectory(at: backupDirectory, withIntermediateDirectories: true,
-                                                           attributes: [.posixPermissions: 0o700])
-                    let backupURL = backupDirectory.appendingPathComponent("before-migration-\(UUID().uuidString).sqlite")
-                    let backup = try DatabaseQueue(path: backupURL.path)
-                    try previous.backup(to: backup)
-                }
+                let superseded = try previous.read { try migrator.hasBeenSuperseded($0) }
+                try previous.close()
+                guard !superseded else { throw StoreError.newerSchema }
             }
             let database = try DatabasePool(path: databaseURL.path, configuration: configuration)
             try migrator.migrate(database)

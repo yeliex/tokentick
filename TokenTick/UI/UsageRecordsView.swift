@@ -36,7 +36,7 @@ struct UsageRecordsView: View {
                             Text(row.occurredAt.map { UsageFormatting.timestamp($0, timezone: TimeZone(identifier: query.timezone ?? "UTC") ?? .gmt) }
                                  ?? row.usageDate ?? "未知")
                         }.width(min: 145, ideal: 170)
-                        TableColumn("模型") { row in Text(row.model ?? "未知").lineLimit(1).help(row.model ?? "未知") }
+                        TableColumn("模型") { row in Text(row.model ?? "其他").lineLimit(1).help(row.model ?? "其他") }
                             .width(min: 100, ideal: 140)
                         TableColumn("Tokens") { row in TokenText(value: row.totalTokens).monospacedDigit() }
                             .width(min: 80, ideal: 100)
@@ -107,8 +107,8 @@ private struct UsageRecordDetail: View {
                 UsageDetailField("计价日期 · UTC", value: record.usageDate ?? "未知")
             }
             Section("模型与计价模式") {
-                UsageDetailField("模型", value: record.model ?? "未知")
-                UsageDetailField("Fast", value: record.isFast.map { $0 ? "是" : "否" } ?? "未知")
+                UsageDetailField("模型", value: record.model ?? "其他")
+                UsageDetailField("Fast", value: record.isFast.map { $0 ? "是" : "否" } ?? (record.pricingIsFast ? "是（额外日志）" : "否（默认普通）"))
                 UsageDetailField("长上下文计价", value: record.isLongContext.map { $0 ? "是" : "否" } ?? "未知")
             }
             Section("Tokens") {
