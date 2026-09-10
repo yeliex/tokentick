@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import Synchronization
 import Testing
 @testable import TokenTickCore
 
@@ -96,6 +97,34 @@ struct AutomaticSyncTests {
         try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
         try FileManager.default.moveItem(at: file, to: archive.appendingPathComponent(file.lastPathComponent))
         try await expectEvent(events.stream)
+    }
+
+    @Test func sqliteSharedMemoryDoesNotTriggerScanningButDatabaseAndWALDo() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = ["state_5.sqlite-shm", "state_5.sqlite-wal", "state_5.sqlite"].map { root.appendingPathComponent($0) }
+        for file in files { try Data("initial".utf8).write(to: file) }
+        let count = Mutex(0)
+        let watcher = try CodexLogWatcher(codexHome: root) { count.withLock { $0 += 1 } }
+        defer { withExtendedLifetime(watcher) {} }
+        // 先排空建目录和文件时可能合并到根目录的事件，再观察现有文件的更新。
+        try await Task.sleep(for: .seconds(2))
+        for (index, file) in files.enumerated() {
+            count.withLock { $0 = 0 }
+            let handle = try FileHandle(forWritingTo: file)
+            try handle.seekToEnd(); try handle.write(contentsOf: Data("update".utf8)); try handle.close()
+            if index == 0 {
+                try await Task.sleep(for: .seconds(2))
+                #expect(count.withLock { $0 } == 0, "共享内存变化不能让只读扫描触发自身。")
+            } else {
+                let deadline = ContinuousClock.now.advanced(by: .seconds(8))
+                while count.withLock({ $0 }) == 0, ContinuousClock.now < deadline {
+                    try await Task.sleep(for: .milliseconds(100))
+                }
+                #expect(count.withLock { $0 } > 0, "主库及 WAL 变化仍须通知任务映射更新。")
+            }
+        }
     }
 
     private func expectEvent(_ stream: AsyncStream<Void>) async throws {
