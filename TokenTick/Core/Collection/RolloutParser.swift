@@ -23,11 +23,12 @@ struct RolloutParser {
         if data.allSatisfy({ $0 == 32 || $0 == 13 || $0 == 9 }) { return nil }
         let event = try decoder.decode(RolloutEvent.self, from: data)
         switch event.payload {
-        case .session(let session):
+        case .session(var session):
             if session.id.lowercased() != identity.threadID.uuidString.lowercased() {
                 if let owner = state.session, try isInherited(event, session: owner) { return nil }
                 throw ParseError.mismatchedThread
             }
+            if session.timestamp == nil { session.timestamp = event.timestamp }
             state.session = session
             return nil
         case .turn(let turn):
@@ -95,8 +96,18 @@ struct RolloutParser {
                 return nil
             }
             let usage = info.last_token_usage
-            if state.recordCumulative == info.total_token_usage && state.recordUsage == usage { return nil }
-            state.recordCumulative = nil
+            var evidence = try evidence(event, type: "token_count", cumulative: info.total_token_usage)
+            evidence.modelContextWindow = info.model_context_window
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let signature = LegacySignature(turn: state.contextTurnID, cumulative: info.total_token_usage, usage: usage)
+            let key = "legacy:" + SHA256.hash(data: try encoder.encode(signature)).map { String(format: "%02x", $0) }.joined()
+            // 新旧用量流可能采用不同的任务累计基线。新格式之后的同轮次、同分项报告只计一次。
+            if state.recordTurnID == state.turnID && state.recordUsage == usage, let response = state.recordResponseID {
+                state.recordUsage = nil
+                return try makeUsage(key: "response:" + response, replaces: key, event: event, usage: usage,
+                    thread: session.id, turn: state.turnID, line: line, evidence: evidence)
+            }
             state.recordUsage = nil
             guard previous != info.total_token_usage, usage.totalTokens > 0 else { return nil }
             // Codex 会用全零分项发布 context-window 饱和占位；它不是一次真实请求。
@@ -107,37 +118,29 @@ struct RolloutParser {
                 state.fallbackUsage = nil
                 return nil
             }
-            var evidence = try evidence(event, type: "token_count", cumulative: info.total_token_usage)
-            evidence.modelContextWindow = info.model_context_window
             // 相同事实会随归档、fork 或 revert 被复制；路径、行号和 ordinal 都不能充当请求 ID。
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.sortedKeys]
-            let signature = LegacySignature(thread: session.id.lowercased(), turn: state.contextTurnID,
-                                            timestamp: evidence.timestamp, cumulative: info.total_token_usage, usage: usage)
-            let key = "legacy:" + SHA256.hash(data: try encoder.encode(signature)).map { String(format: "%02x", $0) }.joined()
             state.fallbackKey = key
             state.fallbackUsage = usage
             state.fallbackTurnID = state.turnID
             return try makeUsage(key: key, replaces: nil, event: event, usage: usage,
-                                 thread: session.id, turn: state.turnID, response: nil, line: line, evidence: evidence)
+                                 thread: session.id, turn: state.turnID, line: line, evidence: evidence)
         case .record(let record):
             guard let session = state.session else { throw ParseError.missingSession }
             if try isInherited(event, session: session) || record.thread_id.lowercased() != session.id.lowercased() {
                 state.inheritedEvents += 1
-                state.cumulative = record.thread_token_usage
                 return nil
             }
             let replaces = state.cumulative == record.thread_token_usage && state.fallbackUsage == record.usage && state.fallbackTurnID == record.turn_id
                 ? state.fallbackKey : nil
-            state.recordCumulative = record.thread_token_usage
             state.recordUsage = record.usage
-            state.cumulative = record.thread_token_usage
+            state.recordTurnID = record.turn_id
+            state.recordResponseID = record.response_id
             state.fallbackKey = nil
             state.fallbackUsage = nil
             let evidence = try evidence(event, type: "token_usage_record", cumulative: record.thread_token_usage, record: record)
             return try makeUsage(key: "response:" + record.response_id, replaces: replaces, event: event,
                                  usage: record.usage, thread: record.thread_id, turn: record.turn_id,
-                                 response: record.response_id, line: line, evidence: evidence)
+                                 line: line, evidence: evidence)
         }
     }
 
@@ -166,12 +169,12 @@ struct RolloutParser {
     }
 
     private func makeUsage(key: String, replaces: String?, event: RolloutEvent, usage: TokenUsage,
-                           thread: String, turn: String?, response: String?, line: Int,
+                           thread: String, turn: String?, line: Int,
                            evidence: UsageEvidence) throws -> CollectedUsage {
         guard let timestamp = Self.parseDate(evidence.timestamp) else { throw ParseError.missingTimestamp }
         let fast = CodexServiceTier.isFast(state.serviceTier)
         return CollectedUsage(dedupKey: key, replacesKey: replaces, threadID: thread.lowercased(),
-                              turnID: turn, responseID: response, timestamp: timestamp,
+                              turnID: turn, timestamp: timestamp,
                               model: turn == state.turnID ? state.model : nil, isFast: turn == state.turnID ? fast : nil, tokens: usage,
                               rolloutID: identity.rolloutID.uuidString.lowercased(), line: line, evidence: evidence)
     }
@@ -182,9 +185,7 @@ struct RolloutParser {
     }
 
     private struct LegacySignature: Encodable {
-        let thread: String
         let turn: String?
-        let timestamp: String
         let cumulative: TokenUsage
         let usage: TokenUsage
     }

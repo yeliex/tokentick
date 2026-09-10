@@ -6,7 +6,8 @@ enum StatisticsSQL {
 
     // 汇总和明细共用日期口径；只有 UTC 日日期的事实不能在其他时区猜测归属。
     static let dayExpression = """
-        CASE WHEN u.occurred_at IS NOT NULL THEN COALESCE(tokentick_day(u.occurred_at), 'unknown')
+        CASE WHEN u.occurred_through IS NOT NULL AND tokentick_day(u.occurred_at) != tokentick_day(u.occurred_through) THEN 'unknown'
+             WHEN u.occurred_at IS NOT NULL THEN COALESCE(tokentick_day(u.occurred_at), 'unknown')
              WHEN :timezone IN ('UTC', 'GMT') THEN COALESCE(u.usage_date, 'unknown')
              ELSE 'unknown' END
         """
@@ -54,7 +55,7 @@ enum StatisticsSQL {
             """
     }
 
-    /// 先在 SQLite 中合并同日、同任务、同模型的请求，再展开四个维度，避免放大全部明细。
+    /// 先在 SQLite 中合并同日、同任务、同模型的用量分项，再展开四个维度，避免放大全部明细。
     static var aggregate: String { aggregate(predicate: "1") }
 
     static func aggregate(predicate: String) -> String { """

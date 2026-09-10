@@ -16,7 +16,7 @@ struct TokenTickCommand {
                 if options.json { try printJSON(report) }
                 else {
                     print("发现 \(report.discoveredFiles) 个文件；扫描 \(report.scannedFiles)，未变化 \(report.unchangedFiles)。")
-                    print("新增 \(report.insertedRequests) 个请求，补齐标识／归属 \(report.upgradedRequests)，重复 \(report.duplicateRequests)，继承事件 \(report.inheritedEvents)。")
+                    print("新增 \(report.insertedRequests) 条用量事件，补齐标识／归属 \(report.upgradedRequests)，重复 \(report.duplicateRequests)，继承事件 \(report.inheritedEvents)。")
                     for issue in report.issues {
                         print("\(issue.fileName)\(issue.line.map { ":\($0)" } ?? "")：\(issue.message)")
                     }
@@ -224,7 +224,7 @@ struct TokenTickCommand {
       rebuild    从事实表重建统计缓存；--timezone Asia/Shanghai
       prices     查看历史价格快照（JSON），--limit 100
       sync-prices 从 models.dev 同步当天价格（每天成功一次）
-      reprice    按请求日期的历史价格重算分项金额
+      reprice    按用量日期的历史价格重算分项金额
       sync-api   通过 Codex app-server 保存每日总量和额度观测
       api-usage  查看服务端每日总量缓存（当前不与本地相加）
       limits     查看历史周额度重置，百分比为重置前最后观测值

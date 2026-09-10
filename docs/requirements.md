@@ -104,7 +104,7 @@ GPT-6 Astra 的上游 OpenAI 条目示例，金额单位均为美元／百万 to
 
 ## 4. 数据结构
 
-业务主体采用七张表，另有数据库内部迁移、同步元数据和统计恢复暂存表。以下为逻辑字段定义，当前正式 DDL 见 `StoreSchema.swift`；接口证据未满足的字段继续保持未知。
+业务主体采用八张表，另有数据库内部迁移、同步元数据和统计恢复暂存表。以下为逻辑字段定义，当前正式 DDL 见 `StoreSchema.swift`；接口证据未满足的字段继续保持未知。
 
 ### 4.1 `threads`：最新任务映射
 
@@ -168,18 +168,27 @@ Codex 明确标记为 projectless 的任务，`threads.project_name` 保存为 `
 
 代码随 App／CLI 分发 `Core/Pricing/openai-default-prices.json`，维护已核验的 OpenAI token 价格、模型快照名称及官方来源；目前包含 65 个模型／快照条目，覆盖 models.dev 目录和 GPT-5.1／5.2 Codex 等已移出目录的旧模型。数据库价格历史优先；数据库没有对应模型或该模型快照全部费率均缺失时使用内置默认价，包含早于核验日的历史请求。内置核验日不代表历史生效日，金额仍是估算。未知模型及未公布的费率保留空值，不按名称前缀猜价。JSON 内容变更触发可恢复的历史重算；离线也可应用默认价，不要求价格接口成功。请求证据记录实际采用的来源、日期及是否内置。
 
-### 4.4 `usage`：用量事实、所用单价和金额
+### 4.4 `turn_usage` 与 `usage`：轮次及其统计分项
+
+最小业务单位是 **turn**，`turn_usage.turn_id` 唯一。主表保存原始任务、来源创建时间、轮次起止时间及采集去重状态 `seen_json`。不能取得 turnId 的旧来源保留 NULL，按来源任务保存未知轮次数据，不伪造 turnId。完整规则见 [Turn 级用量方案](turn-usage-plan.md)。
+
+同一 turn 在多个任务出现时采用创建时间最早的原始任务，忽略 fork 的整轮副本。更早来源晚到时整体替换归属、时间及用量；原始任务后续追加继续汇入同一轮次。无需查询祖先链。`response_id` 只作为采集阶段事件身份，保存在去重状态中，不建立请求级用量行。
+
+`usage` 是轮次的汇总分项，按模型、UTC 价格日期、采集时统计日期、观测 Fast 和长上下文档位归并。明细 API 返回 `granularity = turn_breakdown`；明细行数和统计 `record_count` 均是分项数，不能当成请求数或轮次数。
 
 | 字段组 | 内容 |
 | --- | --- |
-| 行身份 | 内部 `id`、唯一 `dedup_key` |
-| 请求归属 | `account_id`、`thread_id`、`turn_id`、`request_id`／`response_id`，不可得时为空 |
-| 时间 | `occurred_at`；只有日期的既有来源使用 `usage_date`，不伪造请求时间，不新增 API 日差额 |
+| 分项身份 | 内部 `id`、唯一 `dedup_key`、关联主表的 `turn_key` |
+| 归属 | `account_id`、`thread_id`、`turn_id`，不可得时为空 |
+| 时间 | `occurred_at` 与 `occurred_through` 是分项首尾事件时间；`usage_date` 为 UTC 价格日期 |
 | 模型和模式 | `model`、可空 `is_fast`、可空 `is_long_context` |
-| token 明细 | `input_tokens`、`output_tokens`、`cache_read_tokens`、`cache_write_tokens`、`reasoning_tokens`、`total_tokens` |
+| token 分项 | `input_tokens`、`output_tokens`、`cache_read_tokens`、`cache_write_tokens`、`reasoning_tokens`、`total_tokens` 的轮次分项累计 |
+| 单次上下文边界 | `pricing_input_min`、`pricing_input_max`；禁止拿累计输入判断单次上下文阈值 |
 | 采用的单价 | `input_price`、`output_price`、`cache_read_price`、`cache_write_price` |
 | 金额 | `input_amount`、`output_amount`、`cache_read_amount`、`cache_write_amount`、`amount` |
-| 证据 | `source`（local／api）、`rollout_id`、`source_line`、`evidence_json` |
+| 证据 | `source`（local／api）、`rollout_id`、`source_line`、`evidence_json`；包括分项首尾文件、行号、时间及模型／计价依据 |
+
+更换查询时区时，分项首尾跨该时区日期的用量归入“日期未知”，不把整项错误放到首日；恢复精确每日分布需在目标时区重新采集。价格阈值变化后若跨越该分项原始调用输入范围，金额留空并报告 `context_requires_rescan`，不能猜测重新拆分比例。
 
 `evidence_json` 仅保存统计事件、定位信息、模型／模式依据、必要历史所有权标记，不保存包含正文的整段日志。来源文件位置通过 rollout 扫描记录查询；证据可保留采集时文件名，文件搬迁不改变用量身份。
 
@@ -210,6 +219,8 @@ Fast 判定优先使用 rollout 明确值；缺失时只读当前 CODEX_HOME 下
 API 同步状态单独保存结果时间、确认的账号与错误，不被后续本地同步覆盖；完整失败和部分可用都能诊断，取消不伪装成 API 故障。旧观测不能覆盖较新状态，旧格式缺少账号／时间则保留未知。菜单只使用最近 API 状态确认账号的最新额度，其他账号的历史仍可独立查询。当前对账证据与缺口见 [API 日用量对账核验](api-reconciliation.md)。
 
 ### 4.6 `weekly_limit_observations`：历史周额度证据
+
+修订中：以下相邻观测判定规则存在真实数据误判，不能继续作为验收通过依据。新的周期归并、回放过滤和重置判定草案见 [历史重置计算方案](weekly-reset-plan.md)；当前尚未实施。
 
 只持久化时长为 10,080 分钟的周额度观测，不依赖 primary／secondary 名称判断。历史从日志回填，运行期间优先用接口取得账号明确的观测，日志补充。两种来源都保存观测时间、原计划重置时间、已用百分比和来源证据。
 
@@ -258,7 +269,7 @@ v4 迁移新增内部 `statistics_rebuild` 暂存表。重建每批最多聚合 
 - 时间、模型和观测模式无法恢复时保留未知。不能用当前配置给数月前请求补模型或 Fast 状态；缺少 Fast 证据只影响计价选择，按普通模式兜底并记录依据。
 - 读取历史 `thread_settings_applied`，核对 thread 所有权和继承边界；在 `task_started`／`turn_started` 时绑定该轮设置。持久设置更新不追溯改变正在执行的轮次。后续同轮 `turn_context` 缺少 service tier 字段时保留已绑定证据，显式 NULL 则清除；不同轮次不能沿用。
 - 前置压缩可能早于本轮 `turn_context`，且模型切换时可能使用上一模型；存在多个候选时保留未知模型及候选证据，不能直接采用新设置。模型、模式证据各自保存来源 rollout、文件名和行号。
-- 解析修复可幂等补齐旧用量的未知归属并重新计价，保留原 token 事实与请求身份。旧累计事件因遗漏开始事件而错位的轮次可依据明确证据修正并留痕，但旧去重键保持稳定；其他已知归属冲突须回滚并报告。
+- 同一原始轮次的重复事件通过持久去重状态过滤；同一事件的 token 或已知模型／模式冲突时回滚本批及游标。解析器升级需要重新评估分项是否可复用，不能把请求级修复承诺沿用到汇总分项。
 
 ### 5.2 身份与证据
 
@@ -282,6 +293,7 @@ v4 迁移新增内部 `statistics_rebuild` 暂存表。重建每批最多聚合 
 - 结构迁移采用明确编号、按顺序执行的 GRDB migration。已发布迁移不就地修改。
 - 结构迁移、解析修复、金额重算、统计重建分开执行，避免每次升级全量扫描。
 - 不在 usage 每行增加 parser_version；内部维护已完成的数据修复编号和必要进度。
+- 本次尚未上线的 v6 切换按用户明确要求直接清空旧用量、扫描游标、统计缓存和维护断点，然后重扫原始日志；不修复旧请求记录，不保留无法重扫的旧统计。价格、任务缓存和 API／周额度观测保留。该一次性重置不代表后续正式版本允许任意清库。
 - 迁移前不自动备份数据库，不复制主库或 WAL。保留跨进程写锁、事务迁移、失败回滚及未来 schema 拒绝；失败不得删除或重建用户数据库。旧版已生成的备份保留，不自动删除。
 - 设置显示主库及 WAL／共享内存文件长度、迁移备份总数与总大小、最近 20 份备份的元数据和 Finder 定位。元数据后台读取，不扫描历史请求或触发 checkpoint。
 - 旧版程序遇到不支持的新 schema 停止写入并明确提示。长时间重建支持断点及崩溃恢复。

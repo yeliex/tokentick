@@ -69,57 +69,6 @@ struct SettingsAttributionTests {
         #expect(rows[1]["is_fast"] as Bool? == nil)
     }
 
-    @Test func rescanEnrichesOldFactsRepricesInvalidatesCacheAndIsIdempotent() throws {
-        let fixture = try Fixture()
-        defer { fixture.clean() }
-        _ = try fixture.store.savePrices(ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: "2026-09-09"), date: "2026-09-09")
-        try fixture.write(fixture.header + fixture.settings(tier: "priority") + fixture.started("new") + fixture.record(1, turn: "new"))
-        _ = try fixture.scan()
-        try fixture.store.pool.write { db in
-            try db.execute(sql: """
-                UPDATE usage SET model = NULL, is_fast = NULL, amount = NULL,
-                    evidence_json = json_remove(evidence_json, '$.modelSource', '$.serviceTierSource', '$.threadSettings', '$.turnStartedLine');
-                UPDATE scan_files SET parser_state_json = json_set(parser_state_json, '$.version', 1);
-                """)
-        }
-        let before = try #require(fixture.rows().first)
-        _ = try fixture.store.rebuildStatistics(timezone: "UTC")
-        let report = try fixture.scan()
-        #expect(report.insertedRequests == 0 && report.upgradedRequests == 1)
-        let after = try #require(fixture.rows().first)
-        #expect(after["id"] as Int64 == before["id"] as Int64 && after["total_tokens"] as Int64 == 120)
-        #expect(after["model"] as String? == "gpt-6-astra" && after["is_fast"] as Bool? == true)
-        #expect(after["amount"] as Int64? == 2_920_000)
-        #expect(try fixture.store.pool.read { try !UsageStore.statisticsAreCurrent($0, timezone: "UTC") })
-        #expect(try fixture.store.usageReport(UsageQuery(grouping: .total, timezone: "UTC")).rows.first?.knownAmountNanoUSD == 2_920_000)
-        #expect(try fixture.scan().unchangedFiles == 1)
-        try fixture.store.pool.write { db in try db.execute(sql: "UPDATE scan_files SET parser_state_json = json_set(parser_state_json, '$.version', 1)") }
-        #expect(try fixture.scan().upgradedRequests == 0)
-        #expect(try fixture.rows() == [after])
-    }
-
-    @Test func legacyIdentityFromV1SurvivesCorrectedTurnAttribution() throws {
-        let fixture = try Fixture()
-        defer { fixture.clean() }
-        try fixture.write(fixture.header + fixture.context("old") + fixture.settings(tier: "priority")
-                          + fixture.started("new") + fixture.count)
-        _ = try fixture.scan()
-        let key = "legacy:274399906142e41077ad6503a1ae30be507430670d48467be18f0ec1bd6a449e"
-        #expect(try fixture.rows().first?["dedup_key"] as String? == key)
-        try fixture.store.pool.write { db in
-            try db.execute(sql: """
-                UPDATE usage SET turn_id = 'old', is_fast = NULL,
-                    evidence_json = json_remove(evidence_json, '$.modelSource', '$.serviceTierSource', '$.threadSettings', '$.turnStartedLine');
-                UPDATE scan_files SET parser_state_json = json_set(parser_state_json, '$.version', 1);
-                """)
-        }
-        #expect(try fixture.scan().insertedRequests == 0)
-        let row = try #require(fixture.rows().first)
-        #expect(row["dedup_key"] as String == key && row["turn_id"] as String? == "new")
-        #expect(row["is_fast"] as Bool? == true && (row["evidence_json"] as String).contains("attributionRepair"))
-        #expect(try fixture.rows().count == 1)
-    }
-
     @Test func conflictingKnownMetadataRollsBackWithoutOverwritingFacts() throws {
         let fixture = try Fixture()
         defer { fixture.clean() }

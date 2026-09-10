@@ -20,7 +20,7 @@ struct UsageRecordsView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title).font(.headline).lineLimit(1)
-                    Text("用量明细 · \(query.timezone ?? app.status?.timezone ?? "UTC")")
+                    Text("轮次用量分项 · \(query.timezone ?? app.status?.timezone ?? "UTC")")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -32,7 +32,8 @@ struct UsageRecordsView: View {
             HSplitView {
                 VStack(spacing: 0) {
                     Table(records, selection: $selection) {
-                        TableColumn("发生时间") { row in
+                        TableColumn("轮次") { row in Text(row.turnID ?? "未知").lineLimit(1).help(row.turnID ?? "未知") }.width(min: 100, ideal: 130)
+                        TableColumn("首条用量时间") { row in
                             Text(row.occurredAt.map { UsageFormatting.timestamp($0, timezone: TimeZone(identifier: query.timezone ?? "UTC") ?? .gmt) }
                                  ?? row.usageDate ?? "未知")
                         }.width(min: 145, ideal: 170)
@@ -94,15 +95,14 @@ private struct UsageRecordDetail: View {
     @State private var evidenceExpanded = false
     var body: some View {
         Form {
-            Section("请求归属") {
+            Section("轮次归属") {
                 UsageDetailField("任务", value: record.title ?? record.threadID ?? "未知")
                 UsageDetailField("任务 ID", value: record.threadID ?? "未知")
                 UsageDetailField("项目", value: UsageFormatting.project(record.projectName))
                 UsageDetailField("账号", value: record.accountID ?? "未知")
                 UsageDetailField("轮次 ID", value: record.turnID ?? "未知")
-                UsageDetailField("请求 ID", value: record.requestID ?? "未知")
-                UsageDetailField("响应 ID", value: record.responseID ?? "未知")
-                UsageDetailField("发生时间", value: UsageFormatting.timestamp(record.occurredAt, timezone: timezone))
+                UsageDetailField("首条用量时间", value: UsageFormatting.timestamp(record.occurredAt, timezone: timezone))
+                UsageDetailField("最后用量时间", value: UsageFormatting.timestamp(record.occurredThrough ?? record.occurredAt, timezone: timezone))
                 UsageDetailField("统计日期", value: record.statisticalDate ?? "未知")
                 UsageDetailField("计价日期 · UTC", value: record.usageDate ?? "未知")
             }

@@ -152,7 +152,7 @@ struct StatisticsTests {
         #expect(try fixture.store.rebuildStatistics(timezone: #require(TimeZone(identifier: "UTC")), onlyIfNeeded: true).rebuilt)
     }
 
-    @Test func v2UpgradeKeepsFactsWithoutBackupAndReplacesOnlyDerivedCache() throws {
+    @Test func preReleaseTurnUpgradeDiscardsOldUsageAndCacheWithoutBackup() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -164,15 +164,21 @@ struct StatisticsTests {
                 INSERT INTO usage(dedup_key, usage_date, total_tokens, source, evidence_json) VALUES ('old', '2026-03-08', 7, 'local', '{"keep":true}');
                 INSERT INTO statistics(account_key, date, timezone, dimension, dimension_value, total_tokens,
                     unpriced_tokens, unattributed_tokens, record_count) VALUES ('all', '2026-03-08', 'UTC', 'all', 'all', 999, 0, 0, 1);
+                INSERT INTO scan_files(rollout_id,thread_id,file_name,scanned_line,scanned_offset) VALUES ('old','thread','old.jsonl',100,200);
+                INSERT INTO app_metadata(key,value) VALUES ('reprice_checkpoint','old');
+                INSERT INTO prices(model,date,input_price,source_json) VALUES ('historical','2026-01-01','1','{}');
                 """)
         }
-        let before = try old.read { try Row.fetchAll($0, sql: "SELECT * FROM usage") }
         try old.close()
         let store = try UsageStore(databaseURL: url)
-        #expect(try store.pool.read { try Row.fetchAll($0, sql: "SELECT * FROM usage") } == before)
+        #expect(try store.tableCounts()["usage"] == 0)
+        #expect(try store.tableCounts()["turn_usage"] == 0)
+        #expect(try store.tableCounts()["scan_files"] == 0)
+        #expect(try store.tableCounts()["prices"] == 1)
+        #expect(try store.pool.read { try String.fetchOne($0, sql: "SELECT value FROM app_metadata WHERE key='reprice_checkpoint'") } == nil)
         #expect(try store.tableCounts()["statistics"] == 0)
         #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("Backups").path))
-        #expect(try store.usageReport(UsageQuery(grouping: .total, timezone: "UTC")).rows.first?.totalTokens == 7)
+        #expect(try store.usageReport(UsageQuery(grouping: .total, timezone: "UTC")).rows.reduce(0) { $0 + $1.totalTokens } == 0)
     }
 
     private struct Fixture {

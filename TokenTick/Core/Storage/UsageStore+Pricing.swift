@@ -136,13 +136,22 @@ extension UsageStore {
             let tokens = TokenUsage(inputTokens: input, outputTokens: output, cachedInputTokens: row["cache_read_tokens"],
                     cacheWriteInputTokens: row["cache_write_tokens"], reasoningOutputTokens: row["reasoning_tokens"],
                     totalTokens: row["total_tokens"])
-            do { result = try UsagePricing.calculate(tokens: tokens, isFast: fast, price: price) }
+            let minimum: Int64? = row["pricing_input_min"]
+            let maximum: Int64? = row["pricing_input_max"]
+            let mixedContext = price?.contextRule == .requestInputGreaterThan && price?.longContextThreshold.map {
+                (minimum ?? input) <= $0 && (maximum ?? input) > $0
+            } == true
+            do {
+                if mixedContext { report.unpricedReasons["context_requires_rescan"] = 1 }
+                else { result = try UsagePricing.calculate(tokens: tokens, isFast: fast, price: price, contextInput: maximum) }
+            }
             catch PriceError.invalidUsage { report.invalidUsage += 1 }
             catch PriceError.amountOverflow { report.overflow += 1 }
         }
         if result?.amount == nil {
             let reason: String
-            if report.invalidUsage > 0 { reason = "invalid_usage" }
+            if report.unpricedReasons["context_requires_rescan"] != nil { reason = "context_requires_rescan" }
+            else if report.invalidUsage > 0 { reason = "invalid_usage" }
             else if report.overflow > 0 { reason = "amount_overflow" }
             else if model == nil { reason = "missing_model" }
             else if price == nil { reason = "no_historical_price" }
@@ -150,7 +159,7 @@ extension UsageStore {
             else if input == nil || output == nil || (row["cache_read_tokens"] as Int64?) == nil || (row["cache_write_tokens"] as Int64?) == nil {
                 reason = "missing_usage_breakdown"
             } else { reason = "missing_component_price" }
-            report.unpricedReasons[reason, default: 0] += 1
+            report.unpricedReasons[reason] = 1
         }
         if result?.amount != nil { report.fullyPriced += 1 }
         else if [result?.inputAmount, result?.outputAmount, result?.cacheReadAmount, result?.cacheWriteAmount]

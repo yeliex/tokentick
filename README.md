@@ -6,12 +6,14 @@ TokenTick 从本地 Codex 日志采集统计数据，记录每个任务、每天
 
 ## 项目状态
 
-已建立面向 **macOS 26.0+** 的原生 Xcode 工程，包含 SwiftUI App 和共享 Core 源码的 CLI。已实现本地 JSONL／Zstandard 增量采集、迁移、任务名称缓存、历史计价、服务端日桶／额度观测、统计缓存及共享同步流程；采集、金额重算与统计重建具备持久恢复进度。SwiftUI 已接入总览、每日趋势与表格、任务／项目分页、汇总检查器、请求级分页与证据、额度和数据状态；搜索、排序、交叉筛选等交互仍在完善。API 差额口径、完整客户端交互及正式发布验收尚未完成。
+已建立面向 **macOS 26.0+** 的原生 Xcode 工程，包含 SwiftUI App 和共享 Core 源码的 CLI。已实现本地 JSONL／Zstandard 增量采集、迁移、任务名称缓存、历史计价、服务端日桶／额度观测、统计缓存及共享同步流程；采集、金额重算与统计重建具备持久恢复进度。SwiftUI 已接入总览、每日趋势与表格、任务／项目分页、汇总检查器、轮次分项分页与证据、额度和数据状态；搜索、排序、交叉筛选等交互仍在完善。API 差额口径、完整客户端交互及正式发布验收尚未完成。
 
 - [需求与技术方案](docs/requirements.md)
 - [实现计划](docs/implementation-plan.md)
 - [客户端 UI 方案](docs/client-ui.md)
 - [验收状态与剩余条件](docs/acceptance-status.md)
+
+未上线的 v6 切换会直接清空旧用量及扫描进度，再从原日志采集，不备份或修复旧请求行。fork 和双格式去重已通过真实 AIChat 验证，见 [重建结果](docs/turn-usage-validation.md)。历史周额度重置的误判仍待修正。
 
 ## 技术方向
 
@@ -75,18 +77,18 @@ xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
   --group project --timezone Asia/Shanghai --from 2026-09-01 --through 2026-09-09 --limit 50 --offset 0 --json
 ```
 
-`--group` 支持 `total|day|thread|project|model`，日期范围包含首尾两天；`--account <ID>` 与 `--unknown-account` 用于账号筛选。临时指定时区不会改变 App 的默认时区。缓存失效时自动重建；扫描者持锁时，已有连接直接查询已提交事实。只有日日期而无精确时间的数据，在不能换算的时区归到未知日期；范围查询排除它，并单独返回 `unknownDateTokens`。JSON 中 `records` 是统计记录数，API 日差额记录不被称为实际请求。`status` 显示缓存版本、时区和来源状态。
+`--group` 支持 `total|day|thread|project|model`，日期范围包含首尾两天；`--account <ID>` 与 `--unknown-account` 用于账号筛选。临时指定时区不会改变 App 的默认时区。缓存失效时自动重建；扫描者持锁时，已有连接直接查询已提交事实。只有日日期而无精确时间的数据，在不能换算的时区归到未知日期；范围查询排除它，并单独返回 `unknownDateTokens`。JSON 中 `records` 是轮次分项数（不是请求数或轮次数），API 日差额记录不被称为实际请求。`status` 显示缓存版本、时区和来源状态。
 
 `rebuild` 分批保存内部聚合进度；中断后再次执行相同时区会自动续算，用量或项目归属变化时重新计算。全部完成后才原子替换正式缓存，失败不会暴露部分结果。升级采用事务迁移，失败回滚，不自动备份大数据库；旧版备份保留。详见 [维护任务恢复](docs/maintenance-recovery.md)。
 
-请求级明细与证据：
+轮次用量分项与证据：
 
 ```sh
 .build/DerivedData/Build/Products/Debug/tokentick records --database .build/audit/usage.sqlite \
   --day 2026-09-09 --timezone Asia/Shanghai --limit 100 --offset 0
 ```
 
-`records` 与 App 检查器共用查询，默认按发生时间降序、记录 ID 降序分页，返回 `hasMore`。支持日期／账号条件，以及任务、项目、模型、单日的组合条件；未知归属使用 `--unknown-thread`、`--unknown-project`、`--unknown-model` 或 `--unknown-date`，不会与名称恰好为 `unknown` 的项目混淆。输出包含 Fast／长上下文、分项 tokens、实际十进制费率字符串、纳美元金额、最新任务名称与项目，以及统计证据和最近扫描位置。未知字段在 JSON 中显式为 `null`；`statisticalDate` 是所选时区日期，`usageDate` 是计价 UTC 日期。查询不会重建统计缓存或读取对话正文。
+`records` 返回 `granularity: turn_breakdown`，与 App 检查器共用查询，默认按发生时间降序、记录 ID 降序分页，返回 `hasMore`。支持日期／账号条件，以及任务、项目、模型、单日的组合条件；未知归属使用 `--unknown-thread`、`--unknown-project`、`--unknown-model` 或 `--unknown-date`，不会与名称恰好为 `unknown` 的项目混淆。输出包含 Fast／长上下文、分项 tokens、实际十进制费率字符串、纳美元金额、最新任务名称与项目，以及统计证据和最近扫描位置。`occurredAt`／`occurredThrough` 为分项首尾用量时间；未知字段在 JSON 中显式为 `null`；`statisticalDate` 是所选时区日期，`usageDate` 是计价 UTC 日期。查询不会重建统计缓存或读取对话正文。
 
 组合筛选与排序（`usage` 和 `records` 共用）：
 

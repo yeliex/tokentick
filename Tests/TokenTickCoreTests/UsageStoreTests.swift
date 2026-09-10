@@ -9,7 +9,7 @@ struct UsageStoreTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("usage.sqlite")
         let store = try UsageStore(databaseURL: url)
-        #expect(try store.tableCounts().count == 7)
+        #expect(try store.tableCounts().count == 8)
         try store.pool.write { db in
             try db.execute(sql: "INSERT INTO usage (dedup_key, total_tokens, usage_date, source, evidence_json) VALUES ('api-day', 100, '2026-09-09', 'api', '{}')")
         }
@@ -143,15 +143,13 @@ struct UsageStoreTests {
         let before = try old.read { db in
             try ["usage", "statistics", "app_metadata"].map { try Row.fetchAll(db, sql: "SELECT * FROM \($0) ORDER BY 1") }
         }
-        try old.close()
-        let current = try UsageStore(databaseURL: url)
-        let after = try current.pool.read { db in
+        try StoreSchema.migrator.migrate(old, upTo: "v4.statistics-recovery")
+        let after = try old.read { db in
             #expect(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM statistics_rebuild") == 0)
             return try ["usage", "statistics", "app_metadata"].map { try Row.fetchAll(db, sql: "SELECT * FROM \($0) ORDER BY 1") }
         }
         #expect(before[0] == after[0] && before[1] == after[1])
-        #expect(try current.pool.read { try String.fetchOne($0, sql: "SELECT value FROM app_metadata WHERE key = 'reprice_checkpoint'") } == "{\"keep\":true}")
-        #expect(try !current.status().cacheCurrent)
+        #expect(try old.read { try String.fetchOne($0, sql: "SELECT value FROM app_metadata WHERE key = 'reprice_checkpoint'") } == "{\"keep\":true}")
         #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("Backups").path))
     }
 

@@ -10,7 +10,7 @@ struct RolloutEvent: Decodable {
     }
     struct Session: Codable {
         let id: String
-        let timestamp: String?
+        var timestamp: String?
         let cwd: String?
         let forked_from_id: String?
         let forked_from_ordinal_exclusive: UInt64?
@@ -94,7 +94,7 @@ struct RolloutEvent: Decodable {
 
 struct RolloutParserState: Codable {
     // 解析状态可丢弃重建；版本变化只触发重扫，不改写事实。
-    static let currentVersion = 3
+    static let currentVersion = 4
     var version = currentVersion
     var session: RolloutEvent.Session?
     var turnID: String?
@@ -113,8 +113,9 @@ struct RolloutParserState: Codable {
     var fallbackKey: String?
     var fallbackUsage: TokenUsage?
     var fallbackTurnID: String?
-    var recordCumulative: TokenUsage?
     var recordUsage: TokenUsage?
+    var recordTurnID: String?
+    var recordResponseID: String?
     var inheritedEvents = 0
 }
 
@@ -139,7 +140,6 @@ struct UsageEvidence: Codable {
     let serviceTier: String?
     let cumulative: TokenUsage
     let record: RolloutEvent.Record?
-    var legacyKey: String? = nil
     var modelContextWindow: Int64? = nil
     var modelSource: UsageContextEvidence? = nil
     var serviceTierSource: UsageContextEvidence? = nil
@@ -153,7 +153,6 @@ struct CollectedUsage {
     let replacesKey: String?
     let threadID: String
     let turnID: String?
-    let responseID: String?
     let timestamp: Date
     let model: String?
     let isFast: Bool?

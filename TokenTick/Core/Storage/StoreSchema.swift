@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 enum StoreSchema {
-    static let tables = ["threads", "scan_files", "prices", "usage", "api_daily_usage", "weekly_limit_observations", "statistics"]
+    static let tables = ["threads", "scan_files", "prices", "turn_usage", "usage", "api_daily_usage", "weekly_limit_observations", "statistics"]
 
     static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
@@ -223,6 +223,36 @@ enum StoreSchema {
                 UPDATE app_metadata SET value = 'true' WHERE key = 'statistics_dirty';
                 DELETE FROM app_metadata WHERE key LIKE 'statistics_cache_revision:%' OR key LIKE 'statistics_rebuild_checkpoint:%';
                 DELETE FROM statistics_rebuild;
+                """)
+        }
+        migrator.registerMigration("v6.turn-usage") { db in
+            // 开发阶段按用户决定丢弃旧统计，从原始日志重建，不迁移已污染的请求用量。
+            try db.execute(sql: """
+                DELETE FROM usage;
+                DELETE FROM scan_files;
+                DELETE FROM statistics;
+                DELETE FROM statistics_rebuild;
+                DELETE FROM app_metadata WHERE key LIKE 'statistics_cache_revision:%'
+                    OR key LIKE 'statistics_rebuild_checkpoint:%' OR key = 'reprice_checkpoint'
+                    OR key = 'last_sync_report';
+                DROP INDEX usage_legacy_alias;
+                ALTER TABLE usage DROP COLUMN request_id;
+                ALTER TABLE usage DROP COLUMN response_id;
+                CREATE TABLE turn_usage (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    turn_id TEXT UNIQUE,
+                    thread_id TEXT NOT NULL,
+                    source_created_at REAL NOT NULL,
+                    started_at REAL NOT NULL,
+                    last_event_at REAL NOT NULL,
+                    seen_json TEXT NOT NULL
+                );
+                ALTER TABLE usage ADD COLUMN turn_key TEXT REFERENCES turn_usage(id) ON DELETE CASCADE;
+                ALTER TABLE usage ADD COLUMN occurred_through REAL;
+                ALTER TABLE usage ADD COLUMN pricing_input_min INTEGER;
+                ALTER TABLE usage ADD COLUMN pricing_input_max INTEGER;
+                CREATE INDEX usage_turn_key ON usage(turn_key);
+                UPDATE app_metadata SET value = 'true' WHERE key = 'statistics_dirty';
                 """)
         }
         return migrator

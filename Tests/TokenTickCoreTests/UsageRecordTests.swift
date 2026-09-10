@@ -48,7 +48,7 @@ struct UsageRecordTests {
             #expect(page.hasMore == (offset + 1 < all.rows.count))
         }
         #expect(ids == all.rows.map(\.id) && Set(ids).count == 4)
-        let before = try #require(all.rows.first(where: { $0.responseID == "response" }))
+        let before = try #require(all.rows.first(where: { $0.turnID == "turn-a" }))
         #expect(before.inputPrice == "0.1234567890123456789")
         #expect(before.isFast == true && before.isLongContext == true)
         #expect(before.inputAmountNanoUSD == 1 && before.amountNanoUSD == 7 && before.knownAmountNanoUSD == 7)
@@ -97,7 +97,7 @@ struct UsageRecordTests {
                         ('c', NULL, ?, '2026-03-09', 30, 'unknown', 'local', '{}'),
                         ('d', NULL, NULL, '2026-03-08', 40, NULL, 'api', '{}');
                     UPDATE usage SET account_id = 'unknown' WHERE dedup_key = 'd';
-                    UPDATE usage SET response_id = 'response', rollout_id = 'rollout', source_line = 3,
+                    UPDATE usage SET turn_id = 'turn-a', rollout_id = 'rollout', source_line = 3,
                         is_fast = 1, is_long_context = 1, input_price = '0.1234567890123456789',
                         input_amount = 1, output_amount = 2, cache_read_amount = 4, cache_write_amount = 0, amount = 7
                         WHERE dedup_key = 'a';

@@ -13,9 +13,8 @@ public struct UsageRecord: Encodable, Sendable, Identifiable {
     public let title: String?
     public let projectName: String?
     public let turnID: String?
-    public let requestID: String?
-    public let responseID: String?
     public let occurredAt: Double?
+    public let occurredThrough: Double?
     public let usageDate: String?
     public let statisticalDate: String?
     public let model: String?
@@ -52,7 +51,7 @@ public struct UsageRecord: Encodable, Sendable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case id, accountID, threadID, title, projectName, turnID
-        case requestID, responseID, occurredAt, usageDate, statisticalDate, model
+        case occurredAt, occurredThrough, usageDate, statisticalDate, model
         case isFast, isLongContext, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens
         case reasoningTokens, totalTokens, inputPrice, outputPrice, cacheReadPrice, cacheWritePrice
         case inputAmountNanoUSD, outputAmountNanoUSD, cacheReadAmountNanoUSD, cacheWriteAmountNanoUSD, amountNanoUSD, knownAmountNanoUSD
@@ -66,9 +65,8 @@ public struct UsageRecord: Encodable, Sendable, Identifiable {
         try values.encode(title, forKey: .title)
         try values.encode(projectName, forKey: .projectName)
         try values.encode(turnID, forKey: .turnID)
-        try values.encode(requestID, forKey: .requestID)
-        try values.encode(responseID, forKey: .responseID)
         try values.encode(occurredAt, forKey: .occurredAt)
+        try values.encode(occurredThrough, forKey: .occurredThrough)
         try values.encode(usageDate, forKey: .usageDate)
         try values.encode(statisticalDate, forKey: .statisticalDate)
         try values.encode(model, forKey: .model)
@@ -103,6 +101,7 @@ public struct UsageRecordPage: Encodable, Sendable {
     public let timezone: String
     public let rows: [UsageRecord]
     public let hasMore: Bool
+    public let granularity = "turn_breakdown"
     public let amountUnit = "nanoUSD"
     public let priceUnit = "USD_per_million_tokens"
 }
@@ -153,7 +152,7 @@ extension UsageStore {
             return UsageRecordPage(timezone: timezone.identifier, rows: rows.prefix(query.limit).map { row in
                 UsageRecord(id: row["id"], accountID: row["account_id"], threadID: row["thread_id"],
                     title: row["title"], projectName: row["project_name"], turnID: row["turn_id"],
-                    requestID: row["request_id"], responseID: row["response_id"], occurredAt: row["occurred_at"],
+                    occurredAt: row["occurred_at"], occurredThrough: row["occurred_through"],
                     usageDate: row["usage_date"], statisticalDate: row["statistical_date"], model: row["model"],
                     isFast: row["is_fast"], isLongContext: row["is_long_context"], inputTokens: row["input_tokens"],
                     outputTokens: row["output_tokens"], cacheReadTokens: row["cache_read_tokens"],
