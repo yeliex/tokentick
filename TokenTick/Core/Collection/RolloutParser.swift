@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 struct RolloutParser {
@@ -43,6 +42,7 @@ struct RolloutParser {
                 state.serviceTierSource = nil
                 state.activeSettings = nil
                 state.turnStartedLine = nil
+                state.turnStartedAt = event.timestamp
             }
             state.turnID = turn.turn_id
             state.model = turn.model
@@ -68,6 +68,7 @@ struct RolloutParser {
             state.turnID = started.turn_id
             state.activeSettings = state.settings
             state.turnStartedLine = line
+            state.turnStartedAt = event.timestamp
             state.serviceTier = state.settings?.serviceTier
             state.serviceTierSource = state.settings
             let model = state.settings?.model
@@ -96,21 +97,17 @@ struct RolloutParser {
             state.cumulative = info.total_token_usage
             if inherited {
                 state.inheritedEvents += 1
-                state.fallbackKey = nil
+                state.fallbackCumulative = nil
                 state.fallbackUsage = nil
                 return nil
             }
             let usage = info.last_token_usage
             var evidence = try evidence(event, type: "token_count", cumulative: info.total_token_usage)
             evidence.modelContextWindow = info.model_context_window
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.sortedKeys]
-            let signature = LegacySignature(turn: state.contextTurnID, cumulative: info.total_token_usage, usage: usage)
-            let key = "legacy:" + SHA256.hash(data: try encoder.encode(signature)).map { String(format: "%02x", $0) }.joined()
             // 新旧用量流可能采用不同的任务累计基线。新格式之后的同轮次、同分项报告只计一次。
             if state.recordTurnID == state.turnID && state.recordUsage == usage, let response = state.recordResponseID {
                 state.recordUsage = nil
-                return try makeUsage(key: "response:" + response, replaces: key, event: event, usage: usage,
+                return try makeUsage(responseID: response, legacy: info.total_token_usage, event: event, usage: usage,
                     thread: session.id, turn: state.turnID, line: line, evidence: evidence)
             }
             state.recordUsage = nil
@@ -119,15 +116,15 @@ struct RolloutParser {
             guard usage.inputTokens > 0 || usage.outputTokens > 0 else { return nil }
             if let previous, info.total_token_usage.totalTokens < previous.totalTokens,
                info.total_token_usage != usage {
-                state.fallbackKey = nil
+                state.fallbackCumulative = nil
                 state.fallbackUsage = nil
                 return nil
             }
             // 相同事实会随归档、fork 或 revert 被复制；路径、行号和 ordinal 都不能充当请求 ID。
-            state.fallbackKey = key
+            state.fallbackCumulative = info.total_token_usage
             state.fallbackUsage = usage
             state.fallbackTurnID = state.turnID
-            return try makeUsage(key: key, replaces: nil, event: event, usage: usage,
+            return try makeUsage(responseID: nil, legacy: info.total_token_usage, event: event, usage: usage,
                                  thread: session.id, turn: state.turnID, line: line, evidence: evidence)
         case .record(let record):
             guard let session = state.session else { throw ParseError.missingSession }
@@ -136,14 +133,14 @@ struct RolloutParser {
                 return nil
             }
             let replaces = state.cumulative == record.thread_token_usage && state.fallbackUsage == record.usage && state.fallbackTurnID == record.turn_id
-                ? state.fallbackKey : nil
+                ? state.fallbackCumulative : nil
             state.recordUsage = record.usage
             state.recordTurnID = record.turn_id
             state.recordResponseID = record.response_id
-            state.fallbackKey = nil
+            state.fallbackCumulative = nil
             state.fallbackUsage = nil
             let evidence = try evidence(event, type: "token_usage_record", cumulative: record.thread_token_usage, record: record)
-            return try makeUsage(key: "response:" + record.response_id, replaces: replaces, event: event,
+            return try makeUsage(responseID: record.response_id, legacy: replaces, event: event,
                                  usage: record.usage, thread: record.thread_id, turn: record.turn_id,
                                  line: line, evidence: evidence)
         }
@@ -170,17 +167,17 @@ struct RolloutParser {
             eventType: type, serviceTier: sameTurn ? state.serviceTier : nil, cumulative: cumulative, record: record,
             modelSource: sameTurn ? state.modelSource : nil, serviceTierSource: sameTurn ? state.serviceTierSource : nil,
             threadSettings: sameTurn ? state.activeSettings : nil, turnStartedLine: sameTurn ? state.turnStartedLine : nil,
+            turnStartedAt: sameTurn ? state.turnStartedAt : nil,
             modelCandidates: sameTurn ? state.modelCandidates : nil)
     }
 
-    private func makeUsage(key: String, replaces: String?, event: RolloutEvent, usage: TokenUsage,
+    private func makeUsage(responseID: String?, legacy: TokenUsage?, event: RolloutEvent, usage: TokenUsage,
                            thread: String, turn: String?, line: Int,
                            evidence: UsageEvidence) throws -> CollectedUsage {
         guard let timestamp = Self.parseDate(evidence.timestamp) else { throw ParseError.missingTimestamp }
-        let fast = CodexServiceTier.isFast(state.serviceTier)
-        return CollectedUsage(dedupKey: key, replacesKey: replaces, threadID: thread.lowercased(),
+        return CollectedUsage(responseID: responseID, legacyCumulative: legacy, threadID: thread.lowercased(),
                               turnID: turn, timestamp: timestamp,
-                              model: turn == state.turnID ? state.model : nil, isFast: turn == state.turnID ? fast : nil, tokens: usage,
+                              model: turn == state.turnID ? state.model : nil, tokens: usage,
                               rolloutID: identity.rolloutID.uuidString.lowercased(), line: line, evidence: evidence)
     }
 
@@ -189,9 +186,4 @@ struct RolloutParser {
             ?? (try? Date.ISO8601FormatStyle().parse(text))
     }
 
-    private struct LegacySignature: Encodable {
-        let turn: String?
-        let cumulative: TokenUsage
-        let usage: TokenUsage
-    }
 }

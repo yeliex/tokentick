@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 enum StoreSchema {
-    static let tables = ["threads", "scan_files", "prices", "turn_usage", "usage", "api_daily_usage", "weekly_limit_observations", "statistics"]
+    static let tables = ["threads", "scan_files", "prices", "turn_usage", "usage", "weekly_limit_observations", "statistics"]
 
     static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
@@ -303,6 +303,136 @@ enum StoreSchema {
                 ALTER TABLE weekly_limit_cycles ADD COLUMN query_scope TEXT NOT NULL DEFAULT 'all';
                 CREATE INDEX weekly_cycles_scope_start ON weekly_limit_cycles(query_scope,event_at,id);
                 DELETE FROM app_metadata WHERE key IN ('weekly_cache_revision','weekly_cache_exclusions');
+                """)
+        }
+        migrator.registerMigration("v10.tier-prices") { db in
+            try db.execute(sql: """
+                ALTER TABLE prices RENAME TO prices_before_v10;
+                CREATE TABLE prices (
+                    model TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    tier TEXT NOT NULL,
+                    input_price TEXT, output_price TEXT, cache_read_price TEXT, cache_write_price TEXT,
+                    long_input_price TEXT, long_output_price TEXT, long_cache_read_price TEXT, long_cache_write_price TEXT,
+                    long_context_threshold INTEGER,
+                    source_json TEXT NOT NULL,
+                    PRIMARY KEY(model, date, tier)
+                );
+                INSERT INTO prices SELECT model,date,'standard',input_price,output_price,cache_read_price,cache_write_price,
+                    long_input_price,long_output_price,long_cache_read_price,long_cache_write_price,long_context_threshold,source_json
+                    FROM prices_before_v10;
+                INSERT INTO prices SELECT model,date,'fast',fast_input_price,fast_output_price,fast_cache_read_price,fast_cache_write_price,
+                    fast_long_input_price,fast_long_output_price,fast_long_cache_read_price,fast_long_cache_write_price,long_context_threshold,source_json
+                    FROM prices_before_v10 WHERE fast_input_price IS NOT NULL OR fast_output_price IS NOT NULL
+                        OR fast_cache_read_price IS NOT NULL OR fast_cache_write_price IS NOT NULL;
+                DROP TABLE prices_before_v10;
+                DELETE FROM app_metadata WHERE key IN ('prices_last_success_date','reprice_checkpoint');
+                INSERT INTO app_metadata(key,value) VALUES ('pricing_rebuild_pending','true')
+                    ON CONFLICT(key) DO UPDATE SET value='true';
+                """)
+            // 旧快照中的空组合价按同日普通价格推导，保留已有明确组合费率及原日期。
+            for row in try Row.fetchAll(db, sql: "SELECT model,date FROM prices WHERE tier='fast'") {
+                let model: String = row["model"], date: String = row["date"]
+                guard let standard = try UsageStore.modelPrice(db: db, model: model, date: date, useDefaults: false),
+                      let fast = try UsageStore.modelPrice(db: db, model: model, date: date, tier: "fast", useDefaults: false),
+                      standard.contextRule == .requestInputGreaterThan, fast.long == .unknown else { continue }
+                let rates = try fast.rates.applyingContextRatio(base: standard.rates, long: standard.long)
+                let source = PriceSource(isBundled: fast.source.isBundled, url: fast.source.url, cost: fast.source.cost,
+                    experimental: fast.source.experimental, combinationRule: "derived-component-context-ratio",
+                    combinationSource: fast.source.url, contextRule: standard.contextRule)
+                try db.execute(sql: """
+                    UPDATE prices SET long_input_price=?,long_output_price=?,long_cache_read_price=?,long_cache_write_price=?,source_json=?
+                    WHERE model=? AND date=? AND tier='fast'
+                    """, arguments: [rates.input.map { NSDecimalNumber(decimal: $0).stringValue },
+                        rates.output.map { NSDecimalNumber(decimal: $0).stringValue },
+                        rates.cacheRead.map { NSDecimalNumber(decimal: $0).stringValue },
+                        rates.cacheWrite.map { NSDecimalNumber(decimal: $0).stringValue },
+                        String(decoding: try JSONEncoder().encode(source), as: UTF8.self),model,date])
+            }
+        }
+        migrator.registerMigration("v11.individual-usage") { db in
+            // 尚未上线的聚合事实不能无损拆分；按用户要求清理后从源日志重扫。
+            try db.execute(sql: """
+                DROP TABLE usage;
+                DELETE FROM turn_usage;
+                DELETE FROM scan_files;
+                DROP TRIGGER weekly_turn_owner;
+                DROP TRIGGER weekly_turn_insert;
+                DROP TRIGGER weekly_turn_delete;
+                DROP TABLE turn_usage;
+                CREATE TABLE turn_usage (
+                    id TEXT PRIMARY KEY NOT NULL, turn_id TEXT UNIQUE, thread_id TEXT NOT NULL,
+                    source_created_at REAL, started_at REAL NOT NULL, last_event_at REAL NOT NULL
+                );
+                CREATE TABLE usage (
+                    id INTEGER PRIMARY KEY,
+                    account_id TEXT,
+                    thread_id TEXT,
+                    turn_id TEXT,
+                    response_id TEXT,
+                    occurred_at REAL,
+                    usage_date TEXT,
+                    model TEXT,
+                    tier TEXT,
+                    is_long_context INTEGER CHECK (is_long_context IN (0, 1)),
+                    input_tokens INTEGER CHECK (input_tokens >= 0),
+                    output_tokens INTEGER CHECK (output_tokens >= 0),
+                    cache_read_tokens INTEGER CHECK (cache_read_tokens >= 0),
+                    cache_write_tokens INTEGER CHECK (cache_write_tokens >= 0),
+                    reasoning_tokens INTEGER CHECK (reasoning_tokens >= 0),
+                    total_tokens INTEGER NOT NULL CHECK (total_tokens >= 0),
+                    input_price TEXT,
+                    output_price TEXT,
+                    cache_read_price TEXT,
+                    cache_write_price TEXT,
+                    input_amount INTEGER CHECK (input_amount >= 0),
+                    output_amount INTEGER CHECK (output_amount >= 0),
+                    cache_read_amount INTEGER CHECK (cache_read_amount >= 0),
+                    cache_write_amount INTEGER CHECK (cache_write_amount >= 0),
+                    amount INTEGER CHECK (amount >= 0),
+                    source TEXT NOT NULL CHECK (source IN ('local', 'api')),
+                    rollout_id TEXT NOT NULL,
+                    source_line INTEGER NOT NULL CHECK(source_line > 0),
+                    source_ordinal INTEGER CHECK(source_ordinal >= 0),
+                    hour INTEGER CHECK(hour BETWEEN 0 AND 23),
+                    minute INTEGER CHECK(minute BETWEEN 0 AND 59),
+                    turn_key TEXT REFERENCES turn_usage(id) ON DELETE CASCADE,
+                    evidence_json TEXT NOT NULL,
+                    CHECK (occurred_at IS NOT NULL OR usage_date IS NOT NULL)
+                );
+                CREATE INDEX usage_thread_time ON usage(thread_id,occurred_at);
+                CREATE INDEX usage_account_time ON usage(account_id,occurred_at);
+                CREATE INDEX usage_model_time ON usage(model,occurred_at);
+                CREATE INDEX usage_day_hour_minute ON usage(usage_date,hour,minute);
+                CREATE INDEX usage_source_position ON usage(rollout_id,source_line);
+                CREATE UNIQUE INDEX usage_turn_response ON usage(turn_key,response_id) WHERE response_id IS NOT NULL;
+                CREATE INDEX usage_turn_legacy ON usage(turn_key,json_extract(evidence_json,'$.legacyCumulative.total_tokens'));
+                DELETE FROM statistics;
+                DELETE FROM statistics_rebuild;
+                DELETE FROM weekly_limit_cycles;
+                DELETE FROM app_metadata WHERE key LIKE 'statistics_cache_revision:%'
+                    OR key LIKE 'statistics_rebuild_checkpoint:%' OR key LIKE 'weekly_cache_%'
+                    OR key IN ('reprice_checkpoint','last_sync_report');
+                UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key IN ('statistics_revision','weekly_revision');
+                UPDATE app_metadata SET value='true' WHERE key='statistics_dirty';
+                """)
+            for event in ["INSERT", "UPDATE", "DELETE"] {
+                try db.execute(sql: """
+                    CREATE TRIGGER usage_statistics_\(event.lowercased()) AFTER \(event) ON usage BEGIN
+                        UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key='statistics_revision';
+                        INSERT INTO app_metadata(key,value) VALUES ('statistics_dirty','true')
+                            ON CONFLICT(key) DO UPDATE SET value='true';
+                    END;
+                    CREATE TRIGGER weekly_turn_\(event.lowercased()) AFTER \(event) ON turn_usage BEGIN
+                        UPDATE app_metadata SET value=CAST(value AS INTEGER)+1 WHERE key='weekly_revision';
+                    END;
+                    """)
+            }
+        }
+        migrator.registerMigration("v12.api-memory") { db in
+            try db.execute(sql: """
+                DROP TABLE api_daily_usage;
+                DELETE FROM app_metadata WHERE key LIKE 'api_daily:%';
                 """)
         }
         return migrator

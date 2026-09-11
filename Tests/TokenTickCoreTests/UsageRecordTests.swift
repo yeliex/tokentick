@@ -62,7 +62,7 @@ struct UsageRecordTests {
         #expect(after.evidenceJSON == before.evidenceJSON && after.sourceLine == 3 && after.amountNanoUSD == 7)
         let unknown = try #require(all.rows.first(where: { $0.source == "api" }))
         let json = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(unknown)) as? [String: Any])
-        #expect(json["isFast"] is NSNull && json["amountNanoUSD"] is NSNull)
+        #expect(json["tier"] is NSNull && json["amountNanoUSD"] is NSNull)
         #expect(json["inputPrice"] is NSNull && json["inputTokens"] is NSNull)
         #expect(unknown.knownAmountNanoUSD == nil)
     }
@@ -91,16 +91,16 @@ struct UsageRecordTests {
                 try db.execute(sql: """
                     INSERT INTO threads(thread_id, title, project_name) VALUES ('t', '标题', 'unknown');
                     INSERT INTO scan_files(rollout_id, thread_id, file_name, current_path) VALUES ('rollout', 't', 'log.jsonl', '/missing/sessions/log.jsonl');
-                    INSERT INTO usage(dedup_key, thread_id, occurred_at, usage_date, total_tokens, model, source, evidence_json) VALUES
-                        ('a', 't', ?, '2026-03-08', 10, 'model', 'local', '{"mode":"priority"}'),
-                        ('b', 't', ?, '2026-03-08', 20, NULL, 'local', '{}'),
-                        ('c', NULL, ?, '2026-03-09', 30, 'unknown', 'local', '{}'),
-                        ('d', NULL, NULL, '2026-03-08', 40, NULL, 'api', '{}');
-                    UPDATE usage SET account_id = 'unknown' WHERE dedup_key = 'd';
+                    INSERT INTO usage(source_line,rollout_id, thread_id, occurred_at, usage_date, total_tokens, model, source, evidence_json) VALUES
+                        (1,'a', 't', ?, '2026-03-08', 10, 'model', 'local', '{"mode":"priority"}'),
+                        (1,'b', 't', ?, '2026-03-08', 20, NULL, 'local', '{}'),
+                        (1,'c', NULL, ?, '2026-03-09', 30, 'unknown', 'local', '{}'),
+                        (1,'d', NULL, NULL, '2026-03-08', 40, NULL, 'api', '{}');
+                    UPDATE usage SET account_id = 'unknown' WHERE rollout_id = 'd';
                     UPDATE usage SET turn_id = 'turn-a', rollout_id = 'rollout', source_line = 3,
-                        is_fast = 1, is_long_context = 1, input_price = '0.1234567890123456789',
+                        tier = 'fast', is_long_context = 1, input_price = '0.1234567890123456789',
                         input_amount = 1, output_amount = 2, cache_read_amount = 4, cache_write_amount = 0, amount = 7
-                        WHERE dedup_key = 'a';
+                        WHERE rollout_id = 'a';
                     """, arguments: StatementArguments(times))
             }
         }

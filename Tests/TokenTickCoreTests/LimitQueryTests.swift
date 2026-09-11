@@ -21,7 +21,7 @@ struct LimitQueryTests {
         #expect(window.startedAtInferred == 1800 && window.firstObservedAt == 1800)
         #expect(window.firstPositiveAt == 1900 && window.recoveryObservedAt == 1000)
         #expect(window.lastUsedPercent == 2 && window.finalUsedPercent == nil)
-        #expect(window.totalTokens == nil && window.amountNanoUSD == nil)
+        #expect(window.totalTokens == 0 && window.amountNanoUSD == 0)
         #expect(rows.last?.lastUsedPercent == 100)
     }
 
@@ -125,7 +125,7 @@ struct LimitQueryTests {
         try f.add(100,200,80,account:nil,scope:"thread:child",turn:"shared")
         #expect(try f.store.weeklyLimitHistory().rows.count == 1)
         try f.store.pool.write { db in
-            try db.execute(sql: "INSERT INTO turn_usage(id,turn_id,thread_id,source_created_at,started_at,last_event_at,seen_json) VALUES ('turn:shared','shared','parent',1,1,1,'{}')")
+            try db.execute(sql: "INSERT INTO turn_usage(id,turn_id,thread_id,source_created_at,started_at,last_event_at) VALUES ('turn:shared','shared','parent',1,1,1)")
         }
         let result = try f.store.weeklyLimitHistory()
         #expect(result.rows.isEmpty && result.excludedObservations["fork_turn"] == 1)
@@ -222,6 +222,33 @@ struct LimitQueryTests {
         #expect(rows.count == 12)
         #expect(rows.map(\.lastUsedPercent) == [88,100,78,43,43,50,5,100,41,42,100,19])
         for (row,start) in zip(rows,expectedStarts) { #expect(abs(row.startedAtInferred-start)<=30) }
+    }
+
+    @Test func windowUsageUsesTurnStartAndInvalidatesAfterFactsChangeWithoutBorrowingAccounts() throws {
+        let f = try Fixture(); defer { f.clean() }
+        try f.add(110,604900,10)
+        try f.add(210,605000,20)
+        try f.store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO turn_usage VALUES ('turn:x','x','t',50,150,250);
+                INSERT INTO usage(source_line,rollout_id,turn_key,account_id,thread_id,turn_id,occurred_at,usage_date,total_tokens,amount,input_amount,source,evidence_json) VALUES
+                    (1,'cross','turn:x','a','t','x',250,'1970-01-01',10,5,5,'local','{}'),
+                    (1,'boundary',NULL,'a','t',NULL,200,'1970-01-01',20,7,7,'local','{}'),
+                    (1,'unknown',NULL,NULL,'t',NULL,220,'1970-01-01',30,NULL,NULL,'local','{}'),
+                    (1,'another',NULL,'b','t',NULL,230,'1970-01-01',40,9,9,'local','{}');
+                """)
+        }
+        let known = try f.store.weeklyLimitHistory(LimitQuery(account: .account("a"))).rows.sorted { $0.startedAtInferred < $1.startedAtInferred }
+        #expect(known.map(\.totalTokens) == [10,20])
+        #expect(known.map(\.amountNanoUSD) == [5,7])
+        #expect(known[0].usageEndsAt == 200)
+        let all = try f.store.weeklyLimitHistory().rows.sorted { $0.startedAtInferred < $1.startedAtInferred }
+        #expect(all.map(\.totalTokens) == [10,90])
+        #expect(all[1].amountNanoUSD == nil && all[1].knownAmountNanoUSD == 16 && all[1].unpricedTokens == 30)
+        try f.store.pool.write { try $0.execute(sql: "UPDATE usage SET total_tokens=21,amount=8,input_amount=8 WHERE rollout_id='boundary'") }
+        let after = try f.store.weeklyLimitHistory(LimitQuery(account: .account("a"))).rows
+        #expect(after.first?.totalTokens == 21 && after.first?.amountNanoUSD == 8)
+        #expect(try f.store.weeklyLimitHistory(LimitQuery(account: .account("a"))).rows.first?.totalTokens == 21)
     }
 
     private struct Fixture {

@@ -45,10 +45,14 @@ public struct WeeklyLimitWindow: Codable, Sendable, Identifiable {
     public let observedAccountIDs: [String]
     public let recoveryObservedAt: Double?
     public let sourceJSON: String
-    // 百分比不能换算 token 或金额；也没有证据把最后观测冒充最终用量。
+    // 金额与 tokens 来自本地明细；最后额度观测仍不能冒充重置时的最终百分比。
     public var totalTokens: Int64? = nil
     public var amountNanoUSD: Int64? = nil
     public var finalUsedPercent: Double? = nil
+    public var knownAmountNanoUSD: Int64? = nil
+    public var unpricedTokens: Int64? = nil
+    public var usageEndsAt: Int64? = nil
+    public var usageAttribution: String = "local_usage_by_turn_start_in_query_account_scope"
 }
 
 extension UsageAccountScope {

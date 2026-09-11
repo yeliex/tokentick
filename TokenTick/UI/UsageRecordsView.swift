@@ -20,7 +20,7 @@ struct UsageRecordsView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title).font(.headline).lineLimit(1)
-                    Text("轮次用量分项 · \(query.timezone ?? app.status?.timezone ?? "UTC")")
+                    Text("用量明细 · \(query.timezone ?? app.status?.timezone ?? "UTC")")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -101,8 +101,9 @@ private struct UsageRecordDetail: View {
                 UsageDetailField("项目", value: UsageFormatting.project(record.projectName))
                 UsageDetailField("账号", value: record.accountID ?? "未知")
                 UsageDetailField("轮次 ID", value: record.turnID ?? "未知")
-                UsageDetailField("首条用量时间", value: UsageFormatting.timestamp(record.occurredAt, timezone: timezone))
-                UsageDetailField("最后用量时间", value: UsageFormatting.timestamp(record.occurredThrough ?? record.occurredAt, timezone: timezone))
+                UsageDetailField("用量时间", value: UsageFormatting.timestamp(record.occurredAt, timezone: timezone))
+                UsageDetailField("响应 ID", value: record.responseID ?? "未知")
+                UsageDetailField("UTC 小时／分钟", value: record.hour.flatMap { h in record.minute.map { String(format: "%02d:%02d", h, $0) } } ?? "未知")
                 UsageDetailField("统计日期", value: record.statisticalDate ?? "未知")
                 UsageDetailField("计价日期 · UTC", value: record.usageDate ?? "未知")
             }
@@ -124,7 +125,7 @@ private struct UsageRecordDetail: View {
                 UsageDetailField("缓存读取", value: record.cacheReadPrice ?? "未知")
                 UsageDetailField("缓存写入", value: record.cacheWritePrice ?? "未知")
                 UsageDetailField("输出", value: record.outputPrice ?? "未知")
-                Text("费率已包含已确认的 Fast／长上下文规则，不需要再乘倍率。")
+                Text("费率已包含所采用的 tier／长上下文规则，不需要再乘倍率。")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("精确金额 · USD") {
@@ -139,6 +140,7 @@ private struct UsageRecordDetail: View {
                 UsageDetailField("来源", value: record.source == "local" ? "本地日志" : "API")
                 UsageDetailField("Rollout ID", value: record.rolloutID ?? "未知")
                 UsageDetailField("文件名", value: record.fileName ?? "未知")
+                UsageDetailField("原始事件序号", value: record.sourceOrdinal.map(String.init) ?? "未知")
                 UsageDetailField("解压后行号", value: record.sourceLine.map(String.init) ?? "未知")
                 if let path = record.lastKnownPath {
                     UsageDetailField("最近扫描位置", value: path)

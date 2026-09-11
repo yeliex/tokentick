@@ -71,10 +71,10 @@ struct StatisticsTests {
         #expect(!projects.contains(where: { $0.group == "unknown" }))
         #expect(projects.first(where: { $0.group == "新项目" })?.totalTokens == 110)
         try fixture.store.pool.write { db in
-            try db.execute(sql: "UPDATE usage SET input_amount = 11, amount = 20 WHERE dedup_key = 'a'")
+            try db.execute(sql: "UPDATE usage SET input_amount = 11, amount = 20 WHERE rollout_id = 'a'")
         }
         #expect(try fixture.store.usageReport(UsageQuery(grouping: .total, timezone: "UTC")).rows.first?.knownAmountNanoUSD == 27)
-        try fixture.store.pool.write { db in try db.execute(sql: "DELETE FROM usage WHERE dedup_key = 'd'") }
+        try fixture.store.pool.write { db in try db.execute(sql: "DELETE FROM usage WHERE rollout_id = 'd'") }
         #expect(try fixture.store.usageReport(UsageQuery(grouping: .total, timezone: "UTC")).rows.first?.totalTokens == 160)
     }
 
@@ -84,7 +84,7 @@ struct StatisticsTests {
         _ = try fixture.store.rebuildStatistics(timezone: "UTC")
         let before = try fixture.store.pool.read { db in try Row.fetchAll(db, sql: "SELECT * FROM statistics ORDER BY account_key, date, dimension, dimension_value") }
         try fixture.store.pool.write { db in
-            try db.execute(sql: "UPDATE usage SET input_amount = ?, output_amount = 1, amount = NULL WHERE dedup_key = 'a'", arguments: [Int64.max])
+            try db.execute(sql: "UPDATE usage SET input_amount = ?, output_amount = 1, amount = NULL WHERE rollout_id = 'a'", arguments: [Int64.max])
         }
         #expect(throws: (any Error).self) { try fixture.store.rebuildStatistics(timezone: "UTC") }
         let after = try fixture.store.pool.read { db in try Row.fetchAll(db, sql: "SELECT * FROM statistics ORDER BY account_key, date, dimension, dimension_value") }
@@ -110,7 +110,7 @@ struct StatisticsTests {
         _ = try fixture.store.rebuildStatistics(timezone: "UTC")
         let writer = try UsageStore(databaseURL: fixture.store.databaseURL)
         try writer.pool.write { db in
-            try db.execute(sql: "INSERT INTO usage(dedup_key, usage_date, total_tokens, source, evidence_json) VALUES ('new', '2026-03-08', 100, 'local', '{}')")
+            try db.execute(sql: "INSERT INTO usage(source_line,rollout_id, usage_date, total_tokens, source, evidence_json) VALUES (1,'new', '2026-03-08', 100, 'local', '{}')")
         }
         let report = try fixture.store.pool.read { db in
             try UsageStore.readUsageReport(UsageQuery(grouping: .total, timezone: "UTC"), timezone: timezone, db: db)
@@ -145,7 +145,7 @@ struct StatisticsTests {
         _ = try fixture.store.rebuildStatistics(timezone: "UTC")
         let lock = FileWriteLock(url: fixture.store.databaseURL.appendingPathExtension("write.lock"))
         try lock.withLock {
-            try fixture.store.pool.write { db in try db.execute(sql: "DELETE FROM usage WHERE dedup_key = 'd'") }
+            try fixture.store.pool.write { db in try db.execute(sql: "DELETE FROM usage WHERE rollout_id = 'd'") }
             let report = try fixture.store.usageReport(UsageQuery(grouping: .total, timezone: "UTC"))
             #expect(report.rows.first?.totalTokens == 160)
         }
@@ -192,13 +192,13 @@ struct StatisticsTests {
                 let dates = ["2026-03-08T07:59:00Z", "2026-03-08T08:01:00Z", "2026-03-09T06:59:00Z"]
                 let times = try dates.map { try #require(RolloutParser.parseDate($0)).timeIntervalSince1970 }
                 try db.execute(sql: """
-                    INSERT INTO usage(dedup_key, account_id, thread_id, occurred_at, usage_date, model,
+                    INSERT INTO usage(source_line,rollout_id, account_id, thread_id, occurred_at, usage_date, model,
                         input_tokens, output_tokens, cache_read_tokens, total_tokens, input_amount, output_amount,
                         cache_read_amount, cache_write_amount, amount, source, evidence_json) VALUES
-                    ('a', 'all', 't1', ?, '2026-03-08', 'model', 100, 10, 20, 110, 1, 2, 3, 4, 10, 'local', '{}'),
-                    ('b', NULL, 't2', ?, '2026-03-08', 'value:', 15, 5, 0, 20, NULL, 7, 0, 0, NULL, 'local', '{}'),
-                    ('c', NULL, NULL, ?, '2026-03-09', NULL, NULL, NULL, NULL, 30, 0, NULL, NULL, NULL, NULL, 'local', '{}'),
-                    ('d', 'unknown', NULL, NULL, '2026-03-08', NULL, NULL, NULL, NULL, 40, NULL, NULL, NULL, NULL, NULL, 'local', '{}')
+                    (1,'a', 'all', 't1', ?, '2026-03-08', 'model', 100, 10, 20, 110, 1, 2, 3, 4, 10, 'local', '{}'),
+                    (1,'b', NULL, 't2', ?, '2026-03-08', 'value:', 15, 5, 0, 20, NULL, 7, 0, 0, NULL, 'local', '{}'),
+                    (1,'c', NULL, NULL, ?, '2026-03-09', NULL, NULL, NULL, NULL, 30, 0, NULL, NULL, NULL, NULL, 'local', '{}'),
+                    (1,'d', 'unknown', NULL, NULL, '2026-03-08', NULL, NULL, NULL, NULL, 40, NULL, NULL, NULL, NULL, NULL, 'local', '{}')
                     """, arguments: StatementArguments(times))
             }
         }

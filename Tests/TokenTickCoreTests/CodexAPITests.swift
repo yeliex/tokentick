@@ -20,15 +20,16 @@ struct CodexAPITests {
             #expect(report.savedWindows == (attempt == 0 ? 1 : 0))
             #expect(report.currentLimits?.windows.count == 2)
         }
-        #expect(try store.tableCounts()["api_daily_usage"] == 2)
+        #expect(try store.tableCounts()["api_daily_usage"] == nil)
         #expect(try store.tableCounts()["weekly_limit_observations"] == 1)
         #expect(try store.usageSummaries().isEmpty)
         #expect(try store.weeklyLimitHistory().rows.isEmpty)
         #expect(try store.status().apiLastReport?.currentLimits == nil)
+        #expect(try UsageStore(databaseURL: store.databaseURL).apiDailyUsage().isEmpty)
 
     }
 
-    @Test func missingOrEmptyBucketsPreserveHistoryAndOlderObservationsCannotRegressIt() throws {
+    @Test func emptyBucketsClearMemoryAndOlderObservationsCannotRegressIt() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
@@ -44,7 +45,7 @@ struct CodexAPITests {
             let empty = try JSONDecoder().decode(CodexDailyUsage.self, from: Data("{\"summary\":{},\"dailyUsageBuckets\":\(value)}".utf8))
             let report = try store.saveAPIObservation(limits: limits, daily: empty, observedAt: Date(timeIntervalSince1970: 200))
             #expect(report.dailyBucketCount == (value == "null" ? nil : 0))
-            #expect(try store.apiDailyUsage().count == 2)
+            #expect(try store.apiDailyUsage().isEmpty)
         }
     }
 
@@ -125,9 +126,33 @@ struct CodexAPITests {
             let raw = try await store.pool.read { db in
                 try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'api_daily:account-a'")
             }
-            #expect(raw?.contains("threadUsage") == true)
-            #expect(raw?.contains("9007199254740993") == true)
+            #expect(raw == nil)
+            #expect(store.apiMemory.withLock { $0.daily?.summary.lifetimeTokens } == 9_007_199_254_740_993)
         }
+    }
+
+    @Test func dailyDifferenceCountsLocalUnknownModelsAndRemoteLogsOnlyOnceAndNeverPersists() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        try store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO usage(source_line,rollout_id,account_id,usage_date,model,total_tokens,source,evidence_json) VALUES
+                    (1,'known','account-a','2026-09-09','m',100,'local','{}'),
+                    (1,'remote',NULL,'2026-09-09',NULL,150,'local','{}'),
+                    (1,'other','account-b','2026-09-09','m',800,'local','{}'),
+                    (1,'more','account-a','2026-09-08','m',250,'local','{}');
+                """)
+        }
+        let limits = try JSONDecoder().decode(CodexRateLimits.self, from: Data(Self.limits.utf8))
+        let daily = try JSONDecoder().decode(CodexDailyUsage.self, from: Data(Self.daily.utf8))
+        _ = try store.saveAPIObservation(limits: limits, daily: daily, observedAt: Date())
+        let days = try store.apiDailyUsage()
+        #expect(days[0].localTokens == 250 && days[0].unknownAccountLocalTokens == 150 && days[0].otherTokens == 150)
+        #expect(days[1].differenceTokens == -50 && days[1].otherTokens == 0)
+        #expect(try store.tableCounts()["usage"] == 4 && store.tableCounts()["api_daily_usage"] == nil)
+        #expect(try UsageStore(databaseURL: store.databaseURL).apiDailyUsage().isEmpty)
+        #expect(try store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM app_metadata WHERE key LIKE 'api_daily:%'") } == 0)
     }
 
     @Test func stalledAppServerHasBoundedTimeout() throws {

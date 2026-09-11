@@ -112,12 +112,12 @@ struct UsageFilterTests {
             try store.pool.write { db in
                 try db.execute(sql: """
                     INSERT INTO threads(thread_id, title, project_name) VALUES ('a', 'Café 任务', '项目 A'), ('b', '%_真实字符', 'unknown');
-                    INSERT INTO usage(dedup_key, thread_id, occurred_at, usage_date, total_tokens, model, source, evidence_json) VALUES
-                      ('a', 'a', ?, '2026-09-09', 20, 'm1', 'local', '{}'),
-                      ('b', 'a', ?, '2026-09-09', 30, 'm2', 'local', '{}'),
-                      ('c', 'a', ?, '2026-09-09', 40, 'm1', 'local', '{}'),
-                      ('d', 'b', ?, '2026-09-09', 80, 'unknown', 'local', '{}'),
-                      ('e', NULL, NULL, '2026-09-09', 90, NULL, 'local', '{}');
+                    INSERT INTO usage(source_line,rollout_id, thread_id, occurred_at, usage_date, total_tokens, model, source, evidence_json) VALUES
+                      (1,'a', 'a', ?, '2026-09-09', 20, 'm1', 'local', '{}'),
+                      (1,'b', 'a', ?, '2026-09-09', 30, 'm2', 'local', '{}'),
+                      (1,'c', 'a', ?, '2026-09-09', 40, 'm1', 'local', '{}'),
+                      (1,'d', 'b', ?, '2026-09-09', 80, 'unknown', 'local', '{}'),
+                      (1,'e', NULL, NULL, '2026-09-09', 90, NULL, 'local', '{}');
                     UPDATE usage SET input_amount = 6 WHERE thread_id = 'a' AND model = 'm1';
                     UPDATE usage SET input_amount = 100, amount = 100 WHERE thread_id = 'b';
                     """, arguments: [time, time, time, time])

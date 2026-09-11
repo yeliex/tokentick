@@ -15,7 +15,7 @@ public struct RepriceReport: Codable, Sendable {
 
 private struct RepriceCheckpoint: Codable {
     // 计价算法或断点格式变化时递增，避免恢复时混合新旧计算结果。
-    static let currentVersion = 3
+    static let currentVersion = 4
     static let key = "reprice_checkpoint"
     let version: Int
     let fromDate: String?
@@ -25,13 +25,13 @@ private struct RepriceCheckpoint: Codable {
     var report = RepriceReport()
 
     static func priceFingerprint(_ db: Database) throws -> String {
-        var columns = ["model", "date", "long_context_threshold", "source_json"]
-        for prefix in ["", "fast_", "long_", "fast_long_"] {
+        var columns = ["model", "date", "tier", "long_context_threshold", "source_json"]
+        for prefix in ["", "long_"] {
             for component in ["input", "output", "cache_read", "cache_write"] {
                 columns.append(prefix + component + "_price")
             }
         }
-        let rows = try String.fetchCursor(db, sql: "SELECT json_array(\(columns.joined(separator: ","))) FROM prices ORDER BY model, date")
+        let rows = try String.fetchCursor(db, sql: "SELECT json_array(\(columns.joined(separator: ","))) FROM prices ORDER BY model, tier, date")
         var hash = SHA256()
         hash.update(data: try BundledModelPrices.data.get())
         while let row = try rows.next() { hash.update(data: Data(row.utf8)) }
@@ -42,7 +42,7 @@ private struct RepriceCheckpoint: Codable {
 extension UsageStore {
     func needsRepricing() throws -> Bool {
         try pool.read { db in
-            try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'pricing_algorithm'") != "3"
+            try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'pricing_algorithm'") != "4"
                 || String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'pricing_rebuild_pending'") == "true"
                 || String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'pricing_defaults_hash'") != BundledModelPrices.fingerprint()
         }
@@ -71,7 +71,7 @@ extension UsageStore {
                     if rows.isEmpty {
                         try db.execute(sql: "DELETE FROM app_metadata WHERE key = ?", arguments: [RepriceCheckpoint.key])
                         if fromDate == nil {
-                            try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES ('pricing_algorithm', '3') ON CONFLICT(key) DO UPDATE SET value = '3'")
+                            try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES ('pricing_algorithm', '4') ON CONFLICT(key) DO UPDATE SET value = '4'")
                             try db.execute(sql: "DELETE FROM app_metadata WHERE key = 'pricing_rebuild_pending'")
                             try db.execute(sql: "INSERT INTO app_metadata(key,value) VALUES ('pricing_defaults_hash',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", arguments: [try BundledModelPrices.fingerprint()])
                         }
@@ -109,26 +109,27 @@ extension UsageStore {
         report.examined += 1
         let model: String? = row["model"]
         let date: String? = row["usage_date"]
-        let price = try model.flatMap { model in try date.flatMap { try Self.modelPrice(db: db, model: model, date: $0) } }
         let input: Int64? = row["input_tokens"]
         let output: Int64? = row["output_tokens"]
-        let storedFast: Bool? = row["is_fast"]
+        let storedTier: String? = row["tier"]
         let evidence: String = row["evidence_json"]
         let sourceTier = (try? JSONDecoder().decode(ModeEvidence.self, from: Data(evidence.utf8)))?.serviceTier
-        let observedFast = storedFast ?? CodexServiceTier.isFast(sourceTier)
+        let observedTier = storedTier ?? CodexServiceTier.normalized(sourceTier)
         let thread: String? = row["thread_id"]
         let turn: String? = row["turn_id"]
-        let trace = try observedFast == nil ? thread.flatMap { thread in
+        let trace = try observedTier == nil ? thread.flatMap { thread in
             try turn.flatMap { turn in
                 try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key=?", arguments: ["fast_trace:\(thread):\(turn)"])
             }
         } : nil
-        let fast = observedFast ?? (trace == nil ? false : true)
+        let selectedTier = observedTier ?? (trace == nil ? "standard" : "fast")
+        let fast = selectedTier == "fast"
+        let price = try model.flatMap { model in try date.flatMap { try Self.modelPrice(db: db, model: model, date: $0, tier: selectedTier) } }
         var proof = (try? JSONSerialization.jsonObject(with: Data(evidence.utf8))) as? [String: Any] ?? [:]
-        var mode: [String: Any] = ["isFast": fast, "source": observedFast != nil ? "rollout" : (trace != nil ? "trace" : "default_standard")]
+        var mode: [String: Any] = ["isFast": fast, "tier": selectedTier, "source": observedTier != nil ? "rollout" : (trace != nil ? "trace" : "default_standard")]
         if let trace { mode["trace"] = try JSONSerialization.jsonObject(with: Data(trace.utf8)) }
         proof["pricingMode"] = mode
-        if let price { proof["pricingPrice"] = ["model": price.model, "date": price.date, "url": price.source.url, "bundled": price.source.isBundled == true] }
+        if let price { proof["pricingPrice"] = ["model": price.model, "date": price.date, "tier": price.tier, "url": price.source.url, "bundled": price.source.isBundled == true] }
         else { proof.removeValue(forKey: "pricingPrice") }
         let updatedEvidence = String(decoding: try JSONSerialization.data(withJSONObject: proof, options: [.sortedKeys]), as: UTF8.self)
         var result: UsagePricing.Result?
@@ -136,22 +137,13 @@ extension UsageStore {
             let tokens = TokenUsage(inputTokens: input, outputTokens: output, cachedInputTokens: row["cache_read_tokens"],
                     cacheWriteInputTokens: row["cache_write_tokens"], reasoningOutputTokens: row["reasoning_tokens"],
                     totalTokens: row["total_tokens"])
-            let minimum: Int64? = row["pricing_input_min"]
-            let maximum: Int64? = row["pricing_input_max"]
-            let mixedContext = price?.contextRule == .requestInputGreaterThan && price?.longContextThreshold.map {
-                (minimum ?? input) <= $0 && (maximum ?? input) > $0
-            } == true
-            do {
-                if mixedContext { report.unpricedReasons["context_requires_rescan"] = 1 }
-                else { result = try UsagePricing.calculate(tokens: tokens, isFast: fast, price: price, contextInput: maximum) }
-            }
+            do { result = try UsagePricing.calculate(tokens: tokens, price: price) }
             catch PriceError.invalidUsage { report.invalidUsage += 1 }
             catch PriceError.amountOverflow { report.overflow += 1 }
         }
         if result?.amount == nil {
             let reason: String
-            if report.unpricedReasons["context_requires_rescan"] != nil { reason = "context_requires_rescan" }
-            else if report.invalidUsage > 0 { reason = "invalid_usage" }
+            if report.invalidUsage > 0 { reason = "invalid_usage" }
             else if report.overflow > 0 { reason = "amount_overflow" }
             else if model == nil { reason = "missing_model" }
             else if price == nil { reason = "no_historical_price" }
@@ -165,10 +157,10 @@ extension UsageStore {
         else if [result?.inputAmount, result?.outputAmount, result?.cacheReadAmount, result?.cacheWriteAmount]
             .contains(where: { ($0 ?? 0) > 0 }) { report.partiallyPriced += 1 }
         else { report.unpriced += 1 }
-        let columns = ["evidence_json", "is_fast", "is_long_context", "input_price", "output_price", "cache_read_price", "cache_write_price",
+        let columns = ["evidence_json", "tier", "is_long_context", "input_price", "output_price", "cache_read_price", "cache_write_price",
                        "input_amount", "output_amount", "cache_read_amount", "cache_write_amount", "amount"]
         let values: [(any DatabaseValueConvertible)?] = [
-            updatedEvidence, observedFast, result?.isLongContext,
+            updatedEvidence, observedTier, result?.isLongContext,
             result?.rates.input.map { NSDecimalNumber(decimal: $0).stringValue },
             result?.rates.output.map { NSDecimalNumber(decimal: $0).stringValue },
             result?.rates.cacheRead.map { NSDecimalNumber(decimal: $0).stringValue },

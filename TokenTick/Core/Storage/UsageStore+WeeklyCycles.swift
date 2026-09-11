@@ -3,7 +3,7 @@ import GRDB
 
 extension UsageStore {
     static func weeklyCycleRevision(_ db: Database) throws -> String {
-        "3:" + (try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key='weekly_revision'") ?? "0")
+        "4:" + (try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key='weekly_revision'") ?? "0") + ":" + String(try statisticsRevision(db))
     }
 
     func rebuildWeeklyCyclesIfNeeded(account: UsageAccountScope) throws {
@@ -94,14 +94,40 @@ extension UsageStore {
                         unknownCount: row["unknown_count"], accounts: accounts, firstSource: row["first_source"],
                         lastSource: row["last_source"], positiveSource: row["positive_source"]))
                 }
-                let windows = try calculator.windows(recoveries: Self.weeklyRecoveries(db))
+                let windows = try calculator.windows(recoveries: Self.weeklyRecoveries(db)).sorted { $0.startedAtInferred < $1.startedAtInferred }
                 try Task.checkCancellation()
                 // 同一筛选范围内原子发布；全局、未知及明确账号各自缓存，不互相补归属。
                 let previous = try Row.fetchAll(db, sql: "SELECT id,scheduled_reset_at FROM weekly_limit_cycles WHERE query_scope=?", arguments: [scope])
                 var reused: Set<String> = []
                 try db.execute(sql: "DELETE FROM weekly_limit_cycles WHERE query_scope=?", arguments: [scope])
                 let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-                for var window in windows {
+                StatisticsSQL.prepare(db, timezone: .gmt)
+                for (index, original) in windows.enumerated() {
+                    var window = original
+                    let next = windows.dropFirst(index + 1).first?.startedAtInferred
+                    let end = min(window.scheduledResetAt, next ?? window.scheduledResetAt)
+                    var usageFilter = "1"
+                    var usageArguments: StatementArguments = [window.startedAtInferred,end]
+                    switch account {
+                    case .all: break
+                    case .unknown: usageFilter = "u.account_id IS NULL"
+                    case .account(let id): usageFilter = "u.account_id=?"; usageArguments += [id]
+                    }
+                    let amounts = try Row.fetchOne(db, sql: """
+                        SELECT COALESCE(SUM(u.total_tokens),0) AS tokens,
+                            CASE WHEN COUNT(*)=COUNT(u.amount) THEN COALESCE(SUM(u.amount),0) END AS amount,
+                            SUM(tokentick_known_amount(u.input_amount,u.output_amount,u.cache_read_amount,u.cache_write_amount,u.amount)) AS known,
+                            COALESCE(SUM(CASE WHEN u.amount IS NULL THEN u.total_tokens ELSE 0 END),0) AS unpriced
+                        FROM usage u LEFT JOIN turn_usage t ON t.id=u.turn_key
+                        WHERE u.source='local' AND COALESCE(t.started_at,u.occurred_at)>=?
+                            AND COALESCE(t.started_at,u.occurred_at)<? AND \(usageFilter)
+                        """, arguments: usageArguments)!
+                    window.totalTokens = amounts["tokens"]
+                    window.amountNanoUSD = amounts["amount"]
+                    window.knownAmountNanoUSD = amounts["known"]
+                    window.unpricedTokens = amounts["unpriced"]
+                    window.usageEndsAt = end
+
                     // 截止代表秒值或最早证据变化时，保留已存在窗口的标识。
                     let matches = previous.filter { row in
                         let oldID: String = row["id"], oldReset: Int64 = row["scheduled_reset_at"]

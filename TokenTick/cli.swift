@@ -70,7 +70,10 @@ struct TokenTickCommand {
                     timezone: options.timezone, fromDate: options.fromDate, throughDate: options.throughDate,
                     account: options.account, limitID: options.limitID, limit: options.limit, offset: options.offset)))
             case "api-usage":
-                try printJSON(APIUsageOutput(rows: UsageStore(databaseURL: options.database).apiDailyUsage(limit: options.limit)))
+                let store = try UsageStore(databaseURL: options.database)
+                let report = try await CodexAPIClient.synchronize(store: store, executable: options.codexExecutable, codexHome: options.codexHome)
+                try printJSON(APIUsageOutput(rows: store.apiDailyUsage(limit: options.limit)))
+                if report.issue != nil { exit(1) }
             case "status": try printJSON(UsageStore(databaseURL: options.database).status())
             default: throw CommandError.invalid("不支持的命令。")
             }
@@ -160,7 +163,7 @@ struct TokenTickCommand {
                 index += 1
                 switch option {
                 case "--database": database = URL(fileURLWithPath: (value as NSString).expandingTildeInPath)
-                case "--codex-bin" where ["sync-api", "current-limits", "sync"].contains(command):
+                case "--codex-bin" where ["sync-api", "current-limits", "sync", "api-usage"].contains(command):
                     codexExecutable = URL(fileURLWithPath: (value as NSString).expandingTildeInPath)
                 case "--scope" where command == "sync":
                     guard let scope = SynchronizationScope(rawValue: value) else { throw CommandError.invalid("同步范围为 all、local、prices、api 或 remote。") }
@@ -225,8 +228,8 @@ struct TokenTickCommand {
       prices     查看历史价格快照（JSON），--limit 100
       sync-prices 从 models.dev 同步当天价格（每天成功一次）
       reprice    按用量日期的历史价格重算分项金额
-      sync-api   通过 Codex app-server 保存每日总量和额度观测
-      api-usage  查看服务端每日总量缓存（当前不与本地相加）
+      sync-api   通过 Codex app-server 刷新内存日桶并保存周额度观测
+      api-usage  联网读取服务端每日总量与未知模型参考差额（不落库）
       limits     查看历史周额度重置，百分比为重置前最后观测值
       current-limits 从接口读取所有实时额度（JSON）
       status     输出来源状态、统计时区、事实／缓存版本与表记录数

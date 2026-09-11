@@ -3,7 +3,7 @@ import Testing
 @testable import TokenTickCore
 
 struct APISyncStateTests {
-    @Test func totalFailureSurvivesLocalSyncAndRestartWithoutDeletingServerHistory() async throws {
+    @Test func failureStateSurvivesRestartWhileDailyUsageStaysInMemory() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("usage.sqlite")
@@ -21,7 +21,7 @@ struct APISyncStateTests {
         let reopened = try UsageStore(databaseURL: url)
         #expect(try reopened.status().apiLastReport?.issue == failure.issue)
         #expect(try reopened.status().apiLastReport?.observedAt == failure.observedAt)
-        #expect(try reopened.apiDailyUsage().count == 2)
+        #expect(try reopened.apiDailyUsage().isEmpty)
         #expect(try reopened.tableCounts()["weekly_limit_observations"] == 1)
         #expect(try reopened.usageSummaries().isEmpty)
     }

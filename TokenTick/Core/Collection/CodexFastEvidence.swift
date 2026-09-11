@@ -110,7 +110,7 @@ struct CodexFastEvidence: Codable {
                             let json = String(decoding: try encoder.encode(evidence), as: UTF8.self)
                             try target.execute(sql: "INSERT INTO app_metadata(key,value) VALUES (?,?) ON CONFLICT DO NOTHING", arguments: [evidence.key, json])
                             if target.changesCount > 0 {
-                                let usage = try Row.fetchCursor(target, sql: "SELECT * FROM usage WHERE thread_id=? AND turn_id=? AND is_fast IS NULL", arguments: [evidence.threadID, evidence.turnID])
+                                let usage = try Row.fetchCursor(target, sql: "SELECT * FROM usage WHERE thread_id=? AND turn_id=? AND tier IS NULL", arguments: [evidence.threadID, evidence.turnID])
                                 while let row = try usage.next() { _ = try UsageStore.priceUsage(row, db: target) }
                             }
                         }

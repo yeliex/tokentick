@@ -1,7 +1,9 @@
 import Foundation
 import GRDB
+import Synchronization
 
 public final class UsageStore: Sendable {
+    let apiMemory = Mutex(APIMemory())
     let pool: DatabasePool
     public let databaseURL: URL
 

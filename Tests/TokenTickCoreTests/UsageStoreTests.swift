@@ -9,16 +9,16 @@ struct UsageStoreTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("usage.sqlite")
         let store = try UsageStore(databaseURL: url)
-        #expect(try store.tableCounts().count == 8)
+        #expect(try store.tableCounts().count == 7)
         try store.pool.write { db in
-            try db.execute(sql: "INSERT INTO usage (dedup_key, total_tokens, usage_date, source, evidence_json) VALUES ('api-day', 100, '2026-09-09', 'api', '{}')")
+            try db.execute(sql: "INSERT INTO usage (source_line,rollout_id, total_tokens, usage_date, source, evidence_json) VALUES (1,'api-day', 100, '2026-09-09', 'api', '{}')")
         }
         let reopened = try UsageStore(databaseURL: url)
         #expect(try reopened.tableCounts()["usage"] == 1)
-        let row = try reopened.pool.read { db in try Row.fetchOne(db, sql: "SELECT amount, model, is_fast FROM usage") }
+        let row = try reopened.pool.read { db in try Row.fetchOne(db, sql: "SELECT amount, model, tier FROM usage") }
         #expect(row?["amount"] as Int64? == nil)
         #expect(row?["model"] as String? == nil)
-        #expect(row?["is_fast"] as Bool? == nil)
+        #expect(row?["tier"] as String? == nil)
         #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("Backups").path))
     }
 
@@ -41,7 +41,7 @@ struct UsageStoreTests {
         try old.close()
         let store = try UsageStore(databaseURL: url)
         #expect(try store.tableCounts()["weekly_limit_observations"] == 1)
-        #expect(try store.apiDailyUsage().first?.tokens == 123)
+        #expect(try store.apiDailyUsage().isEmpty)
         try store.pool.read { db throws -> Void in
             #expect(try !db.tableExists("limit_windows"))
             #expect(try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key='api_limits:a'") == nil)
@@ -57,11 +57,11 @@ struct UsageStoreTests {
         try store.pool.write { db in
             try db.execute(sql: """
                 INSERT INTO threads(thread_id,title,project_name) VALUES ('t','任务','项目');
-                INSERT INTO usage(dedup_key,account_id,thread_id,usage_date,total_tokens,source,evidence_json) VALUES
-                ('local-known','a','t','2026-09-09',10,'local','{}'),
-                ('local-unknown',NULL,'t','2026-09-09',20,'local','{}'),
-                ('api-unassigned','a',NULL,'2026-09-09',100,'api','{}'),
-                ('api-assigned','a','t','2026-09-09',5,'api','{}');
+                INSERT INTO usage(source_line,rollout_id,account_id,thread_id,usage_date,total_tokens,source,evidence_json) VALUES
+                (1,'local-known','a','t','2026-09-09',10,'local','{}'),
+                (1,'local-unknown',NULL,'t','2026-09-09',20,'local','{}'),
+                (1,'api-unassigned','a',NULL,'2026-09-09',100,'api','{}'),
+                (1,'api-assigned','a','t','2026-09-09',5,'api','{}');
                 """)
         }
         for cached in [false, true] {

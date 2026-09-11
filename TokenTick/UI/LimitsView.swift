@@ -62,7 +62,7 @@ struct LimitsView: View {
                 Text("账号：\(account.isEmpty ? "全部" : account) · 主限额 codex · 七天限额窗口")
                     .lineLimit(1).help("账号：\(account)")
                 Text("按稳定截止减七天展示起算时间；额度恢复后空闲期间的滚动零值不新增窗口。最后观测不代表最终用量。")
-                Text("周期 token／金额缺少账号及额度桶归属证据，暂不估算。")
+                Text("窗口 tokens／金额来自所选账号范围的本地用量，跨界轮次按开始时间归属；全局包含未知账号，不代表额度实际扣费。")
                 if !excludedObservations.isEmpty {
                     Text("已排除回放、过期及冲突点：\(excludedObservations.values.reduce(0, +).formatted()) 条")
                 }
@@ -152,6 +152,11 @@ private struct WeeklyLimitRow: View {
                 Text("明确账号的额度归零观测：\(UsageFormatting.timestamp(recovery, timezone: timezone))（不等于窗口起算）")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            HStack {
+                Text("本地 Tokens：\(UsageFormatting.tokens(window.totalTokens))")
+                Text("已知金额：\(UsageFormatting.money(window.knownAmountNanoUSD ?? window.amountNanoUSD))")
+                Text("未定价 Tokens：\(UsageFormatting.tokens(window.unpricedTokens))")
+            }.font(.caption)
             DisclosureGroup("统计证据") {
                 Text(window.sourceJSON).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
             }

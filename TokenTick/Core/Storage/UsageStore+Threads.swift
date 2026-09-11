@@ -16,7 +16,7 @@ extension UsageStore {
             let placeholders = Array(repeating: "?", count: ids.count).joined(separator: ",")
             let rows = try Row.fetchAll(db, sql: """
                 SELECT t.thread_id, t.title, t.project_name,
-                    (SELECT MAX(COALESCE(occurred_through, occurred_at)) FROM usage WHERE thread_id = t.thread_id) AS last_active
+                    (SELECT MAX(occurred_at) FROM usage WHERE thread_id = t.thread_id) AS last_active
                 FROM threads t WHERE t.thread_id IN (\(placeholders))
                 """, arguments: StatementArguments(ids))
             return Dictionary(uniqueKeysWithValues: rows.map { row in

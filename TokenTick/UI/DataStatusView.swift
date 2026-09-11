@@ -26,7 +26,7 @@ struct DataStatusView: View {
                 }
             }
             Section("服务端统计") {
-                Text("服务端每日总量单独保存。账号和日期口径尚未对齐，暂不与本地用量相加。")
+                Text("服务端每日总量只保留内存。扣除本地已覆盖量后的差额作为未知模型参考，不计金额，也不加入本地统计。账号和日桶时区未完全确认。")
                     .font(.callout).foregroundStyle(.secondary)
                 if let report = app.status?.apiLastReport {
                     LabeledContent("最近接口尝试", value: UsageFormatting.timestamp(report.observedAt))
@@ -43,7 +43,10 @@ struct DataStatusView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 ForEach(Array(days.enumerated()), id: \.offset) { _, day in
                     LabeledContent {
-                        TokenText(value: day.tokens)
+                        VStack(alignment: .trailing) {
+                            Text("API：\(UsageFormatting.tokens(day.tokens))")
+                            Text("其他（参考）：\(UsageFormatting.tokens(day.otherTokens))").foregroundStyle(.secondary)
+                        }.help("本地已覆盖：\(UsageFormatting.exactTokens(day.localTokens))；其中未知账号：\(UsageFormatting.exactTokens(day.unknownAccountLocalTokens))")
                     } label: {
                         VStack(alignment: .leading) {
                             Text(day.date)

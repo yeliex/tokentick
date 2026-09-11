@@ -14,10 +14,10 @@ struct FastEvidenceTests {
         try store.pool.write { db in
             for (key, fast) in [("missing", nil as Bool?), ("ordinary", false)] {
                 try db.execute(sql: """
-                    INSERT INTO usage(dedup_key,thread_id,turn_id,model,usage_date,is_fast,input_tokens,output_tokens,
+                    INSERT INTO usage(source_line,rollout_id,thread_id,turn_id,model,usage_date,tier,input_tokens,output_tokens,
                       cache_read_tokens,cache_write_tokens,total_tokens,source,evidence_json)
-                    VALUES (?,?,?,'gpt-6-astra','2026-09-10',?,1000,100,500,0,1100,'local','{"keep":true}')
-                    """, arguments: [key, Self.thread, Self.turn, fast])
+                    VALUES (1,?,?,?,'gpt-6-astra','2026-09-10',?,1000,100,500,0,1100,'local','{"keep":true}')
+                    """, arguments: [key, Self.thread, Self.turn, fast.map { $0 ? "fast" : "standard" }])
             }
         }
         #expect(try store.repriceUsage().fullyPriced == 2)

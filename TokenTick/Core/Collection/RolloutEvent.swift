@@ -94,13 +94,12 @@ struct RolloutEvent: Decodable {
 
 struct RolloutParserState: Codable {
     // 解析状态可丢弃重建；版本变化只触发重扫，不改写事实。
-    static let currentVersion = 5
+    static let currentVersion = 6
     var version = currentVersion
     var session: RolloutEvent.Session?
     var turnID: String?
     var model: String?
     var serviceTier: String?
-    // 旧累计事件的去重键必须保持原 turn_context 身份，不能因补充 task_started 而变成新请求。
     var contextTurnID: String?
     var contextModel: String?
     var settings: UsageContextEvidence?
@@ -108,9 +107,10 @@ struct RolloutParserState: Codable {
     var modelSource: UsageContextEvidence?
     var serviceTierSource: UsageContextEvidence?
     var turnStartedLine: Int?
+    var turnStartedAt: String?
     var modelCandidates: [String]?
     var cumulative: TokenUsage?
-    var fallbackKey: String?
+    var fallbackCumulative: TokenUsage?
     var fallbackUsage: TokenUsage?
     var fallbackTurnID: String?
     var recordUsage: TokenUsage?
@@ -145,17 +145,17 @@ struct UsageEvidence: Codable {
     var serviceTierSource: UsageContextEvidence? = nil
     var threadSettings: UsageContextEvidence? = nil
     var turnStartedLine: Int? = nil
+    var turnStartedAt: String? = nil
     var modelCandidates: [String]? = nil
 }
 
 struct CollectedUsage {
-    let dedupKey: String
-    let replacesKey: String?
+    let responseID: String?
+    let legacyCumulative: TokenUsage?
     let threadID: String
     let turnID: String?
     let timestamp: Date
     let model: String?
-    let isFast: Bool?
     let tokens: TokenUsage
     let rolloutID: String
     let line: Int
@@ -163,6 +163,15 @@ struct CollectedUsage {
 }
 
 enum CodexServiceTier {
+    static func normalized(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else { return nil }
+        switch value {
+        case "priority", "fast": return "fast"
+        case "default", "standard": return "standard"
+        default: return value
+        }
+    }
+
     static func isFast(_ value: String?) -> Bool? {
         switch value {
         case "priority", "fast": true

@@ -2,18 +2,18 @@
 
 Codex 用量与成本统计，专为 macOS 开发。
 
-TokenTick 从本地 Codex 日志采集统计数据，记录每个任务、每天、每个项目和每个模型的 token 用量，并按历史模型价格换算美元金额。服务端每日总量独立保存；周额度记录重置前观测，实时额度保留内存。未归属任务的 API 用量不混入本地统计。仅支持 macOS 26+ Apple Silicon。
+TokenTick 从本地 Codex 日志采集统计数据，记录每个任务、每天、每个项目和每个模型的 token 用量，并按历史模型价格换算美元金额。服务端每日总量仅保留内存，显示扣除本地已覆盖量的参考差额；周额度记录重置前观测，实时额度保留内存。未归属任务的 API 用量不混入本地统计。仅支持 macOS 26+ Apple Silicon。
 
 ## 项目状态
 
-已建立面向 **macOS 26.0+** 的原生 Xcode 工程，包含 SwiftUI App 和共享 Core 源码的 CLI。已实现本地 JSONL／Zstandard 增量采集、迁移、任务名称缓存、历史计价、服务端日桶／额度观测、统计缓存及共享同步流程；采集、金额重算与统计重建具备持久恢复进度。SwiftUI 已接入总览、每日趋势与表格、任务／项目分页、汇总检查器、轮次分项分页与证据、额度和数据状态；搜索、排序、交叉筛选等交互仍在完善。API 差额口径、完整客户端交互及正式发布验收尚未完成。
+已建立面向 **macOS 26.0+** 的原生 Xcode 工程，包含 SwiftUI App 和共享 Core 源码的 CLI。已实现本地 JSONL／Zstandard 增量采集、迁移、任务名称缓存、历史计价、服务端日桶／额度观测、统计缓存及共享同步流程；采集、金额重算与统计重建具备持久恢复进度。SwiftUI 已接入总览、每日趋势与表格、任务／项目分页、汇总检查器、逐条用量分页与证据、额度和数据状态；搜索、排序、交叉筛选等交互仍在完善。API 差额仅作为未知模型参考 tokens，不计算金额或混入本地统计；精细 UI 后续迭代。
 
 - [需求与技术方案](docs/requirements.md)
 - [实现计划](docs/implementation-plan.md)
 - [客户端 UI 方案](docs/client-ui.md)
 - [验收状态与剩余条件](docs/acceptance-status.md)
 
-未上线的 v6 切换会直接清空旧用量及扫描进度，再从原日志采集，不备份或修复旧请求行。fork 和双格式去重已通过真实 AIChat 验证，见 [重建结果](docs/turn-usage-validation.md)。七天限额窗口已按用户核对的最近一个月清单实现，区分额度归零与固定起算时间，并消除截止抖动造成的重复。见 [实现验收](docs/weekly-start-validation.md)。
+未上线的 v11 逐条用量切换会直接清空旧用量及扫描进度，再从原日志采集，不备份或修复旧请求行。fork 和双格式去重已通过真实 AIChat 验证，见 [重建结果](docs/turn-usage-validation.md)。七天限额窗口已按用户核对的最近一个月清单实现，区分额度归零与固定起算时间，并消除截止抖动造成的重复。见 [实现验收](docs/weekly-start-validation.md)。
 
 ## 技术方向
 
@@ -29,11 +29,11 @@ TokenTick 从本地 Codex 日志采集统计数据，记录每个任务、每天
 
 默认采用「起始色收敛」配色，浅色、深色与菜单栏资源已保存到 [assets/icons](assets/icons/README.md)。
 
-App 已通过 Icon Composer 资源接入系统级明暗图标，保留原始定稿；包内引用和导出预览已验证，Dock／Finder 实际切换及 macOS 26 真机验收仍待完成。详见 [系统级应用图标](docs/app-icon.md)。
+App 已通过 Icon Composer 资源接入系统级明暗图标，保留原始定稿；包内引用和导出预览已验证，本轮按当前 macOS 27 设备验收，不另设 macOS 26 真机门槛。详见 [系统级应用图标](docs/app-icon.md)。
 
 ## 本地开发
 
-使用带 macOS 26 或更新 SDK 的 Xcode，打开 `TokenTick.xcodeproj`。当前在 Xcode 27 / macOS 27 上验证构建和进程启动，macOS 26 真机交互仍待验收。
+使用带 macOS 26 或更新 SDK 的 Xcode，打开 `TokenTick.xcodeproj`。当前在 Xcode 27 / macOS 27 上验证构建和进程启动，不另设 macOS 26 真机验收门槛。
 
 运行 App：
 
@@ -77,7 +77,7 @@ xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
   --group project --timezone Asia/Shanghai --from 2026-09-01 --through 2026-09-09 --limit 50 --offset 0 --json
 ```
 
-`--group` 支持 `total|day|thread|project|model`，日期范围包含首尾两天；`--account <ID>` 与 `--unknown-account` 用于账号筛选。临时指定时区不会改变 App 的默认时区。缓存失效时自动重建；扫描者持锁时，已有连接直接查询已提交事实。只有日日期而无精确时间的数据，在不能换算的时区归到未知日期；范围查询排除它，并单独返回 `unknownDateTokens`。JSON 中 `records` 是轮次分项数（不是请求数或轮次数），API 日差额记录不被称为实际请求。`status` 显示缓存版本、时区和来源状态。
+`--group` 支持 `total|day|thread|project|model`，日期范围包含首尾两天；`--account <ID>` 与 `--unknown-account` 用于账号筛选。临时指定时区不会改变 App 的默认时区。缓存失效时自动重建；扫描者持锁时，已有连接直接查询已提交事实。只有日日期而无精确时间的数据，在不能换算的时区归到未知日期；范围查询排除它，并单独返回 `unknownDateTokens`。JSON 中 `records` 是有效用量事件数（历史无响应 ID 时不能等同网络请求数），API 日差额记录不被称为实际请求。`status` 显示缓存版本、时区和来源状态。
 
 `rebuild` 分批保存内部聚合进度；中断后再次执行相同时区会自动续算，用量或项目归属变化时重新计算。全部完成后才原子替换正式缓存，失败不会暴露部分结果。升级采用事务迁移，失败回滚，不自动备份大数据库；旧版备份保留。详见 [维护任务恢复](docs/maintenance-recovery.md)。
 
@@ -88,7 +88,7 @@ xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
   --day 2026-09-09 --timezone Asia/Shanghai --limit 100 --offset 0
 ```
 
-`records` 返回 `granularity: turn_breakdown`，与 App 检查器共用查询，默认按发生时间降序、记录 ID 降序分页，返回 `hasMore`。支持日期／账号条件，以及任务、项目、模型、单日的组合条件；未知归属使用 `--unknown-thread`、`--unknown-project`、`--unknown-model` 或 `--unknown-date`，不会与名称恰好为 `unknown` 的项目混淆。输出包含 Fast／长上下文、分项 tokens、实际十进制费率字符串、纳美元金额、最新任务名称与项目，以及统计证据和最近扫描位置。`occurredAt`／`occurredThrough` 为分项首尾用量时间；未知字段在 JSON 中显式为 `null`；`statisticalDate` 是所选时区日期，`usageDate` 是计价 UTC 日期。查询不会重建统计缓存或读取对话正文。
+`records` 返回 `granularity: usage_event`，与 App 检查器共用查询，默认按发生时间降序、记录 ID 降序分页，返回 `hasMore`。支持日期／账号条件，以及任务、项目、模型、单日的组合条件；未知归属使用 `--unknown-thread`、`--unknown-project`、`--unknown-model` 或 `--unknown-date`，不会与名称恰好为 `unknown` 的项目混淆。输出包含 Fast／长上下文、分项 tokens、实际十进制费率字符串、纳美元金额、最新任务名称与项目，以及统计证据和最近扫描位置。`occurredAt` 为单条报告时间；`responseID`、`turnID`、`sourceOrdinal` 分开保存，`hour`／`minute` 为 UTC 分量；未知字段在 JSON 中显式为 `null`；`statisticalDate` 是所选时区日期，`usageDate` 是计价 UTC 日期。查询不会重建统计缓存或读取对话正文。
 
 组合筛选与排序（`usage` 和 `records` 共用）：
 
@@ -161,6 +161,6 @@ swift test
 
 通过 `swift package add-dependency` 与 `swift package add-target-dependency` 管理外部依赖，并提交生成的 `Package.resolved`。Core 与测试的包管理入口是根目录 `Package.swift`，App 仍通过 Xcode 工程构建。
 
-默认模型价格维护在 [OpenAI JSON](TokenTick/Core/Pricing/openai-default-prices.json)，用于没有数据库价格历史的模型；API 历史优先。缺少 Fast 证据时补查 Codex trace，仍缺则按普通价格计费，观测字段和计价依据分开保存。详见 [验证说明](docs/default-pricing-validation.md)。
+默认模型价格维护在 [OpenAI JSON](TokenTick/Core/Pricing/openai-default-prices.json)，用于没有数据库价格历史的模型；API 历史优先。缺少 Fast 证据时补查 Codex trace，仍缺则按普通价格计费，观测字段和计价依据分开保存。默认价格与数据库均按 model＋date＋tier 分行；模式缺少长上下文价格时，按标准档位各分项倍率推导。详见 [本轮优化验收](docs/optimization-validation-20260911.md)。
 
 项目名优先使用 Codex 名称，缺失时从项目根目录取文件夹名；无项目聊天保存为 `Chat`，CLI 可用 `--project Chat` 筛选。任务切换项目后，全部历史用量使用最新归属。见 [项目映射验证](docs/project-mapping-validation.md)。

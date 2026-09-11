@@ -78,9 +78,9 @@ struct RepriceRecoveryTests {
             try store.pool.write { db in
                 for index in 1...1025 {
                     try db.execute(sql: """
-                        INSERT INTO usage(dedup_key, usage_date, model, is_fast, input_tokens, output_tokens,
+                        INSERT INTO usage(source_line,rollout_id, usage_date, model, tier, input_tokens, output_tokens,
                             cache_read_tokens, cache_write_tokens, reasoning_tokens, total_tokens, source, evidence_json)
-                        VALUES (?, '2026-09-09', 'gpt-6-astra', 0, 1000, 100, 600, 200, 80, 1100, 'local', '{}')
+                        VALUES (1,?, '2026-09-09', 'gpt-6-astra', 'standard', 1000, 100, 600, 200, 80, 1100, 'local', '{}')
                         """, arguments: ["fixture-\(index)"])
                 }
             }

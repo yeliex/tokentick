@@ -26,23 +26,20 @@ public struct CodexAPIClient: Sendable {
                 defer { session.close() }
                 let before: CodexRateLimits = try session.request("account/rateLimits/read")
                 var daily: CodexDailyUsage?
-                var dailySource: String?
                 var issue: String?
                 do {
                     daily = try session.request("account/usage/read")
-                    dailySource = session.lastResponseJSON
                 }
                 catch let error as CodexAPIError { issue = error.localizedDescription }
                 // 日桶响应没有账号字段；夹在两个自带账号的观测之间，拒绝登录切换。
                 let after: CodexRateLimits = try session.request("account/rateLimits/read")
                 if before.accountId != after.accountId {
                     daily = nil
-                    dailySource = nil
-                    issue = "读取期间账号发生切换，未保存每日桶。"
+                    issue = "读取期间账号发生切换，未采用本次每日桶。"
                 }
                 try Task.checkCancellation()
                 return try store.saveAPIObservation(limits: after, daily: daily, observedAt: Date(), issue: issue,
-                                                    limitsSourceJSON: session.lastResponseJSON, dailySourceJSON: dailySource)
+                                                    limitsSourceJSON: session.lastResponseJSON)
             } catch {
                 try Task.checkCancellation()
                 try store.saveAPIFailure(error.localizedDescription)

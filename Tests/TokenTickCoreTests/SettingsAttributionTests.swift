@@ -12,7 +12,7 @@ struct SettingsAttributionTests {
                           + fixture.started("new") + fixture.record(1, turn: "new"))
         #expect(try fixture.scan().insertedRequests == 1)
         var rows = try fixture.rows()
-        #expect(rows[0]["model"] as String? == "gpt-6-astra" && rows[0]["is_fast"] as Bool? == true)
+        #expect(rows[0]["model"] as String? == "gpt-6-astra" && rows[0]["tier"] as String? == "fast")
         #expect(rows[0]["amount"] as Int64? == 2_920_000)
         let evidence = try #require(JSONSerialization.jsonObject(with: Data((rows[0]["evidence_json"] as String).utf8)) as? [String: Any])
         #expect((evidence["modelSource"] as? [String: Any])?["eventType"] as? String == "thread_settings_applied")
@@ -22,7 +22,7 @@ struct SettingsAttributionTests {
         let reopened = try UsageStore(databaseURL: fixture.store.databaseURL)
         #expect(try LocalUsageScanner(store: reopened).scan(codexHome: fixture.root).insertedRequests == 1)
         rows = try fixture.rows()
-        #expect(rows.allSatisfy { $0["is_fast"] as Bool? == true })
+        #expect(rows.allSatisfy { $0["tier"] as String? == "fast" })
         #expect(rows.reduce(Int64(0)) { $0 + ($1["total_tokens"] as Int64) } == 240)
     }
 
@@ -36,11 +36,11 @@ struct SettingsAttributionTests {
                           + fixture.record(4, turn: "unrelated"))
         _ = try fixture.scan()
         let rows = try fixture.rows()
-        #expect(rows[0]["model"] as String? == "gpt-6-astra" && rows[0]["is_fast"] as Bool? == false)
-        #expect(rows[1]["model"] as String? == nil && rows[1]["is_fast"] as Bool? == true)
+        #expect(rows[0]["model"] as String? == "gpt-6-astra" && rows[0]["tier"] as String? == "standard")
+        #expect(rows[1]["model"] as String? == nil && rows[1]["tier"] as String? == "fast")
         #expect((rows[1]["evidence_json"] as String).contains("modelCandidates"))
-        #expect(rows[2]["model"] as String? == "gpt-5.6-sol" && rows[2]["is_fast"] as Bool? == true)
-        #expect(rows[3]["model"] as String? == nil && rows[3]["is_fast"] as Bool? == nil)
+        #expect(rows[2]["model"] as String? == "gpt-5.6-sol" && rows[2]["tier"] as String? == "fast")
+        #expect(rows[3]["model"] as String? == nil && rows[3]["tier"] as String? == nil)
         let mismatch = try #require(JSONSerialization.jsonObject(with: Data((rows[3]["evidence_json"] as String).utf8)) as? [String: Any])
         #expect(mismatch["serviceTier"] == nil && mismatch["serviceTierSource"] == nil)
     }
@@ -54,7 +54,7 @@ struct SettingsAttributionTests {
                           + fixture.started("new", ordinal: 12) + fixture.record(1, turn: "new", ordinal: 13))
         _ = try fixture.scan()
         let row = try #require(fixture.rows().first)
-        #expect(row["model"] as String? == nil && row["is_fast"] as Bool? == nil)
+        #expect(row["model"] as String? == nil && row["tier"] as String? == nil)
     }
 
     @Test func missingContextTierPreservesBoundSnapshotButExplicitNullClearsIt() throws {
@@ -65,8 +65,8 @@ struct SettingsAttributionTests {
                           + fixture.context("new", tier: "null") + fixture.record(2, turn: "new"))
         _ = try fixture.scan()
         let rows = try fixture.rows()
-        #expect(rows[0]["is_fast"] as Bool? == true)
-        #expect(rows[1]["is_fast"] as Bool? == nil)
+        #expect(rows[0]["tier"] as String? == "fast")
+        #expect(rows[1]["tier"] as String? == nil)
     }
 
     @Test func conflictingKnownMetadataRollsBackWithoutOverwritingFacts() throws {

@@ -11,7 +11,7 @@ struct UsagePricing {
         let amount: Int64?
     }
 
-    static func calculate(tokens: TokenUsage, isFast: Bool?, price: ModelPrice?, contextInput: Int64? = nil) throws -> Result {
+    static func calculate(tokens: TokenUsage, price: ModelPrice?) throws -> Result {
         let reportedTotal = tokens.inputTokens.addingReportingOverflow(tokens.outputTokens)
         guard tokens.inputTokens >= 0, tokens.outputTokens >= 0, !reportedTotal.overflow,
               reportedTotal.partialValue == tokens.totalTokens else { throw PriceError.invalidUsage }
@@ -27,14 +27,13 @@ struct UsagePricing {
         let isLong: Bool? = if let price {
             switch price.contextRule {
             case .uniform: false
-            case .requestInputGreaterThan: price.longContextThreshold.map { (contextInput ?? tokens.inputTokens) > $0 }
+            case .requestInputGreaterThan: price.longContextThreshold.map { tokens.inputTokens > $0 }
             case .unsupported: nil
             }
         } else { nil }
         let rates: PriceRates
         if let price, let isLong {
-            let isFast = isFast ?? false
-            rates = isLong ? (isFast ? price.fastLong : price.long) : (isFast ? price.fast : price.standard)
+            rates = isLong ? price.long : price.rates
         } else { rates = .unknown }
         let input = try amount(tokens: ordinaryInput, rate: rates.input)
         let output = try amount(tokens: tokens.outputTokens, rate: rates.output)

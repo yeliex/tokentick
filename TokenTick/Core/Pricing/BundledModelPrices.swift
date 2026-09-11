@@ -9,17 +9,17 @@ enum BundledModelPrices {
         }
         return try Data(contentsOf: url)
     }
-    private static let catalog: Result<[String: ModelPrice], any Error> = Result {
+    private static let catalog: Result<[String: [String: ModelPrice]], any Error> = Result {
         let document = try JSONDecoder().decode(Document.self, from: data.get())
-        var prices: [String: ModelPrice] = [:]
+        var prices: [String: [String: ModelPrice]] = [:]
         for price in document.models {
-            guard prices[price.model] == nil, !price.model.isEmpty else { throw PriceError.invalidDocument }
-            for rates in [price.standard, price.fast, price.long, price.fastLong] { _ = try rates.validated() }
-            prices[price.model] = price
+            guard prices[price.model]?[price.tier] == nil, !price.model.isEmpty else { throw PriceError.invalidDocument }
+            for rates in [price.rates, price.long] { _ = try rates.validated() }
+            prices[price.model, default: [:]][price.tier] = price
         }
         return prices
     }
-    static func price(model: String) throws -> ModelPrice? { try catalog.get()[model] }
+    static func price(model: String, tier: String = "standard") throws -> ModelPrice? { try catalog.get()[model]?[tier] }
     static func fingerprint() throws -> String {
         try SHA256.hash(data: data.get()).map { String(format: "%02x", $0) }.joined()
     }

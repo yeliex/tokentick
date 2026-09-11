@@ -132,10 +132,10 @@ struct StatisticsRecoveryTests {
                 try db.execute(sql: """
                     INSERT INTO threads(thread_id, project_name) VALUES ('t1', 'unknown'), ('t2', NULL);
                     WITH RECURSIVE numbers(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM numbers WHERE n < 8193)
-                    INSERT INTO usage(id, dedup_key, account_id, thread_id, occurred_at, usage_date, model,
+                    INSERT INTO usage(source_line,id, rollout_id, account_id, thread_id, occurred_at, usage_date, model,
                         total_tokens, input_tokens, output_tokens, cache_read_tokens, reasoning_tokens,
                         input_amount, output_amount, amount, source, evidence_json)
-                    SELECT n, 'fixture-' || n, CASE WHEN n % 2 = 0 THEN 'all' END,
+                    SELECT 1,n, 'fixture-' || n, CASE WHEN n % 2 = 0 THEN 'all' END,
                         CASE n % 3 WHEN 0 THEN 't1' WHEN 1 THEN 't2' END,
                         CASE WHEN n % 5 != 0 THEN 1772956800 + n % 10 * 60 END, '2026-03-08',
                         CASE WHEN n % 2 = 0 THEN 'model' END,

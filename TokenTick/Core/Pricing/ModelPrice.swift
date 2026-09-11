@@ -13,9 +13,20 @@ struct PriceRates: Codable, Equatable, Sendable {
         case cacheWrite = "cache_write"
     }
 
-    func multiplied(by factor: Decimal) -> Self {
-        Self(input: input.map { $0 * factor }, output: output.map { $0 * factor },
-             cacheRead: cacheRead.map { $0 * factor }, cacheWrite: cacheWrite.map { $0 * factor })
+    /// 分项倍率独立计算；缺价和零分母不能靠其他分项补齐。
+    func applyingContextRatio(base: Self, long: Self) throws -> Self {
+        func derive(_ rate: Decimal?, _ base: Decimal?, _ long: Decimal?) throws -> Decimal? {
+            guard let rate, let base, base > 0, let long else { return nil }
+            var numerator = long, denominator = base, ratio = Decimal(), value = rate, result = Decimal()
+            let division = NSDecimalDivide(&ratio, &numerator, &denominator, .bankers)
+            guard division == .noError || division == .lossOfPrecision else { throw PriceError.invalidRate }
+            let multiplication = NSDecimalMultiply(&result, &value, &ratio, .bankers)
+            guard multiplication == .noError || multiplication == .lossOfPrecision else { throw PriceError.invalidRate }
+            return result
+        }
+        return try Self(input: derive(input, base.input, long.input), output: derive(output, base.output, long.output),
+                        cacheRead: derive(cacheRead, base.cacheRead, long.cacheRead),
+                        cacheWrite: derive(cacheWrite, base.cacheWrite, long.cacheWrite)).validated()
     }
 
     func validated() throws -> Self {
@@ -29,10 +40,9 @@ struct PriceRates: Codable, Equatable, Sendable {
 struct ModelPrice: Codable, Equatable, Sendable {
     let model: String
     let date: String
-    let standard: PriceRates
-    let fast: PriceRates
+    let tier: String
+    let rates: PriceRates
     let long: PriceRates
-    let fastLong: PriceRates
     let longContextThreshold: Int64?
     let contextRule: ContextRule
     let source: PriceSource
@@ -41,7 +51,7 @@ struct ModelPrice: Codable, Equatable, Sendable {
 
     /// 价格和规则决定是否需要新快照，名称和原始 JSON 的字段顺序不参与比较。
     func samePricing(as other: Self) -> Bool {
-        standard == other.standard && fast == other.fast && long == other.long && fastLong == other.fastLong
+        tier == other.tier && rates == other.rates && long == other.long
             && longContextThreshold == other.longContextThreshold && contextRule == other.contextRule
             && source.combinationRule == other.source.combinationRule
             && (contextRule != .unsupported || source.cost == other.source.cost)

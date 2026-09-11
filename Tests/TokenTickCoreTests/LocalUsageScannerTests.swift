@@ -34,7 +34,7 @@ struct LocalUsageScannerTests {
         #expect(try LocalUsageScanner(store: reopened).scan(codexHome: fixture.root).insertedRequests == 1)
         #expect(try fixture.total() == 240)
         #expect(try fixture.scan().unchangedFiles == 1)
-        #expect(try fixture.rows().allSatisfy { ($0["amount"] as Int64?) == nil && ($0["is_fast"] as Bool?) == nil })
+        #expect(try fixture.rows().allSatisfy { ($0["amount"] as Int64?) == nil && ($0["tier"] as String?) == nil })
     }
 
     @Test func archiveAndCompressionKeepRolloutIdentityAndUsage() throws {
@@ -92,7 +92,7 @@ struct LocalUsageScannerTests {
         let rows = try fixture.rows()
         #expect(rows.count == 1)
         #expect(try fixture.store.tableCounts()["turn_usage"] == 1)
-        #expect(try fixture.store.pool.read { try String.fetchOne($0, sql: "SELECT seen_json FROM turn_usage") }?.contains("response-1") == true)
+        #expect(try fixture.store.pool.read { try String.fetchOne($0, sql: "SELECT response_id FROM usage") } == "response-1")
         // 原地重写触发从头重扫，旧别名也必须命中同一请求。
         try Data((fixture.header + fixture.turn + fixture.count(1) + fixture.record(1)).utf8).write(to: file, options: .atomic)
         _ = try fixture.scan()

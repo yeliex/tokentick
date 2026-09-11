@@ -6,8 +6,7 @@ enum StatisticsSQL {
 
     // 汇总和明细共用日期口径；只有 UTC 日日期的事实不能在其他时区猜测归属。
     static let dayExpression = """
-        CASE WHEN u.occurred_through IS NOT NULL AND tokentick_day(u.occurred_at) != tokentick_day(u.occurred_through) THEN 'unknown'
-             WHEN u.occurred_at IS NOT NULL THEN COALESCE(tokentick_day(u.occurred_at), 'unknown')
+        CASE WHEN u.occurred_at IS NOT NULL THEN COALESCE(tokentick_day(u.occurred_at), 'unknown')
              WHEN :timezone IN ('UTC', 'GMT') THEN COALESCE(u.usage_date, 'unknown')
              ELSE 'unknown' END
         """

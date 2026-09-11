@@ -11,17 +11,73 @@ struct PriceStoreTests {
         func save(_ date: String, json: String = UsagePricingTests.document) throws -> PriceSyncReport {
             try store.savePrices(ModelsDevPrices.decode(Data(json.utf8), date: date), date: date)
         }
-        #expect(try save("2026-09-09").insertedSnapshots == 1)
+        #expect(try save("2026-09-09").insertedSnapshots == 2)
         #expect(try save("2026-09-10", json: UsagePricingTests.document.replacingOccurrences(of: "标题不参与价格比较", with: "新标题")).insertedSnapshots == 0)
         let changed = UsagePricingTests.document.replacingOccurrences(of: #""input":10,"output""#, with: #""input":12,"output""#)
-        #expect(try save("2026-09-11", json: changed).insertedSnapshots == 1)
+        #expect(try save("2026-09-11", json: changed).insertedSnapshots == 2)
         #expect(try save("2026-09-11").alreadySynced)
-        #expect(try store.tableCounts()["prices"] == 2)
+        #expect(try store.tableCounts()["prices"] == 4)
         try store.pool.read { db throws -> Void in
-            #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-08")?.standard.input == 10)
-            #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-10")?.standard.input == 10)
-            #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-12")?.standard.input == 12)
+            #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-08")?.rates.input == 10)
+            #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-10")?.rates.input == 10)
+            #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-12")?.rates.input == 12)
         }
+    }
+
+    @Test func tiersHaveIndependentHistoryAndChangingLongPriceUpdatesDerivedFast() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        let first = try ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: "2026-09-09")
+        _ = try store.savePrices(first.filter { $0.tier == "standard" }, date: "2026-09-09")
+        let next = try ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: "2026-09-10")
+        #expect(try store.savePrices(next, date: "2026-09-10").insertedSnapshots == 1)
+        let changed = UsagePricingTests.document.replacingOccurrences(of: #""input":20,"output":75"#, with: #""input":30,"output":75"#)
+        #expect(try store.savePrices(ModelsDevPrices.decode(Data(changed.utf8), date: "2026-09-11"), date: "2026-09-11").insertedSnapshots == 2)
+        try store.pool.read { db throws -> Void in
+            let old = try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-01-01", tier: "fast")
+            #expect(old?.date == "2026-09-10" && old?.long.input == 40)
+            let new = try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-11", tier: "fast")
+            #expect(new?.rates.input == 20 && new?.long.input == 60 && new?.long.output == 150)
+        }
+    }
+
+    @Test func migrationSplitsHistoricalTierRowsAndRebuildsOnlyOldUsageOnce() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let url = root.appendingPathComponent("usage.sqlite")
+        let old = try DatabaseQueue(path: url.path)
+        try StoreSchema.migrator.migrate(old, upTo: "v9.weekly-start-windows")
+        let source = try UsagePricingTests().fixturePrice().source
+        let json = String(decoding: try JSONEncoder().encode(source), as: UTF8.self)
+        try old.write { db in
+            try db.execute(sql: """
+                INSERT INTO prices(model,date,input_price,output_price,fast_input_price,fast_output_price,
+                    long_input_price,long_output_price,long_context_threshold,source_json)
+                VALUES ('gpt-6-astra','2026-01-01','10','50','20','100','20','75',272000,?);
+                """, arguments: [json])
+            try db.execute(sql: """
+                INSERT INTO usage(dedup_key,usage_date,total_tokens,source,evidence_json) VALUES ('old','2026-01-01',99,'local','{}');
+                INSERT INTO threads(thread_id,title) VALUES ('t','保留标题');
+                """)
+        }
+        try old.close()
+        let store = try UsageStore(databaseURL: url)
+        #expect(try store.tableCounts()["prices"] == 2 && store.tableCounts()["usage"] == 0)
+        try store.pool.write { db in
+            let fast = try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2025-01-01", tier: "fast")
+            #expect(fast?.date == "2026-01-01" && fast?.rates.input == 20 && fast?.long.input == 40 && fast?.long.output == 150)
+            let columns = try db.columns(in: "usage").map(\.name)
+            #expect(columns.contains("response_id") && columns.contains("source_ordinal") && columns.contains("hour") && columns.contains("minute"))
+            #expect(!columns.contains("dedup_key") && !columns.contains("is_fast") && !columns.contains("occurred_through"))
+            try db.execute(sql: "INSERT INTO usage(rollout_id,source_line,usage_date,total_tokens,source,evidence_json) VALUES ('new',1,'2026-09-11',10,'local','{}')")
+        }
+        let updated = try ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: "2026-01-01")
+        _ = try store.savePrices(updated, date: "2026-01-01")
+        #expect(try store.tableCounts()["prices"] == 2)
+        #expect(try UsageStore(databaseURL: url).tableCounts()["usage"] == 1)
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("Backups").path))
     }
 
     @Test func firstSnapshotPricesEarlierRequestsWithoutChangingFacts() throws {
@@ -33,9 +89,9 @@ struct PriceStoreTests {
         try store.pool.write { db in
             for date in ["2026-09-08", "2026-09-09"] {
                 try db.execute(sql: """
-                    INSERT INTO usage(dedup_key, usage_date, model, is_fast, input_tokens, output_tokens,
+                    INSERT INTO usage(source_line,rollout_id, usage_date, model, tier, input_tokens, output_tokens,
                         cache_read_tokens, cache_write_tokens, reasoning_tokens, total_tokens, source, evidence_json)
-                    VALUES (?, ?, 'gpt-6-astra', 0, 1000, 100, 600, 200, 80, 1100, 'local', '{}')
+                    VALUES (1,?, ?, 'gpt-6-astra', 'standard', 1000, 100, 600, 200, 80, 1100, 'local', '{}')
                     """, arguments: [date, date])
             }
         }
@@ -63,9 +119,9 @@ struct PriceStoreTests {
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
         try store.pool.write { db in
             try db.execute(sql: """
-                INSERT INTO usage(dedup_key, usage_date, input_tokens, output_tokens, cache_read_tokens,
+                INSERT INTO usage(source_line,rollout_id, usage_date, input_tokens, output_tokens, cache_read_tokens,
                     cache_write_tokens, total_tokens, amount, source, evidence_json)
-                VALUES ('invalid', '2026-09-09', 100, 10, 120, 0, 110, 999, 'local', '{"reason":"fixture"}')
+                VALUES (1,'invalid', '2026-09-09', 100, 10, 120, 0, 110, 999, 'local', '{"reason":"fixture"}')
                 """)
         }
         #expect(try store.repriceUsage().invalidUsage == 1)
@@ -88,7 +144,7 @@ struct PriceStoreTests {
             _ = try store.savePrices(prices, date: "2026-09-10")
         }
         #expect(try !store.hasSyncedPrices(on: "2026-09-10"))
-        #expect(try store.tableCounts()["prices"] == 1)
+        #expect(try store.tableCounts()["prices"] == 2)
     }
 
     @Test(arguments: ["default", "priority", "fast"]) func newlyScannedRequestUsesExistingPriceAndQueriesKeepPartialAmounts(tier: String) throws {
@@ -109,7 +165,7 @@ struct PriceStoreTests {
         #expect(try store.usageSummaries().first?.knownAmountNanoUSD == 10_100_000 * factor)
         #expect(try store.repriceUsage().changed == 0)
         try store.pool.write { db in
-            try db.execute(sql: "UPDATE usage SET cache_write_tokens = NULL, is_fast = NULL")
+            try db.execute(sql: "UPDATE usage SET cache_write_tokens = NULL, tier = NULL")
         }
         #expect(try store.repriceUsage().partiallyPriced == 1)
         #expect(try store.usageSummaries().first?.knownAmountNanoUSD == 5_600_000 * factor)
