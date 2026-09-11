@@ -23,7 +23,6 @@ final class RolloutLineReader {
     private var frameRemaining = 0
     private var readCompressedBytes = false
     private let maximumLineBytes: Int
-    private(set) var incompleteTail = Data()
     private(set) var offset: UInt64
 
     init(url: URL, compressed: Bool, offset: UInt64 = 0, maximumLineBytes: Int = 16 * 1_024 * 1_024) throws {
@@ -67,7 +66,7 @@ final class RolloutLineReader {
             if chunkPosition == chunk.count {
                 chunk = try nextChunk()
                 chunkPosition = 0
-                if chunk.isEmpty { incompleteTail = line; return nil }
+                if chunk.isEmpty { return nil }
             }
             let suffix = chunk[chunkPosition...]
             let end = suffix.firstIndex(of: 10) ?? chunk.endIndex

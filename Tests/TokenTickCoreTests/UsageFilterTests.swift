@@ -108,7 +108,7 @@ struct UsageFilterTests {
         let store: UsageStore
         init() throws {
             store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
-            let time = try #require(RolloutParser.parseDate("2026-09-09T12:00:00Z")).timeIntervalSince1970
+            let time = try #require(DateParsing.parseTimestamp("2026-09-09T12:00:00Z")).timeIntervalSince1970
             try store.pool.write { db in
                 try db.execute(sql: """
                     INSERT INTO threads(thread_id, title, project_name) VALUES ('a', 'Café 任务', '项目 A'), ('b', '%_真实字符', 'unknown');

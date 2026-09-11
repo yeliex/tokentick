@@ -59,7 +59,7 @@ struct CodexFastEvidence: Codable {
         return quoted
     }
 
-    private struct Cursor: Codable {
+    struct Cursor: Codable {
         let inode: UInt64
         let device: UInt64
         let lastID: Int64
@@ -79,10 +79,7 @@ struct CodexFastEvidence: Codable {
             defer { try? source.close() }
             let file = try FileSnapshot(url: url, compressed: false)
             let key = "fast_trace_cursor:" + url.standardizedFileURL.path
-            let previous = try store.pool.read { db in
-                try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = ?", arguments: [key])
-                    .flatMap { try? JSONDecoder().decode(Cursor.self, from: Data($0.utf8)) }
-            }
+            let previous = try store.fastEvidenceCursor(key: key)
             try source.read { db in
                 let maximum = try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM logs") ?? 0
                 func anchor(_ id: Int64) throws -> String? {
@@ -104,19 +101,7 @@ struct CodexFastEvidence: Codable {
                 var count = 0
                 func commit(_ lastID: Int64) throws {
                     let cursor = Cursor(inode: file.inode, device: file.device, lastID: lastID, anchor: try anchor(lastID))
-                    let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-                    try store.pool.write { target in
-                        for evidence in batch {
-                            let json = String(decoding: try encoder.encode(evidence), as: UTF8.self)
-                            try target.execute(sql: "INSERT INTO app_metadata(key,value) VALUES (?,?) ON CONFLICT DO NOTHING", arguments: [evidence.key, json])
-                            if target.changesCount > 0 {
-                                let usage = try Row.fetchCursor(target, sql: "SELECT * FROM usage WHERE thread_id=? AND turn_id=? AND tier IS NULL", arguments: [evidence.threadID, evidence.turnID])
-                                while let row = try usage.next() { _ = try UsageStore.priceUsage(row, db: target) }
-                            }
-                        }
-                        try target.execute(sql: "INSERT INTO app_metadata(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                                           arguments: [key, String(decoding: try encoder.encode(cursor), as: UTF8.self)])
-                    }
+                    try store.commitFastEvidence(batch, cursor: cursor, key: key)
                     batch.removeAll(keepingCapacity: true)
                 }
                 while let row = try rows.next() {

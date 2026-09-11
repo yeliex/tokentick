@@ -35,7 +35,6 @@ struct RolloutParser {
             let source = UsageContextEvidence(eventType: "turn_context", fileName: identity.fileName,
                 rolloutID: identity.rolloutID.uuidString.lowercased(), line: line, ordinal: event.ordinal,
                 threadID: state.session?.id, turnID: turn.turn_id, model: turn.model, serviceTier: turn.service_tier)
-            state.contextTurnID = turn.turn_id
             state.contextModel = turn.model
             if !sameTurn {
                 state.serviceTier = nil
@@ -81,12 +80,12 @@ struct RolloutParser {
         case .other: return nil
         case .count(let count):
             if let raw = count.rate_limits, let session = state.session,
-               let timestamp = event.timestamp.flatMap(Self.parseDate) {
+               let timestamp = event.timestamp.flatMap(DateParsing.parseTimestamp) {
                 currentLimits = try CurrentLimitSnapshot.log(raw: raw, observedAt: timestamp.timeIntervalSince1970,
                     threadID: session.id, fileName: identity.fileName, line: line)
                 currentLimits?.turnID = state.turnID
                 if try isInherited(event, session: session) { currentLimits?.historyExclusion = "inherited" }
-                else if session.forked_from_id != nil, let created = session.timestamp.flatMap(Self.parseDate), timestamp <= created {
+                else if session.forked_from_id != nil, let created = session.timestamp.flatMap(DateParsing.parseTimestamp), timestamp <= created {
                     currentLimits?.historyExclusion = "fork_replay"
                 }
             }
@@ -107,7 +106,7 @@ struct RolloutParser {
             // 新旧用量流可能采用不同的任务累计基线。新格式之后的同轮次、同分项报告只计一次。
             if state.recordTurnID == state.turnID && state.recordUsage == usage, let response = state.recordResponseID {
                 state.recordUsage = nil
-                return try makeUsage(responseID: response, legacy: info.total_token_usage, event: event, usage: usage,
+                return try makeUsage(responseID: response, legacy: info.total_token_usage, usage: usage,
                     thread: session.id, turn: state.turnID, line: line, evidence: evidence)
             }
             state.recordUsage = nil
@@ -124,7 +123,7 @@ struct RolloutParser {
             state.fallbackCumulative = info.total_token_usage
             state.fallbackUsage = usage
             state.fallbackTurnID = state.turnID
-            return try makeUsage(responseID: nil, legacy: info.total_token_usage, event: event, usage: usage,
+            return try makeUsage(responseID: nil, legacy: info.total_token_usage, usage: usage,
                                  thread: session.id, turn: state.turnID, line: line, evidence: evidence)
         case .record(let record):
             guard let session = state.session else { throw ParseError.missingSession }
@@ -140,7 +139,7 @@ struct RolloutParser {
             state.fallbackCumulative = nil
             state.fallbackUsage = nil
             let evidence = try evidence(event, type: "token_usage_record", cumulative: record.thread_token_usage, record: record)
-            return try makeUsage(responseID: record.response_id, legacy: replaces, event: event,
+            return try makeUsage(responseID: record.response_id, legacy: replaces,
                                  usage: record.usage, thread: record.thread_id, turn: record.turn_id,
                                  line: line, evidence: evidence)
         }
@@ -153,7 +152,7 @@ struct RolloutParser {
         // paginated history_base 引用外部前缀，本文件只保存后续事件。
         if session.history_mode == "paginated", let base = session.history_base,
            let ordinal = event.ordinal, ordinal >= base.end_ordinal_exclusive { return false }
-        if let created = session.timestamp.flatMap(Self.parseDate), let occurred = event.timestamp.flatMap(Self.parseDate) {
+        if let created = session.timestamp.flatMap(DateParsing.parseTimestamp), let occurred = event.timestamp.flatMap(DateParsing.parseTimestamp) {
             return occurred < created
         }
         throw ParseError.ambiguousFork
@@ -161,7 +160,7 @@ struct RolloutParser {
 
     private func evidence(_ event: RolloutEvent, type: String, cumulative: TokenUsage,
                           record: RolloutEvent.Record? = nil) throws -> UsageEvidence {
-        guard let timestamp = event.timestamp, Self.parseDate(timestamp) != nil else { throw ParseError.missingTimestamp }
+        guard let timestamp = event.timestamp, DateParsing.parseTimestamp(timestamp) != nil else { throw ParseError.missingTimestamp }
         let sameTurn = record == nil || record?.turn_id == state.turnID
         return UsageEvidence(fileName: identity.fileName, timestamp: timestamp, ordinal: event.ordinal,
             eventType: type, serviceTier: sameTurn ? state.serviceTier : nil, cumulative: cumulative, record: record,
@@ -171,19 +170,13 @@ struct RolloutParser {
             modelCandidates: sameTurn ? state.modelCandidates : nil)
     }
 
-    private func makeUsage(responseID: String?, legacy: TokenUsage?, event: RolloutEvent, usage: TokenUsage,
+    private func makeUsage(responseID: String?, legacy: TokenUsage?, usage: TokenUsage,
                            thread: String, turn: String?, line: Int,
                            evidence: UsageEvidence) throws -> CollectedUsage {
-        guard let timestamp = Self.parseDate(evidence.timestamp) else { throw ParseError.missingTimestamp }
+        guard let timestamp = DateParsing.parseTimestamp(evidence.timestamp) else { throw ParseError.missingTimestamp }
         return CollectedUsage(responseID: responseID, legacyCumulative: legacy, threadID: thread.lowercased(),
                               turnID: turn, timestamp: timestamp,
                               model: turn == state.turnID ? state.model : nil, tokens: usage,
                               rolloutID: identity.rolloutID.uuidString.lowercased(), line: line, evidence: evidence)
     }
-
-    static func parseDate(_ text: String) -> Date? {
-        (try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(text))
-            ?? (try? Date.ISO8601FormatStyle().parse(text))
-    }
-
 }

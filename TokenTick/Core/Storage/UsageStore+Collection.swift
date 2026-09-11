@@ -32,14 +32,8 @@ extension UsageStore {
         encoder.outputFormatting = [.sortedKeys]
         let fileJSON = String(decoding: try encoder.encode(file), as: UTF8.self)
         let stateJSON = String(decoding: try encoder.encode(state), as: UTF8.self)
-        let counts = try pool.write { db -> (Int, Int, Int) in
-            var inserted = 0
-            var upgraded = 0
-            var duplicates = 0
-            let result = try Self.collectTurns(usages, session: state.session, db: db)
-            inserted = result.inserted
-            upgraded = result.upgraded
-            duplicates = result.duplicates
+        let counts = try pool.write { db in
+            let counts = try Self.collectTurns(usages, session: state.session, db: db)
             for snapshot in limits { _ = try Self.saveWeeklyObservations(snapshot, db: db) }
             let threadID = identity.threadID.uuidString.lowercased()
             // 名称由最新 Codex thread 缓存更新，不从路径猜出一个无法核验的项目名。
@@ -54,11 +48,11 @@ extension UsageStore {
                     file_state_json = excluded.file_state_json, parser_state_json = excluded.parser_state_json
                 """, arguments: [identity.rolloutID.uuidString.lowercased(), threadID, identity.fileName, url.path,
                                   line, offset, Date().timeIntervalSince1970, fileJSON, stateJSON])
-            return (inserted, upgraded, duplicates)
+            return counts
         }
-        report.insertedRequests += counts.0
-        report.upgradedRequests += counts.1
-        report.duplicateRequests += counts.2
+        report.insertedRequests += counts.inserted
+        report.upgradedRequests += counts.upgraded
+        report.duplicateRequests += counts.duplicates
     }
 
 }

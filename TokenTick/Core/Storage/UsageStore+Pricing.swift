@@ -108,30 +108,10 @@ extension UsageStore {
         let id: Int64 = row["id"]
         report.examined += 1
         let model: String? = row["model"]
-        let date: String? = row["usage_date"]
         let input: Int64? = row["input_tokens"]
         let output: Int64? = row["output_tokens"]
-        let storedTier: String? = row["tier"]
-        let evidence: String = row["evidence_json"]
-        let sourceTier = (try? JSONDecoder().decode(ModeEvidence.self, from: Data(evidence.utf8)))?.serviceTier
-        let observedTier = storedTier ?? CodexServiceTier.normalized(sourceTier)
-        let thread: String? = row["thread_id"]
-        let turn: String? = row["turn_id"]
-        let trace = try observedTier == nil ? thread.flatMap { thread in
-            try turn.flatMap { turn in
-                try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key=?", arguments: ["fast_trace:\(thread):\(turn)"])
-            }
-        } : nil
-        let selectedTier = observedTier ?? (trace == nil ? "standard" : "fast")
-        let fast = selectedTier == "fast"
-        let price = try model.flatMap { model in try date.flatMap { try Self.modelPrice(db: db, model: model, date: $0, tier: selectedTier) } }
-        var proof = (try? JSONSerialization.jsonObject(with: Data(evidence.utf8))) as? [String: Any] ?? [:]
-        var mode: [String: Any] = ["isFast": fast, "tier": selectedTier, "source": observedTier != nil ? "rollout" : (trace != nil ? "trace" : "default_standard")]
-        if let trace { mode["trace"] = try JSONSerialization.jsonObject(with: Data(trace.utf8)) }
-        proof["pricingMode"] = mode
-        if let price { proof["pricingPrice"] = ["model": price.model, "date": price.date, "tier": price.tier, "url": price.source.url, "bundled": price.source.isBundled == true] }
-        else { proof.removeValue(forKey: "pricingPrice") }
-        let updatedEvidence = String(decoding: try JSONSerialization.data(withJSONObject: proof, options: [.sortedKeys]), as: UTF8.self)
+        let context = try pricingContext(row, db: db)
+        let price = context.price
         var result: UsagePricing.Result?
         if let input, let output {
             let tokens = TokenUsage(inputTokens: input, outputTokens: output, cachedInputTokens: row["cache_read_tokens"],
@@ -160,7 +140,7 @@ extension UsageStore {
         let columns = ["evidence_json", "tier", "is_long_context", "input_price", "output_price", "cache_read_price", "cache_write_price",
                        "input_amount", "output_amount", "cache_read_amount", "cache_write_amount", "amount"]
         let values: [(any DatabaseValueConvertible)?] = [
-            updatedEvidence, observedTier, result?.isLongContext,
+            context.evidenceJSON, context.observedTier, result?.isLongContext,
             result?.rates.input.map { NSDecimalNumber(decimal: $0).stringValue },
             result?.rates.output.map { NSDecimalNumber(decimal: $0).stringValue },
             result?.rates.cacheRead.map { NSDecimalNumber(decimal: $0).stringValue },
@@ -174,6 +154,35 @@ extension UsageStore {
         report.changed += db.changesCount
         return report
     }
+
+    private static func pricingContext(_ row: Row, db: Database) throws
+        -> (price: ModelPrice?, observedTier: String?, evidenceJSON: String) {
+        let model: String? = row["model"]
+        let date: String? = row["usage_date"]
+        let storedTier: String? = row["tier"]
+        let evidence: String = row["evidence_json"]
+        let sourceTier = (try? JSONDecoder().decode(ModeEvidence.self, from: Data(evidence.utf8)))?.serviceTier
+        let observedTier = storedTier ?? CodexServiceTier.normalized(sourceTier)
+        let thread: String? = row["thread_id"]
+        let turn: String? = row["turn_id"]
+        let trace = try observedTier == nil ? thread.flatMap { thread in
+            try turn.flatMap { turn in
+                try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key=?", arguments: ["fast_trace:\(thread):\(turn)"])
+            }
+        } : nil
+        let selectedTier = observedTier ?? (trace == nil ? "standard" : "fast")
+        let fast = selectedTier == "fast"
+        let price = try model.flatMap { model in try date.flatMap { try Self.modelPrice(db: db, model: model, date: $0, tier: selectedTier) } }
+        var proof = (try? JSONSerialization.jsonObject(with: Data(evidence.utf8))) as? [String: Any] ?? [:]
+        var mode: [String: Any] = ["isFast": fast, "tier": selectedTier, "source": observedTier != nil ? "rollout" : (trace != nil ? "trace" : "default_standard")]
+        if let trace { mode["trace"] = try JSONSerialization.jsonObject(with: Data(trace.utf8)) }
+        proof["pricingMode"] = mode
+        if let price { proof["pricingPrice"] = ["model": price.model, "date": price.date, "tier": price.tier, "url": price.source.url, "bundled": price.source.isBundled == true] }
+        else { proof.removeValue(forKey: "pricingPrice") }
+        let updatedEvidence = String(decoding: try JSONSerialization.data(withJSONObject: proof, options: [.sortedKeys]), as: UTF8.self)
+        return (price, observedTier, updatedEvidence)
+    }
+
     private struct ModeEvidence: Decodable { let serviceTier: String? }
 
 }

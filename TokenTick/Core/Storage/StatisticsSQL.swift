@@ -2,8 +2,6 @@ import Foundation
 import GRDB
 
 enum StatisticsSQL {
-    static let unknownDate = "unknown"
-
     // 汇总和明细共用日期口径；只有 UTC 日日期的事实不能在其他时区猜测归属。
     static let dayExpression = """
         CASE WHEN u.occurred_at IS NOT NULL THEN COALESCE(tokentick_day(u.occurred_at), 'unknown')

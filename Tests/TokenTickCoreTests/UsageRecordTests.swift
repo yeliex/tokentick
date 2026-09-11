@@ -86,7 +86,7 @@ struct UsageRecordTests {
             root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
             let times = try ["2026-03-08T07:59:00Z", "2026-03-08T08:01:00Z", "2026-03-09T06:59:00Z"]
-                .map { try #require(RolloutParser.parseDate($0)).timeIntervalSince1970 }
+                .map { try #require(DateParsing.parseTimestamp($0)).timeIntervalSince1970 }
             try store.pool.write { db in
                 try db.execute(sql: """
                     INSERT INTO threads(thread_id, title, project_name) VALUES ('t', '标题', 'unknown');

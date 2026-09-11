@@ -18,7 +18,7 @@ struct CodexDailyUsage: Codable, Sendable {
     func validate() throws {
         var dates = Set<String>()
         for bucket in dailyUsageBuckets ?? [] {
-            guard let parsed = RolloutParser.parseDate(bucket.startDate + "T00:00:00Z"),
+            guard let parsed = DateParsing.parseTimestamp(bucket.startDate + "T00:00:00Z"),
                   parsed.formatted(.iso8601.year().month().day().dateSeparator(.dash)) == bucket.startDate, bucket.tokens >= 0,
                   dates.insert(bucket.startDate).inserted else { throw CodexAPIError.invalidStatistics }
         }

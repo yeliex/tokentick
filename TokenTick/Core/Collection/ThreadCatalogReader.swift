@@ -55,26 +55,3 @@ struct ThreadCatalogReader {
         var errorDescription: String? { "Codex 任务数据库字段与已验证格式不兼容，保留现有名称缓存。" }
     }
 }
-
-struct ThreadMapping {
-    let threadID: String
-    let title: String?
-    let projectName: String?
-}
-
-extension UsageStore {
-    func updateThreadMappings(_ mappings: [ThreadMapping]) throws -> Int {
-        try pool.write { db in
-            var changed = 0
-            for mapping in mappings {
-                try db.execute(sql: """
-                    INSERT INTO threads(thread_id, title, project_name) VALUES (?, ?, ?)
-                    ON CONFLICT(thread_id) DO UPDATE SET title = excluded.title, project_name = excluded.project_name
-                    WHERE threads.title IS NOT excluded.title OR threads.project_name IS NOT excluded.project_name
-                    """, arguments: [mapping.threadID, mapping.title, mapping.projectName])
-                changed += db.changesCount
-            }
-            return changed
-        }
-    }
-}

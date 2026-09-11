@@ -190,7 +190,7 @@ struct StatisticsTests {
             try store.pool.write { db in
                 try db.execute(sql: "INSERT INTO threads(thread_id, title, project_name) VALUES ('t1', '标题', 'unknown'), ('t2', '标题', NULL)")
                 let dates = ["2026-03-08T07:59:00Z", "2026-03-08T08:01:00Z", "2026-03-09T06:59:00Z"]
-                let times = try dates.map { try #require(RolloutParser.parseDate($0)).timeIntervalSince1970 }
+                let times = try dates.map { try #require(DateParsing.parseTimestamp($0)).timeIntervalSince1970 }
                 try db.execute(sql: """
                     INSERT INTO usage(source_line,rollout_id, account_id, thread_id, occurred_at, usage_date, model,
                         input_tokens, output_tokens, cache_read_tokens, total_tokens, input_amount, output_amount,

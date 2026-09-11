@@ -1,7 +1,6 @@
 import CryptoKit
 import Foundation
 import Darwin
-import GRDB
 
 public struct ScanReport: Codable, Sendable {
     public var discoveredFiles = 0
@@ -62,32 +61,7 @@ public struct LocalUsageScanner: Sendable {
                 try Task.checkCancellation()
                 report.addIssue(ScanIssue(fileName: "logs_*.sqlite", line: nil, message: "Fast 证据：\(error.localizedDescription)"))
             }
-            var candidates: [UUID: [(URL, RolloutIdentity)]] = [:]
-            for directory in ["sessions", "archived_sessions"] {
-                let root = codexHome.appendingPathComponent(directory, isDirectory: true)
-                guard FileManager.default.fileExists(atPath: root.path) else { continue }
-                guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey],
-                                                                      options: [.skipsHiddenFiles], errorHandler: { url, error in
-                    report.addIssue(ScanIssue(fileName: url.lastPathComponent, line: nil, message: error.localizedDescription))
-                    return true
-                }) else { continue }
-                for case let url as URL in enumerator {
-                    guard let identity = RolloutIdentity(fileName: url.lastPathComponent) else {
-                        let name = url.lastPathComponent
-                        if name.hasPrefix("rollout-"), name.hasSuffix(".jsonl") || name.hasSuffix(".jsonl.zst") {
-                            report.addIssue(ScanIssue(fileName: name, line: nil, message: "无法识别 rollout 文件身份，未猜测对话 ID。"))
-                        }
-                        continue
-                    }
-                    guard try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else { continue }
-                    candidates[identity.rolloutID, default: []].append((url, identity))
-                    report.discoveredFiles += 1
-                }
-            }
-            if candidates.isEmpty {
-                report.addIssue(ScanIssue(fileName: codexHome.lastPathComponent, line: nil, message: "未发现可识别的 rollout 日志。"))
-            }
-            let ordered = candidates.values.sorted { $0[0].1.fileName < $1[0].1.fileName }
+            let ordered = try discoverRollouts(codexHome: codexHome, report: &report)
             var lastProgress = ContinuousClock.now
             for (index, copies) in ordered.enumerated() {
                 try Task.checkCancellation()
@@ -105,22 +79,7 @@ public struct LocalUsageScanner: Sendable {
                         lastProgress = .now
                     }
                 }
-                if sorted.count > 1 {
-                    do {
-                        let first = try contentDigest(url: url, identity: identity)
-                        var conflict = false
-                        for (otherURL, otherIdentity) in sorted.dropFirst() {
-                            if try contentDigest(url: otherURL, identity: otherIdentity) != first { conflict = true; break }
-                        }
-                        if conflict {
-                            report.addIssue(ScanIssue(fileName: identity.fileName, line: nil, message: "同一 rollout 的多份文件内容不一致，已保留原有用量并停止更新该 rollout。"))
-                            continue
-                        }
-                    } catch {
-                        report.addIssue(ScanIssue(fileName: identity.fileName, line: nil, message: error.localizedDescription))
-                        continue
-                    }
-                }
+                guard verifyCopies(sorted, report: &report) else { continue }
                 try autoreleasepool { try scanFile(url: url, identity: identity, report: &report) }
             }
             try Task.checkCancellation()
@@ -134,6 +93,56 @@ public struct LocalUsageScanner: Sendable {
             }
             return report
         }
+    }
+
+    private func discoverRollouts(codexHome: URL, report output: inout ScanReport) throws -> [[(URL, RolloutIdentity)]] {
+        // 目录枚举持有错误回调，不能让回调捕获调用方的 inout 参数。
+        var report = output
+        defer { output = report }
+        var candidates: [UUID: [(URL, RolloutIdentity)]] = [:]
+        for directory in ["sessions", "archived_sessions"] {
+            let root = codexHome.appendingPathComponent(directory, isDirectory: true)
+            guard FileManager.default.fileExists(atPath: root.path) else { continue }
+            guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey],
+                                                                  options: [.skipsHiddenFiles], errorHandler: { url, error in
+                report.addIssue(ScanIssue(fileName: url.lastPathComponent, line: nil, message: error.localizedDescription))
+                return true
+            }) else { continue }
+            for case let url as URL in enumerator {
+                guard let identity = RolloutIdentity(fileName: url.lastPathComponent) else {
+                    let name = url.lastPathComponent
+                    if name.hasPrefix("rollout-"), name.hasSuffix(".jsonl") || name.hasSuffix(".jsonl.zst") {
+                        report.addIssue(ScanIssue(fileName: name, line: nil, message: "无法识别 rollout 文件身份，未猜测对话 ID。"))
+                    }
+                    continue
+                }
+                guard try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else { continue }
+                candidates[identity.rolloutID, default: []].append((url, identity))
+                report.discoveredFiles += 1
+            }
+        }
+        if candidates.isEmpty {
+            report.addIssue(ScanIssue(fileName: codexHome.lastPathComponent, line: nil, message: "未发现可识别的 rollout 日志。"))
+        }
+        return candidates.values.sorted { $0[0].1.fileName < $1[0].1.fileName }
+    }
+
+    private func verifyCopies(_ sorted: [(URL, RolloutIdentity)], report: inout ScanReport) -> Bool {
+        guard sorted.count > 1 else { return true }
+        let (url, identity) = sorted[0]
+        do {
+            let first = try contentDigest(url: url, identity: identity)
+            for (otherURL, otherIdentity) in sorted.dropFirst() {
+                if try contentDigest(url: otherURL, identity: otherIdentity) != first {
+                    report.addIssue(ScanIssue(fileName: identity.fileName, line: nil, message: "同一 rollout 的多份文件内容不一致，已保留原有用量并停止更新该 rollout。"))
+                    return false
+                }
+            }
+        } catch {
+            report.addIssue(ScanIssue(fileName: identity.fileName, line: nil, message: error.localizedDescription))
+            return false
+        }
+        return true
     }
 
     private func scanFile(url: URL, identity: RolloutIdentity, report: inout ScanReport) throws {
@@ -219,54 +228,5 @@ public struct LocalUsageScanner: Sendable {
             return true
         }) {}
         return hash.finalize().map { String(format: "%02x", $0) }.joined()
-    }
-}
-
-struct ScanCursor {
-    let line: Int
-    let offset: UInt64
-    let file: FileSnapshot
-    let state: RolloutParserState
-}
-
-struct FileSnapshot: Codable {
-    let size: UInt64
-    let modifiedAt: TimeInterval
-    let inode: UInt64
-    let device: UInt64
-    let compressed: Bool
-    var completed = false
-    var prefixCount = 0
-    var prefixHash = ""
-    var tailHash = ""
-
-    init(url: URL, compressed: Bool) throws {
-        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-        size = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
-        modifiedAt = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
-        inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
-        device = (attributes[.systemNumber] as? NSNumber)?.uint64Value ?? 0
-        self.compressed = compressed
-    }
-
-    func sameFile(as other: Self) -> Bool {
-        completed && size == other.size && modifiedAt == other.modifiedAt
-            && inode == other.inode && device == other.device && compressed == other.compressed
-    }
-
-    func canResume(url: URL, snapshot: Self, offset: UInt64) throws -> Bool {
-        guard !compressed, !snapshot.compressed, offset > 0, snapshot.size >= offset,
-              inode == snapshot.inode, device == snapshot.device,
-              snapshot.size > size || (snapshot.size == size && snapshot.modifiedAt == modifiedAt) else { return false }
-        return try Self.hash(url: url, offset: 0, count: prefixCount) == prefixHash
-            && Self.hash(url: url, offset: offset - min(offset, 4_096), count: Int(min(offset, 4_096))) == tailHash
-    }
-
-    static func hash(url: URL, offset: UInt64, count: Int) throws -> String {
-        let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
-        try handle.seek(toOffset: offset)
-        let data = try handle.read(upToCount: count) ?? Data()
-        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }

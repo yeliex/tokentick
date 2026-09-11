@@ -19,7 +19,7 @@ struct TurnUsageTests {
         #expect(rows.count == 3)
         #expect(rows.first?["thread_id"] as String? == f.parent)
         #expect(rows.reduce(Int64(0)) { $0 + ($1["total_tokens"] as Int64) } == 360)
-        #expect(try f.store.threadInfo(ids: [f.parent])[f.parent]?.lastActiveAt == RolloutParser.parseDate("2026-09-01T00:00:03Z")?.timeIntervalSince1970)
+        #expect(try f.store.threadInfo(ids: [f.parent])[f.parent]?.lastActiveAt == DateParsing.parseTimestamp("2026-09-01T00:00:03Z")?.timeIntervalSince1970)
         #expect(try f.scan().insertedRequests == 0)
     }
 

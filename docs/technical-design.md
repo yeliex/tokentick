@@ -11,10 +11,14 @@
 | `TokenTick.xcodeproj` / `TokenTick` target | macOS 26+、arm64 原生 App |
 | `TokenTick.xcodeproj` / `tokentick` target | 同平台独立 CLI，入口 `TokenTick/cli.swift` |
 | `Package.swift` / `TokenTickCore` | 共享 Core、依赖及测试 |
-| `TokenTick/Core/Collection` | 来源发现、解析、监听、API 与同步编排 |
+| `TokenTick/Core` 根目录 | 应用信息、十进制 JSON 证据、服务档位与日期解析 |
+| `TokenTick/Core/Collection` | 来源发现、解析、监听与 API 读取 |
+| `TokenTick/Core/Synchronization` | App／CLI 共用同步编排与自动同步时间安排 |
 | `TokenTick/Core/Pricing` | 默认 JSON、models.dev 解析、单价与金额计算 |
 | `TokenTick/Core/Storage` | DDL、采集事务、归属、查询、重算及统计缓存 |
 | `TokenTick/UI` | 原生视图、查询结果和应用状态 |
+
+来源读取通过 `UsageStore` 提交采集结果、任务映射和 Fast 证据；目标数据库 SQL 归 `Storage`。所有权判断、报告匹配和证据合并使用调用方的同一事务，文件拆分不改变写锁、批次或断点边界。查询结果类型及行映射与查询 SQL 分开维护。
 
 App 与 CLI 默认共用 `~/Library/Application Support/TokenTick/usage.sqlite`。每次操作调用实时 `getenv` 解析 `CODEX_HOME`，空值回退到 `~/.codex`；单次扫描固定根目录。其他 shell 的 export 不会自动修改运行中进程的环境。
 

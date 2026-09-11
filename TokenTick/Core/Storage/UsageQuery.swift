@@ -1,5 +1,9 @@
 import Foundation
 
+public enum UsageGrouping: String, CaseIterable, Codable, Sendable {
+    case total, day, thread, project, model
+}
+
 public enum UsageValueFilter: Sendable, Equatable, Hashable {
     case all, unknown, value(String)
     public init(_ value: String?) { self = value.map(Self.value) ?? .unknown }
@@ -73,7 +77,7 @@ public struct UsageQuery: Sendable, Hashable {
         guard (1...10_000).contains(limit), offset >= 0 else { throw UsageQueryError.invalidPagination }
         let focusedDate: String? = if case .value(let date) = filters.day { date } else { nil }
         for date in [fromDate, throughDate, focusedDate].compactMap({ $0 }) {
-            guard let parsed = RolloutParser.parseDate(date + "T00:00:00Z"),
+            guard let parsed = DateParsing.parseTimestamp(date + "T00:00:00Z"),
                   parsed.formatted(.iso8601.year().month().day().dateSeparator(.dash)) == date else {
                 throw UsageQueryError.invalidDate
             }

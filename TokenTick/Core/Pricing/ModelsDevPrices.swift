@@ -4,7 +4,7 @@ struct ModelsDevPrices {
     static let sourceURL = "https://models.dev/api.json"
 
     static func decode(_ data: Data, date: String) throws -> [ModelPrice] {
-        guard let parsed = RolloutParser.parseDate(date + "T00:00:00Z"),
+        guard let parsed = DateParsing.parseTimestamp(date + "T00:00:00Z"),
               parsed.formatted(.iso8601.year().month().day().dateSeparator(.dash)) == date else { throw PriceError.invalidDate }
         let document = try JSONDecoder().decode(Document.self, from: data)
         guard !document.openai.models.isEmpty else { throw PriceError.invalidDocument }
