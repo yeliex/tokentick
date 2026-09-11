@@ -1,166 +1,107 @@
 # TokenTick
 
-Codex 用量与成本统计，专为 macOS 开发。
+专为 macOS 开发的 Codex 用量与成本统计工具。SwiftUI App 与独立 CLI 共用 Swift Core、SQLite 数据库和业务逻辑，仅支持 macOS 26.0+ Apple Silicon。
 
-TokenTick 从本地 Codex 日志采集统计数据，记录每个任务、每天、每个项目和每个模型的 token 用量，并按历史模型价格换算美元金额。服务端每日总量仅保留内存，显示扣除本地已覆盖量的参考差额；周额度记录重置前观测，实时额度保留内存。未归属任务的 API 用量不混入本地统计。仅支持 macOS 26+ Apple Silicon。
+本地日志提供逐条用量事实，按历史模型价格换算美元金额；API 日桶仅作内存参考差额，历史七天额度与当前实时额度分别处理。金额是公开 API 价格等值估算，不是订阅实际账单。
 
-## 项目状态
-
-已建立面向 **macOS 26.0+** 的原生 Xcode 工程，包含 SwiftUI App 和共享 Core 源码的 CLI。已实现本地 JSONL／Zstandard 增量采集、迁移、任务名称缓存、历史计价、服务端日桶／额度观测、统计缓存及共享同步流程；采集、金额重算与统计重建具备持久恢复进度。SwiftUI 已接入总览、每日趋势与表格、任务／项目分页、汇总检查器、逐条用量分页与证据、额度和数据状态；搜索、排序、交叉筛选等交互仍在完善。API 差额仅作为未知模型参考 tokens，不计算金额或混入本地统计；精细 UI 后续迭代。
-
-- [需求与技术方案](docs/requirements.md)
-- [实现计划](docs/implementation-plan.md)
-- [客户端 UI 方案](docs/client-ui.md)
-- [验收状态与剩余条件](docs/acceptance-status.md)
-
-未上线的 v11 逐条用量切换会直接清空旧用量及扫描进度，再从原日志采集，不备份或修复旧请求行。fork 和双格式去重已通过真实 AIChat 验证，见 [重建结果](docs/turn-usage-validation.md)。七天限额窗口已按用户核对的最近一个月清单实现，区分额度归零与固定起算时间，并消除截止抖动造成的重复。见 [实现验收](docs/weekly-start-validation.md)。
-
-## 技术方向
-
-- Swift 6 + SwiftUI 原生 macOS 26+ App。
-- SQLite + GRDB 保存用量、价格历史和统计缓存。
-- App 与 `tokentick` CLI 共用业务代码，通过不同 target 编译。
-- 流式增量扫描本地日志，支持归档、fork、revert 和压缩文件。
-- 界面采用 shadcn Luma 的视觉方向，参考 Shuttle 原生界面。
-
-金额表示按公开模型价格计算的 API 等值金额，不等同于 ChatGPT 订阅实际账单。
-
-## 图标资源
-
-默认采用「起始色收敛」配色，浅色、深色与菜单栏资源已保存到 [assets/icons](assets/icons/README.md)。
-
-App 已通过 Icon Composer 资源接入系统级明暗图标，保留原始定稿；包内引用和导出预览已验证，本轮按当前 macOS 27 设备验收，不另设 macOS 26 真机门槛。详见 [系统级应用图标](docs/app-icon.md)。
+- [需求](docs/requirements.md)：产品范围、功能、客户端约束和验收要求。
+- [技术方案](docs/technical-design.md)：表结构、采集去重、价格、API、额度、查询及迁移恢复。
+- [图标资源](assets/icons/README.md)：当前定稿及资源维护。
 
 ## 本地开发
 
-使用带 macOS 26 或更新 SDK 的 Xcode，打开 `TokenTick.xcodeproj`。当前在 Xcode 27 / macOS 27 上验证构建和进程启动，不另设 macOS 26 真机验收门槛。
-
-运行 App：
+使用带 macOS 26 或更新 SDK 的 Xcode，打开 `TokenTick.xcodeproj`。App target 为 `TokenTick`，CLI target 为 `tokentick`；Core 和测试由根目录 `Package.swift` 管理。
 
 ```sh
+# 构建并运行 App
 ./script/build_and_run.sh --verify
-```
 
-Codex 的 Run 按钮使用同一脚本。构建产物在 `.build/DerivedData`，日志在 `.build/logs/app-build.log`；脚本也支持 `--debug`、`--logs` 和 `--telemetry`。
-
-构建并使用 CLI：
-
-```sh
+# 构建 CLI
 xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
   -configuration Debug -destination 'platform=macOS' \
   -derivedDataPath .build/DerivedData build
 .build/DerivedData/Build/Products/Debug/tokentick --help
+
+# Core 测试
+swift test
 ```
 
-采集和查询（首次运行建议指定独立数据库）：
+App 脚本还支持 `--debug`、`--logs`、`--telemetry`。产物位于 `.build/DerivedData`，日志位于 `.build/logs`。依赖通过 Swift Package Manager 命令管理，提交其生成的锁文件。
+
+每次操作读取进程当前 `CODEX_HOME`，空值默认 `~/.codex`；没有目录设置项或 `--codex-home`。其他 shell 的 export 不会自动改变已运行 App 的环境。
+
+App 与 CLI 默认共用 `~/Library/Application Support/TokenTick/usage.sqlite`。开发验证用 CLI `--database <路径>` 或 App 环境变量 `TOKENTICK_DATABASE` 指定隔离数据库；`TOKENTICK_AUTOSYNC=0` 关闭本次启动自动同步，不改变持久设置。Debug 可用 `TOKENTICK_APPEARANCE=light|dark` 验证外观，Release 不包含此入口。
+
+## CLI
+
+以下示例假设 `tokentick` 已加入 PATH；未安装时可使用构建目录中的可执行文件。
+
+| 命令 | 功能 |
+| --- | --- |
+| `sync --scope all` | 日志、价格、所需重算、API 和缓存的共享同步流程 |
+| `sync --scope local\|prices\|api` | 同步指定来源 |
+| `scan --json` | 只采集本地日志 |
+| `usage --group total\|day\|thread\|project\|model --json` | 用量和金额汇总 |
+| `records` | 逐条明细及统计证据，返回 JSON |
+| `prices`／`sync-prices` | 查询／同步历史价格；独立同步价格后由 reprice 或 sync 更新金额 |
+| `reprice`／`rebuild` | 重算金额／重建统计缓存，支持持久断点 |
+| `sync-api`／`api-usage` | 显式获取 API；api-usage 在同一进程计算内存参考差额 |
+| `current-limits` | 显式联网读取全部当前额度 |
+| `limits` | 查询主桶 codex 的七天历史窗口、最后使用率及本地用量 |
+| `status` | 数据库、来源状态、未定价和同步信息 |
 
 ```sh
-.build/DerivedData/Build/Products/Debug/tokentick sync \
-  --database .build/audit/usage.sqlite --scope all
-.build/DerivedData/Build/Products/Debug/tokentick scan \
-  --database .build/audit/usage.sqlite --json
-.build/DerivedData/Build/Products/Debug/tokentick usage \
-  --database .build/audit/usage.sqlite --group day --json
-.build/DerivedData/Build/Products/Debug/tokentick status \
-  --database .build/audit/usage.sqlite
+tokentick sync --database .build/audit/usage.sqlite --scope all
+tokentick usage --database .build/audit/usage.sqlite --group day --json
+tokentick records --database .build/audit/usage.sqlite --limit 100
+
+tokentick usage --group thread --project Chat --timezone Asia/Shanghai \
+  --from 2026-09-01 --through 2026-09-10 --sort amount --limit 100 --json
 ```
 
-`sync --scope all|local|prices|api` 与 App 使用相同流程，保存最近同步报告，各来源失败互不清空已有数据。价格成功同步后仅重算本次价格日期及之后的记录；手动 `reprice` 仍可重算全部历史。App 启动时自动同步，可从工具栏或数据状态页重试；已接入文件变动通知、定时补扫和睡眠恢复，设置中可关闭自动同步。开发验证可用 `TOKENTICK_DATABASE` 指定独立数据库，`TOKENTICK_AUTOSYNC=0` 关闭本次启动自动同步，不改变持久设置。
+`usage` 与 `records` 支持日期、账号、任务、项目、模型、搜索、排序及分页，具体参数见 `--help`。日期范围包含首尾两天，不同条件取交集；`--unknown-account` 等参数明确筛选未知归属。项目 `Chat` 表示“无项目聊天”。
 
-每次操作读取进程当前环境变量 `CODEX_HOME`，默认 `~/.codex`；不提供目录配置或 `--codex-home`。省略 `--database` 时使用 `~/Library/Application Support/TokenTick/usage.sqlite`。`scan` 只读 Codex 数据，写入 TokenTick 自己的数据库；存在解析问题时返回 1，参数错误返回 2。统计时区默认采用数据库首次初始化／升级时的系统时区并保存，价格日期始终使用 UTC。
+JSON 保留整数 tokens、纳美元金额、十进制单价、NULL 和统计时区。`records` 的 granularity 为 `usage_event`，包含 responseID、turnID、sourceOrdinal、UTC hour／minute；记录数不保证等同于网络请求数。界面 tokens 使用 K／M／B／T 并保留精确值。
 
-统计缓存与范围查询：
+查询用量和历史窗口不触发网络；`api-usage`、`current-limits` 和 API 同步会通过已登录 Codex 的 app-server 获取数据，可用 `--codex-bin` 指定 Codex 可执行文件。账号、日桶时区未完全确认的差额只作参考，不计金额或加入本地总量。
 
-```sh
-.build/DerivedData/Build/Products/Debug/tokentick rebuild --database .build/audit/usage.sqlite --timezone Asia/Shanghai
-.build/DerivedData/Build/Products/Debug/tokentick usage --database .build/audit/usage.sqlite \
-  --group project --timezone Asia/Shanghai --from 2026-09-01 --through 2026-09-09 --limit 50 --offset 0 --json
-```
-
-`--group` 支持 `total|day|thread|project|model`，日期范围包含首尾两天；`--account <ID>` 与 `--unknown-account` 用于账号筛选。临时指定时区不会改变 App 的默认时区。缓存失效时自动重建；扫描者持锁时，已有连接直接查询已提交事实。只有日日期而无精确时间的数据，在不能换算的时区归到未知日期；范围查询排除它，并单独返回 `unknownDateTokens`。JSON 中 `records` 是有效用量事件数（历史无响应 ID 时不能等同网络请求数），API 日差额记录不被称为实际请求。`status` 显示缓存版本、时区和来源状态。
-
-`rebuild` 分批保存内部聚合进度；中断后再次执行相同时区会自动续算，用量或项目归属变化时重新计算。全部完成后才原子替换正式缓存，失败不会暴露部分结果。升级采用事务迁移，失败回滚，不自动备份大数据库；旧版备份保留。详见 [维护任务恢复](docs/maintenance-recovery.md)。
-
-轮次用量分项与证据：
-
-```sh
-.build/DerivedData/Build/Products/Debug/tokentick records --database .build/audit/usage.sqlite \
-  --day 2026-09-09 --timezone Asia/Shanghai --limit 100 --offset 0
-```
-
-`records` 返回 `granularity: usage_event`，与 App 检查器共用查询，默认按发生时间降序、记录 ID 降序分页，返回 `hasMore`。支持日期／账号条件，以及任务、项目、模型、单日的组合条件；未知归属使用 `--unknown-thread`、`--unknown-project`、`--unknown-model` 或 `--unknown-date`，不会与名称恰好为 `unknown` 的项目混淆。输出包含 Fast／长上下文、分项 tokens、实际十进制费率字符串、纳美元金额、最新任务名称与项目，以及统计证据和最近扫描位置。`occurredAt` 为单条报告时间；`responseID`、`turnID`、`sourceOrdinal` 分开保存，`hour`／`minute` 为 UTC 分量；未知字段在 JSON 中显式为 `null`；`statisticalDate` 是所选时区日期，`usageDate` 是计价 UTC 日期。查询不会重建统计缓存或读取对话正文。
-
-组合筛选与排序（`usage` 和 `records` 共用）：
-
-```sh
-.build/DerivedData/Build/Products/Debug/tokentick usage --group thread \
-  --project TokenTick --model gpt-5.6-sol --from 2026-09-01 --through 2026-09-09 \
-  --search "统计" --sort amount --limit 100 --json
-```
-
-不同归属条件取交集，同一维度不允许重复指定。标题／ID 搜索按普通文本匹配，不区分大小写与音调符号，`%`、`_` 不作为通配符。`--sort automatic|tokens|amount|name` 在分页前排序；默认日汇总按日期降序，其余汇总按 tokens 降序，明细按发生时间降序。相同排序值使用分组键或记录 ID 保持顺序稳定。两种查询均返回 `hasMore`；金额排序使用已知分项金额，不代表缺价记录的完整成本。交叉筛选直接查询 SQLite 事实，普通维度汇总继续使用统计缓存，不持久化所有筛选组合。
-
-App 默认在运行期间自动同步：文件变化合并后采集，监听正常时每 30 分钟兜底核对，监听不可用时每分钟核对，每五分钟独立刷新远端统计，价格每日成功获取一次。设置中可关闭；取消当前同步后至少 60 秒不自动重启。休眠恢复后补扫，退出 App 后停止，不安装后台 daemon。`TOKENTICK_AUTOSYNC=0` 仍可用于隔离运行验证。
-
-价格同步与重算：
-
-```sh
-.build/DerivedData/Build/Products/Debug/tokentick sync-prices --database .build/audit/usage.sqlite
-.build/DerivedData/Build/Products/Debug/tokentick prices --database .build/audit/usage.sqlite
-.build/DerivedData/Build/Products/Debug/tokentick reprice --database .build/audit/usage.sqlite
-```
-
-价格按 UTC 采集日保存，每天成功一次，只记录价格变化。新扫描的请求自动匹配已有历史价格；`reprice` 显式重算已有用量。早于该模型首份快照的历史使用首份价格；之后仍按日期匹配历史快照；模式、缓存分项或价格缺失时，保留可算分项，总金额仍为空。重算报告列出未定价原因。
-
-重算每批 512 条连同进度一起提交，中断后再次执行同范围重算会恢复；完成报告包含此前已提交批次。用量事实、价格快照、范围或内部断点版本变化时，从头重新核对；已经完成的任务再次执行仍是完整重算。详见[维护任务恢复](docs/maintenance-recovery.md)。
-
-服务端统计采集与离线查询：
-
-```sh
-.build/DerivedData/Build/Products/Debug/tokentick sync-api --database .build/audit/usage.sqlite
-.build/DerivedData/Build/Products/Debug/tokentick api-usage --database .build/audit/usage.sqlite --limit 1000
-.build/DerivedData/Build/Products/Debug/tokentick limits --database .build/audit/usage.sqlite
-```
-
-`limits` 查询主额度桶 `codex` 的历史周窗口，支持 `--from`／`--through`、`--timezone`、`--account`／`--unknown-account`、`--limit-id` 和分页。日期按稳定截止减七天的推算起算时间筛选，包含当前已固定窗口；百分比是窗口最后观测，不保证最终用量。全局合并窗口证据，按账号筛选仅使用明确归属的数据，不把百分比相加。`current-limits` 通过 Codex app-server 显式联网读取所有当前额度；App 当前额度只保留在内存。
-
-`sync-api` 使用短期 Codex app-server 读取统计，认证由已登录的 Codex CLI 管理，支持 `--codex-bin`。日桶保留整数 tokens、原日期和可空账号，不与本地相加；账号读取期间切换时不保存本次日桶。全局保留未知账号的本地用量，按账号筛选时只包含明确匹配的记录。
-
-界面 token 用量统一使用 K／M／B／T（十进制、最多两位小数），悬停可查精确整数；数据库与 CLI JSON 保留完整数值。
-
-两个 scheme 都以 macOS 26.0 为最低版本。App 与 CLI 的开发和分发均使用 ad-hoc 签名，不要求付费 Apple Developer Program、开发者团队或证书，不提交 Apple 公证；安装方式见下文。Core 由本地 Swift Package 的 TokenTickCore 模块编译，新增 Core 文件自动进入模块；`TokenTickApp.swift` 与 `cli.swift` 分别只加入对应 Xcode target。
-
-## 本地 Release 打包
+## 打包
 
 ```sh
 ./script/package_release.sh
 ```
 
-脚本只构建 arm64 的 App 和 CLI，在最终组装后完成 ad-hoc 签名及验证，生成 `.build/releases/local-*/TokenTick-*-local-*.zip` 和 SHA-256 校验文件。包内包括安装说明、依赖许可证、源码提交和工具链信息；每次使用独立目录，不覆盖已有验证包，不安装到系统目录或发布 GitHub Release。
+脚本构建 arm64 Release App／CLI，执行 ad-hoc 签名及验证，生成 `.build/releases/local-*/TokenTick-*-local-*.zip` 和 SHA-256 文件。不使用付费 Developer Program、不提交 Apple 公证，也不自动安装或发布 GitHub Release。
 
-CLI 可直接运行，也可按[安装说明](docs/local-install.md)安装到个人 `~/.local/bin`。分发方式参考 Shuttle：固定使用 ad-hoc 签名，未公证属于既定分发方式，不再作为发布阻塞项。首次下载后，macOS 可能要求在“系统设置 → 隐私与安全性”中选择“仍要打开”。其他功能、真实系统和安装验收仍按[验收状态](docs/acceptance-status.md)执行。
+包内安装说明从下节生成；另附 `BUILD.txt`、签名信息和依赖许可证。`BUILD.txt` 记录提交、是否存在未提交修改、工具链和架构。
 
-已完成的本地签名、解压安装、真实界面与性能基线见 [Release 验证记录](docs/release-validation.md)。
+## 安装
 
-## 外观验证
+TokenTick 仅支持 macOS 26.0+、Apple Silicon。App 与 CLI 使用 ad-hoc 签名，不依赖付费开发者账号或 Apple 公证。
 
-Debug App 支持进程环境变量 `TOKENTICK_APPEARANCE=light|dark`，只覆盖当前进程的原生外观；不设置时跟随系统，不改写用户偏好，Release 构建不包含这个入口。先退出已有测试实例，再运行：
+### App
+
+解压 ZIP，将 `TokenTick.app` 放入个人 `~/Applications` 或 `/Applications`，再打开。升级时先退出旧实例，再替换 App。默认数据库保留，应用启动时自动迁移，不自动备份大数据库。
+
+首次从浏览器下载后，macOS 可能阻止打开。确认包的来源和校验值后，先尝试打开 App，再到“系统设置 → 隐私与安全性”选择“仍要打开”，遵循系统提示。参考 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。CLI 首次执行可能需要单独确认；安装步骤不关闭 Gatekeeper 或自动清除隔离属性。
+
+### CLI
+
+可直接运行解压目录中的 `bin/tokentick --help`，不需要 App 保持运行。必须同时保留 `TokenTick_TokenTickCore.bundle` 价格资源包。
+
+在解压后的包目录执行以下命令安装到个人目录；这会替换该位置已有的 CLI 和资源包：
 
 ```sh
-open -n --env TOKENTICK_APPEARANCE=light --env TOKENTICK_AUTOSYNC=0 \
-  .build/DerivedData/Build/Products/Debug/TokenTick.app
+mkdir -p "$HOME/.local/bin"
+install -m 755 bin/tokentick "$HOME/.local/bin/tokentick"
+ditto bin/TokenTick_TokenTickCore.bundle "$HOME/.local/bin/TokenTick_TokenTickCore.bundle"
+"$HOME/.local/bin/tokentick" --help
 ```
 
-验证后退出该实例，正常打开 App 即恢复跟随系统及原有自动同步设置。
+需要直接输入 `tokentick` 时，自行把 `$HOME/.local/bin` 加入 PATH，不需要 sudo。
 
-## 数据层测试
+### 数据与完整性
 
-```sh
-swift test
-```
+App／CLI 默认共用 `~/Library/Application Support/TokenTick/usage.sqlite`，从进程 `CODEX_HOME`（默认 `~/.codex`）只读采集。App 默认运行期间自动同步，可在设置中关闭。卸载 App／CLI 不删除统计数据库及旧备份。
 
-通过 `swift package add-dependency` 与 `swift package add-target-dependency` 管理外部依赖，并提交生成的 `Package.resolved`。Core 与测试的包管理入口是根目录 `Package.swift`，App 仍通过 Xcode 工程构建。
-
-默认模型价格维护在 [OpenAI JSON](TokenTick/Core/Pricing/openai-default-prices.json)，用于没有数据库价格历史的模型；API 历史优先。缺少 Fast 证据时补查 Codex trace，仍缺则按普通价格计费，观测字段和计价依据分开保存。默认价格与数据库均按 model＋date＋tier 分行；模式缺少长上下文价格时，按标准档位各分项倍率推导。详见 [本轮优化验收](docs/optimization-validation-20260911.md)。
-
-项目名优先使用 Codex 名称，缺失时从项目根目录取文件夹名；无项目聊天保存为 `Chat`，CLI 可用 `--project Chat` 筛选。任务切换项目后，全部历史用量使用最新归属。见 [项目映射验证](docs/project-mapping-validation.md)。
+在 ZIP 和校验文件所在目录执行 `shasum -a 256 -c <文件名>.sha256` 核对完整性。`BUILD.txt` 记录源码和构建状态，`Licenses` 包含 GRDB 和 Zstandard 许可证。金额为公开模型价格估算；API 每日参考差额不参与金额或本地用量统计。

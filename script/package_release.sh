@@ -37,7 +37,9 @@ mkdir -p "$PACKAGE_DIR/bin" "$PACKAGE_DIR/Licenses"
 /usr/bin/ditto "$PRODUCTS/TokenTick.app" "$PACKAGE_DIR/TokenTick.app"
 /usr/bin/ditto "$PRODUCTS/tokentick" "$PACKAGE_DIR/bin/tokentick"
 /usr/bin/ditto "$PRODUCTS/TokenTick_TokenTickCore.bundle" "$PACKAGE_DIR/bin/TokenTick_TokenTickCore.bundle"
-cp "$PROJECT_ROOT/docs/local-install.md" "$PACKAGE_DIR/README.md"
+# 安装说明只维护在仓库 README，分发包提取该节以避免复制开发文档的相对链接。
+awk '/^## 安装$/ { active=1; print "# TokenTick 安装"; next } active && /^## / { exit } active { print }' \
+  "$PROJECT_ROOT/README.md" >"$PACKAGE_DIR/README.md"
 cp "$BUILD_DIR/SourcePackages/checkouts/GRDB.swift/LICENSE" "$PACKAGE_DIR/Licenses/GRDB.txt"
 cp "$BUILD_DIR/SourcePackages/checkouts/zstd/LICENSE" "$PACKAGE_DIR/Licenses/Zstandard.txt"
 
