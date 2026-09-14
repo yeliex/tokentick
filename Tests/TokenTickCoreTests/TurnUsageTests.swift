@@ -4,6 +4,22 @@ import Testing
 @testable import TokenTickCore
 
 struct TurnUsageTests {
+    @Test func reasoningEffortBackfillsWithoutDuplicatingRequestsAndDoesNotLeakAcrossTurns() throws {
+        let f = try Fixture(); defer { f.clean() }
+        let body = f.turn("one") + f.count(1)
+        _ = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: body)
+        _ = try f.scan()
+        let updated = f.turn("one").replacingOccurrences(of: "\"model\":", with: "\"effort\":\"high\",\"model\":")
+            + f.count(1) + f.turn("two") + f.count(2)
+        _ = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: updated)
+        #expect(try f.scan().issueCount == 0)
+        let rows = try f.store.pool.read { try Row.fetchAll($0, sql: "SELECT turn_id,json_extract(evidence_json,'$.reasoningEffort') AS effort FROM usage ORDER BY turn_id") }
+        #expect(rows.count == 2)
+        #expect(rows[0]["effort"] as String? == "high")
+        #expect(rows[1]["effort"] as String? == nil)
+        #expect(try f.scan().insertedRequests == 0)
+    }
+
     @Test func forkCopiesUseOriginalCompleteTurnAndOriginalCanKeepGrowing() throws {
         let f = try Fixture(); defer { f.clean() }
         let original = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: f.turn("shared") + f.count(1) + f.count(2))

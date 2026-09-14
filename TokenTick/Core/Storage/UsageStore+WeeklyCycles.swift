@@ -3,7 +3,7 @@ import GRDB
 
 extension UsageStore {
     static func weeklyCycleRevision(_ db: Database) throws -> String {
-        "4:" + (try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key='weekly_revision'") ?? "0") + ":" + String(try statisticsRevision(db))
+        "6:" + (try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key='weekly_revision'") ?? "0") + ":" + String(try statisticsRevision(db))
     }
 
     func rebuildWeeklyCyclesIfNeeded(account: UsageAccountScope) throws {
@@ -102,10 +102,25 @@ extension UsageStore {
                 try db.execute(sql: "DELETE FROM weekly_limit_cycles WHERE query_scope=?", arguments: [scope])
                 let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
                 StatisticsSQL.prepare(db, timezone: .gmt)
+                let knownAccounts = Set(windows.flatMap(\.observedAccountIDs))
                 for (index, original) in windows.enumerated() {
                     var window = original
-                    let next = windows.dropFirst(index + 1).first?.startedAtInferred
-                    let end = min(window.scheduledResetAt, next ?? window.scheduledResetAt)
+                    let following = windows.dropFirst(index + 1).filter { candidate in
+                        if knownAccounts.count <= 1 { return true }
+                        if let id = window.accountID { return candidate.observedAccountIDs == [id] }
+                        return window.observedAccountIDs.isEmpty || candidate.observedAccountIDs == window.observedAccountIDs
+                    }
+                    // 恢复观测关联新周期，但标记的是上一周期结束；不能用重新开始消耗的时间替代。
+                    let reset = following.prefix(1).compactMap { candidate -> Double? in
+                        guard window.observedAccountIDs.count == 1,
+                              candidate.observedAccountIDs == window.observedAccountIDs,
+                              let time = candidate.recoveryObservedAt,
+                              time > window.lastObservedAt, time < Double(window.scheduledResetAt) else { return nil }
+                        return time
+                    }.min()
+                    window.actualResetAt = reset
+                    let next = following.first?.startedAtInferred
+                    let end = min(Double(window.scheduledResetAt), reset ?? Double(next ?? window.scheduledResetAt))
                     var usageFilter = "1"
                     var usageArguments: StatementArguments = [window.startedAtInferred,end]
                     switch account {
@@ -114,7 +129,7 @@ extension UsageStore {
                     case .account(let id): usageFilter = "u.account_id=?"; usageArguments += [id]
                     }
                     let amounts = try Row.fetchOne(db, sql: """
-                        SELECT COALESCE(SUM(u.total_tokens),0) AS tokens,
+                        SELECT COUNT(*) AS requests, COALESCE(SUM(u.total_tokens),0) AS tokens,
                             CASE WHEN COUNT(*)=COUNT(u.amount) THEN COALESCE(SUM(u.amount),0) END AS amount,
                             SUM(tokentick_known_amount(u.input_amount,u.output_amount,u.cache_read_amount,u.cache_write_amount,u.amount)) AS known,
                             COALESCE(SUM(CASE WHEN u.amount IS NULL THEN u.total_tokens ELSE 0 END),0) AS unpriced
@@ -122,11 +137,12 @@ extension UsageStore {
                         WHERE u.source='local' AND COALESCE(t.started_at,u.occurred_at)>=?
                             AND COALESCE(t.started_at,u.occurred_at)<? AND \(usageFilter)
                         """, arguments: usageArguments)!
+                    window.requestCount = amounts["requests"]
                     window.totalTokens = amounts["tokens"]
                     window.amountNanoUSD = amounts["amount"]
                     window.knownAmountNanoUSD = amounts["known"]
                     window.unpricedTokens = amounts["unpriced"]
-                    window.usageEndsAt = end
+                    window.usageEndsAt = Int64(end)
 
                     // 截止代表秒值或最早证据变化时，保留已存在窗口的标识。
                     let matches = previous.filter { row in

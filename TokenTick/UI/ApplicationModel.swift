@@ -46,6 +46,7 @@ final class ApplicationModel {
         guard ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] != "1" else { return }
         guard !started else { return }
         started = true
+        error = nil
         do {
             let database = ProcessInfo.processInfo.environment["TOKENTICK_DATABASE"].map { URL(fileURLWithPath: $0) } ?? UsageStore.defaultDatabaseURL
             store = try await Task.detached(priority: .utility) { try UsageStore(databaseURL: database) }.value

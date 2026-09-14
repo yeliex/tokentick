@@ -16,11 +16,10 @@ private enum AppPage: String, CaseIterable, Identifiable {
 struct ContentView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(ApplicationModel.self) private var app
-    @Environment(\.openSettings) private var openSettings
     @SceneStorage("main.page") private var selectedPage = AppPage.overview.rawValue
-    @State private var showingSync = false
     @State private var detailRequest: UsageQuery?
     @State private var usageState = UsageDetailsState()
+    @State private var limitsState = LimitsPageState()
     private var page: AppPage { AppPage(rawValue: selectedPage) ?? .overview }
     var body: some View {
         NavigationSplitView {
@@ -63,7 +62,7 @@ struct ContentView: View {
                     case .overview:
                         OverviewView { query in detailRequest = query; selectedPage = AppPage.usage.rawValue }
                     case .usage: UsageDetailsView(initialQuery: $detailRequest, state: usageState)
-                    case .limits: LimitsView()
+                    case .limits: LimitsView(state: limitsState)
                     }
                 }
             }
@@ -77,33 +76,12 @@ struct ContentView: View {
                     }
                 }.sharedBackgroundVisibility(.hidden)
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        if app.isSyncing || app.error != nil || !(app.lastSync?.issues.isEmpty ?? true) { showingSync = true }
-                        else { app.synchronize() }
-                    } label: {
-                        ZStack {
-                            Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 14, weight: .medium)).opacity(app.isSyncing ? 0 : 1)
-                            if app.isSyncing { ProgressView().controlSize(.small) }
-                        }.frame(width: 28, height: 28).accessibilityLabel("刷新")
-                    }.popover(isPresented: $showingSync) {
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("同步").font(.headline)
-                            if let finished = app.lastSync?.finishedAt {
-                                LabeledContent("上次同步", value: UsageFormatting.timestamp(finished))
-                            }
-                            if app.isSyncing {
-                                Text(app.progressText).foregroundStyle(.secondary)
-                                if app.progress?.stage != .statistics { Button("取消同步") { app.cancelSync() } }
-                            }
-                            if let error = app.error { Text(error).foregroundStyle(.secondary) }
-                            if let issues = app.lastSync?.issues, !issues.isEmpty {
-                                Text("\(issues.count) 项同步问题").foregroundStyle(.secondary)
-                            }
-                            if !app.isSyncing { Button("重新同步") { showingSync = false; app.synchronize() } }
-                            Button("查看数据状态") { showingSync = false; app.settingsSection = "数据状态"; openSettings() }
-                        }.padding(22).frame(width: 320)
+                    Button("刷新", systemImage: "arrow.triangle.2.circlepath") {
+                        app.synchronize()
                     }
-                    .disabled(app.store == nil).keyboardShortcut("r")
+                    .labelStyle(.iconOnly)
+                    .help(app.isSyncing ? "正在同步" : "刷新")
+                    .disabled(app.store == nil || app.isSyncing).keyboardShortcut("r")
                 }
             }
         }

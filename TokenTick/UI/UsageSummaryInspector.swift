@@ -23,7 +23,6 @@ struct UsageSummaryInspector: View {
     let row: UsageDisplayRow
     let query: UsageQuery
     var openRecords: (UsageQuery) -> Void
-    var navigate: (NavigationSection, UsageQuery) -> Void
     @Environment(ApplicationModel.self) private var app
     @State private var models: [UsageSummary] = []
     @State private var modelError: String?
@@ -31,10 +30,7 @@ struct UsageSummaryInspector: View {
     var body: some View {
         Form {
             Section {
-                Button("查看逐条消耗") { openRecords(query) }
-                Button("查看每日用量") { navigate(.daily, query) }
-                Button("查看贡献任务") { navigate(.threads, query) }
-                Button("查看贡献项目") { navigate(.projects, query) }
+                Button("查看请求明细") { openRecords(query) }
             }
             Section("归属") {
                 Text(row.title).font(.headline).textSelection(.enabled)
@@ -47,9 +43,8 @@ struct UsageSummaryInspector: View {
             Section("模型构成") {
                 if let modelError { Text(modelError).foregroundStyle(.secondary) }
                 ForEach(models, id: \.group) { model in
-                    Button { navigate(.threads, query.focused(on: .model, value: model.group)) } label: {
-                        LabeledContent(model.group ?? "其他", value: UsageFormatting.tokens(model.totalTokens)).help(UsageFormatting.exactTokens(model.totalTokens))
-                    }.buttonStyle(.plain)
+                    LabeledContent(model.group ?? "其他", value: UsageFormatting.tokens(model.totalTokens))
+                        .help(UsageFormatting.exactTokens(model.totalTokens))
                 }
             }
             Section("Token 分项") {
@@ -74,7 +69,11 @@ struct UsageSummaryInspector: View {
                 request.grouping = .model; request.offset = 0; request.limit = 10_000; request.sort = .tokens
                 let current = request
                 do {
-                    let report = try await Task.detached(priority: .userInitiated) { try store.usageReport(current) }.value
+                    let worker = Task.detached(priority: .userInitiated) {
+                        try Task.checkCancellation()
+                        return try store.usageReport(current)
+                    }
+                    let report = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                     guard !Task.isCancelled else { return }
                     if models != report.rows { models = report.rows }; modelError = nil
                 } catch {

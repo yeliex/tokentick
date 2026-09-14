@@ -1,62 +1,6 @@
 import SwiftUI
 import TokenTickCore
 
-struct UsageFilterControls: View {
-    @Binding var filters: UsageFilters
-    @Binding var period: UsagePeriod
-    @Binding var from: Date
-    @Binding var through: Date
-    let timezone: TimeZone
-
-    var body: some View {
-        Form {
-            Section("日期") {
-                Picker("范围", selection: $period) {
-                    ForEach(UsagePeriod.allCases) { Text($0.rawValue).tag($0) }
-                }
-                if period == .custom {
-                    DatePicker("开始", selection: $from, in: ...through, displayedComponents: .date)
-                    DatePicker("结束", selection: $through, in: from..., displayedComponents: .date)
-                }
-                Text(timezone.identifier).font(.caption).foregroundStyle(.secondary)
-            }
-            Section("组合筛选 · 所有条件同时满足") {
-                ValueFilterControl(title: "任务 ID", value: $filters.thread)
-                ValueFilterControl(title: "项目", value: $filters.project)
-                ValueFilterControl(title: "模型", value: $filters.model)
-                ValueFilterControl(title: "单日", value: $filters.day, placeholder: "YYYY-MM-DD")
-            }
-            Button("清除归属与搜索条件") { filters = UsageFilters() }
-        }
-        .formStyle(.grouped).frame(width: 440, height: period == .custom ? 540 : 460)
-        .environment(\.timeZone, timezone)
-    }
-}
-
-private struct ValueFilterControl: View {
-    let title: String
-    @Binding var value: UsageValueFilter
-    var placeholder = "精确名称或 ID"
-    private var mode: Binding<Int> {
-        Binding(get: {
-            switch value { case .all: 0; case .unknown: 1; case .value: 2 }
-        }, set: { value = $0 == 0 ? .all : $0 == 1 ? .unknown : .value("") })
-    }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Picker(title, selection: mode) {
-                Text("全部").tag(0)
-                Text("未知").tag(1)
-                Text("指定值").tag(2)
-            }
-            if case .value(let current) = value {
-                TextField(placeholder, text: Binding(get: { current }, set: { value = .value($0) }))
-                    .textFieldStyle(.roundedBorder).accessibilityLabel(title)
-            }
-        }
-    }
-}
-
 extension UsageSort {
     var title: String {
         switch self {
@@ -77,5 +21,57 @@ extension UsageFilters {
             case .value(let value): "\(name)：\(name == "项目" ? UsageFormatting.project(value) : value)"
             }
         }.joined(separator: " · ")
+    }
+}
+
+struct UsageDateFilter: View {
+    @Binding var period: UsagePeriod
+    @Binding var from: Date
+    @Binding var through: Date
+    let periods: [UsagePeriod]
+    let timezone: TimeZone
+    @State private var showingCalendar = false
+    @State private var draftFrom = Date()
+    @State private var draftThrough = Date()
+
+    var body: some View {
+        Menu {
+            ForEach(periods) { value in
+                Button { period = value } label: {
+                    if period == value { Label(value.rawValue, systemImage: "checkmark") }
+                    else { Text(value.rawValue) }
+                }
+            }
+            Divider()
+            Button("自定义…") { openCalendar() }
+        } label: {
+            Text(period == .custom ? "自定义" : period.rawValue)
+        }.frame(width: 90).accessibilityLabel("日期范围")
+        .popover(isPresented: $showingCalendar, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("选择日期范围").font(.headline)
+                DatePicker("开始日期", selection: $draftFrom, in: ...draftThrough, displayedComponents: .date)
+                DatePicker("结束日期", selection: $draftThrough, in: draftFrom..., displayedComponents: .date)
+                HStack {
+                    Spacer()
+                    Button("取消") { showingCalendar = false }.keyboardShortcut(.cancelAction)
+                    Button("应用") {
+                        from = draftFrom; through = draftThrough; period = .custom
+                        showingCalendar = false
+                    }.keyboardShortcut(.defaultAction)
+                }
+            }.environment(\.timeZone, timezone).padding(24).frame(width: 380)
+        }
+    }
+
+    private func openCalendar() {
+        if period == .custom { draftFrom = from; draftThrough = through }
+        else {
+            let dates = period.dates(timezone: timezone)
+            let style = Date.ISO8601FormatStyle(timeZone: timezone).year().month().day().dateSeparator(.dash)
+            draftFrom = dates.0.flatMap { try? style.parse($0) } ?? from
+            draftThrough = dates.1.flatMap { try? style.parse($0) } ?? through
+        }
+        showingCalendar = true
     }
 }

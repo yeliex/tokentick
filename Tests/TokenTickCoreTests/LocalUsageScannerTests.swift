@@ -57,12 +57,12 @@ struct LocalUsageScannerTests {
         #expect(try fixture.total() == 120)
     }
 
-    @Test func legacyParserStateResumesWithoutRescanningCommittedBytes() throws {
+    @Test func legacyParserStateReplaysOnceToBackfillNewMetadata() throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
         let file = try fixture.write(fixture.header + fixture.turn + fixture.count(1))
         _ = try fixture.scan()
-        // 旧游标含已移除的上下文字段；升级后仍须沿用已提交的累计基线和字节位置。
+        // 旧版本必须重扫以回填推理深度；已提交的请求仍按身份去重。
         try fixture.store.pool.write { db in
             try db.execute(sql: "UPDATE scan_files SET parser_state_json = json_set(parser_state_json, '$.version', 6, '$.contextTurnID', 'turn-1')")
         }
@@ -70,8 +70,8 @@ struct LocalUsageScannerTests {
         try fixture.append(next, to: file)
         let reopened = try UsageStore(databaseURL: fixture.database)
         let report = try LocalUsageScanner(store: reopened).scan(codexHome: fixture.root)
-        #expect(report.insertedRequests == 1 && report.duplicateRequests == 0)
-        #expect(report.scannedBytes == UInt64(next.utf8.count))
+        #expect(report.insertedRequests == 1 && report.duplicateRequests == 1)
+        #expect(report.scannedBytes == UInt64((fixture.header + fixture.turn + fixture.count(1) + next).utf8.count))
         #expect(try fixture.total() == 240)
         #expect(try fixture.scan().unchangedFiles == 1)
     }

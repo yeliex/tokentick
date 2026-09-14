@@ -6,7 +6,7 @@ public enum UsageRecordScope: Sendable, Equatable {
     case all, thread(String?), project(String?), model(String?), day(String?)
 }
 
-public struct UsageRecord: Encodable, Sendable, Identifiable {
+public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
     public let id: Int64
     public let accountID: String?
     public let threadID: String?

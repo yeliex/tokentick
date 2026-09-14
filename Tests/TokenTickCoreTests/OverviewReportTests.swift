@@ -4,6 +4,108 @@ import Testing
 @testable import TokenTickCore
 
 struct OverviewReportTests {
+    @Test func nestedSharesPartitionRequestsAndRespectPeriodAndKnownAmounts() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        try store.pool.write { db in
+            for (index, mode) in [(0, 0), (1, 0), (0, 1), (1, 1)].enumerated() {
+                try db.execute(sql: """
+                    INSERT INTO usage(source_line,rollout_id,occurred_at,total_tokens,input_tokens,input_amount,is_long_context,source,evidence_json)
+                    VALUES (1,?,?,100,100,10,?,'local',?)
+                    """, arguments: [String(index), now.timeIntervalSince1970 - 1, mode.1,
+                        "{\"pricingMode\":{\"isFast\":\(mode.0)},\"reasoningEffort\":\"high\"}"])
+            }
+            try db.execute(sql: """
+                INSERT INTO usage(source_line,rollout_id,occurred_at,total_tokens,source,evidence_json) VALUES
+                    (1,'unknown',?,50,'local','{}'), (1,'old',?,999,'local','{}'), (1,'api',?,999,'api','{}')
+                """, arguments: [now.timeIntervalSince1970 - 1, now.timeIntervalSince1970 - 86401, now.timeIntervalSince1970 - 1])
+        }
+        let report = try store.overviewReport(period: .day, now: now, timezone: "UTC")
+        #expect(Set(report.modes.map(\.name)) == ["普通", "快速", "长上下文", "快速＋长上下文", "未知"])
+        #expect(report.modes.reduce(0) { $0 + $1.tokens } == report.total?.totalTokens)
+        #expect(report.efforts.reduce(0) { $0 + $1.tokens } == 450)
+        #expect(report.modes.reduce(0) { $0 + ($1.amount ?? 0) } == report.total?.knownAmountNanoUSD)
+        #expect(report.efforts.first { $0.name == "high" }?.tokens == 400)
+        #expect(report.efforts.first { $0.name == "未知" }?.amount == nil)
+    }
+
+    @Test func historyDateRangeUsesAllMatchingDaysBeforePagination() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        try store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO usage(source_line,rollout_id,occurred_at,usage_date,total_tokens,model,source,evidence_json) VALUES
+                    (1,'old',NULL,'2026-01-01',10,'a','local','{}'),
+                    (1,'recent',NULL,'2026-09-14',20,'b','local','{}');
+                """)
+        }
+        try store.updateThreadMappings([ThreadMapping(threadID: "old", title: nil, projectName: "旧项目"), ThreadMapping(threadID: "recent", title: nil, projectName: "Chat")])
+        try store.pool.write { try $0.execute(sql: "UPDATE usage SET thread_id = rollout_id") }
+        let choices = try store.usageFilterOptions(UsageQuery(timezone: "UTC", fromDate: "2026-09-01", throughDate: "2026-09-14"))
+        #expect(choices.models == ["b"])
+        #expect(choices.projects == ["Chat"])
+        let report = try store.usageReport(UsageQuery(grouping: .day, timezone: "UTC", limit: 1))
+        #expect(report.rows.count == 1 && report.hasMore)
+        #expect(report.dataFromDate == "2026-01-01" && report.dataThroughDate == "2026-09-14")
+        var filters = UsageFilters(); filters.model = .value("b")
+        let filtered = try store.usageReport(UsageQuery(grouping: .total, timezone: "UTC", filters: filters))
+        #expect(filtered.dataFromDate == "2026-09-14" && filtered.dataThroughDate == "2026-09-14")
+        let unknown = try store.usageReport(UsageQuery(grouping: .total, timezone: "Asia/Shanghai"))
+        #expect(unknown.dataFromDate == nil && unknown.dataThroughDate == nil)
+        filters.model = .value("missing")
+        let empty = try store.usageReport(UsageQuery(grouping: .total, timezone: "UTC", filters: filters))
+        #expect(empty.dataFromDate == nil && empty.dataThroughDate == nil)
+    }
+
+    @Test func filterChoicesUseStoredValuesWithoutDuplicatesOrNulls() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        try store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO threads(thread_id,title,project_name) VALUES ('a','任务 A','项目 A'),('b','任务 B','项目 A'),('c','任务 C',NULL);
+                INSERT INTO usage(source_line,rollout_id,thread_id,account_id,usage_date,total_tokens,model,source,evidence_json) VALUES
+                    (1,'a','a','account-a','2026-09-14',10,'model-a','local','{}'),
+                    (1,'b','b','account-a','2026-09-14',20,'model-a','local','{}'),
+                    (1,'c','c',NULL,'2026-09-14',30,NULL,'local','{}');
+                INSERT INTO weekly_limit_observations(id,scope_key,account_id,limit_id,observed_at,resets_at,used_percent,source_json)
+                    VALUES ('w','account:account-b','account-b','codex',1000,2000,10,'{}');
+                """)
+        }
+        let options = try store.usageFilterOptions()
+        #expect(options.models == ["model-a"])
+        #expect(options.projects == ["项目 A"])
+        #expect(options.accounts == ["account-a", "account-b"])
+    }
+
+    @Test func groupCountIncludesAllPagesAndTracksFilters() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        try store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO threads(thread_id,title) VALUES ('a','任务 A'),('b','任务 B');
+                INSERT INTO usage(source_line,rollout_id,thread_id,usage_date,total_tokens,source,evidence_json) VALUES
+                    (1,'a','a','2026-09-14',10,'local','{}'),
+                    (1,'b','b','2026-09-14',20,'local','{}'),
+                    (1,'c',NULL,'2026-09-14',30,'local','{}');
+                """)
+        }
+        for offset in [0, 1, 2, 3] {
+            let report = try store.usageReport(UsageQuery(grouping: .thread, timezone: "UTC", limit: 1, offset: offset))
+            #expect(report.totalGroups == 3)
+            #expect(report.hasMore == (offset < 2))
+        }
+        var filters = UsageFilters(); filters.search = "任务 A"
+        let filtered = try store.usageReport(UsageQuery(grouping: .thread, timezone: "UTC", limit: 1, offset: 1, filters: filters))
+        #expect(filtered.totalGroups == 1 && filtered.rows.isEmpty)
+        filters.search = "不存在"
+        #expect(try store.usageReport(UsageQuery(grouping: .thread, timezone: "UTC", filters: filters)).totalGroups == 0)
+    }
+
     @Test func overviewKeepsTotalsChartsModelsAndRecentConversationsInTheSameRange() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

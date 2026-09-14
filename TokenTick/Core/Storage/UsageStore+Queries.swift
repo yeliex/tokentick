@@ -55,7 +55,9 @@ extension UsageStore {
                 : "group_value ASC"
         }
         let rows = try Row.fetchAll(db, sql: """
-            \(source)SELECT \(group) AS group_value, SUM(record_count) AS records,
+            \(source)SELECT \(group) AS group_value, COUNT(*) OVER() AS total_groups, SUM(record_count) AS records,
+                MIN(MIN(NULLIF(date, 'unknown'))) OVER() AS data_from_date,
+                MAX(MAX(NULLIF(date, 'unknown'))) OVER() AS data_through_date,
                 SUM(total_tokens) AS total_tokens, SUM(input_tokens) AS input_tokens,
                 SUM(output_tokens) AS output_tokens, SUM(cache_read_tokens) AS cache_read_tokens,
                 SUM(cache_write_tokens) AS cache_write_tokens, SUM(reasoning_tokens) AS reasoning_tokens,
@@ -72,8 +74,64 @@ extension UsageStore {
             \(source)SELECT SUM(total_tokens) FROM statistics
             WHERE timezone = :timezone AND account_key = :account AND dimension = 'all' AND date = 'unknown'
             """, arguments: ["timezone": timezone.identifier, "account": query.account.key] + factFilters.arguments) ?? 0
+        var totalGroups: Int = rows.first?["total_groups"] ?? 0
+        if rows.isEmpty && query.offset > 0 {
+            var countArguments: StatementArguments = ["timezone": timezone.identifier, "account": query.account.key, "dimension": dimension]
+            countArguments += factFilters.arguments
+            if let from = query.fromDate { countArguments += ["from": from] }
+            if let through = query.throughDate { countArguments += ["through": through] }
+            totalGroups = try Int.fetchOne(db, sql: "\(source)SELECT COUNT(*) FROM (SELECT \(group) AS group_value FROM statistics WHERE \(filters) GROUP BY group_value)", arguments: countArguments) ?? 0
+        }
         let summaries = rows.prefix(query.limit).map(UsageSummary.init(row:))
         return UsageReport(timezone: timezone.identifier, grouping: query.grouping, fromDate: query.fromDate,
-                           throughDate: query.throughDate, unknownDateTokens: unknown, rows: summaries, hasMore: rows.count > query.limit)
+                           throughDate: query.throughDate, unknownDateTokens: unknown, rows: summaries, hasMore: rows.count > query.limit, totalGroups: totalGroups,
+                           dataFromDate: rows.first?["data_from_date"], dataThroughDate: rows.first?["data_through_date"])
+    }
+}
+
+
+public struct UsageFilterOptions: Sendable, Equatable {
+    public let models: [String]
+    public let projects: [String]
+    public let accounts: [String]
+}
+
+extension UsageStore {
+    /// 筛选选项独立于当前筛选，避免选中一个值后无法切换到其他已有值。
+    public func usageFilterOptions(_ query: UsageQuery = UsageQuery()) throws -> UsageFilterOptions {
+        try query.validate()
+        let identifier = try query.timezone ?? statisticsTimezone()
+        guard let timezone = TimeZone(identifier: identifier) else { throw UsageQueryError.invalidTimezone }
+        return try pool.read { db in
+            StatisticsSQL.prepare(db, timezone: timezone)
+            var filters = UsageFilters()
+            filters.occurredFrom = query.filters.occurredFrom
+            filters.occurredBefore = query.filters.occurredBefore
+            let scope = UsageFiltersSQL(filters)
+            var predicate = "(u.source = 'local' OR u.thread_id IS NOT NULL) AND (\(scope.predicate))"
+            var arguments = scope.arguments
+            if query.fromDate != nil || query.throughDate != nil { arguments += ["timezone": identifier] }
+            if let from = query.fromDate {
+                predicate += " AND (\(StatisticsSQL.dayExpression)) >= :from AND (\(StatisticsSQL.dayExpression)) != 'unknown'"
+                arguments += ["from": from]
+            }
+            if let through = query.throughDate {
+                predicate += " AND (\(StatisticsSQL.dayExpression)) <= :through AND (\(StatisticsSQL.dayExpression)) != 'unknown'"
+                arguments += ["through": through]
+            }
+            switch query.account {
+            case .all: break
+            case .unknown: predicate += " AND u.account_id IS NULL"
+            case .account(let id): predicate += " AND u.account_id = :account"; arguments += ["account": id]
+            }
+            let models = try String.fetchAll(db, sql: "SELECT DISTINCT u.model FROM usage u WHERE \(predicate) AND u.model IS NOT NULL ORDER BY u.model", arguments: arguments)
+            let projects = try String.fetchAll(db, sql: "SELECT DISTINCT t.project_name FROM usage u JOIN threads t ON t.thread_id = u.thread_id WHERE \(predicate) AND t.project_name IS NOT NULL ORDER BY t.project_name", arguments: arguments)
+            let accounts = try String.fetchAll(db, sql: """
+                SELECT account_id FROM usage WHERE account_id IS NOT NULL
+                UNION SELECT account_id FROM weekly_limit_observations WHERE account_id IS NOT NULL
+                ORDER BY account_id
+                """)
+            return UsageFilterOptions(models: models, projects: projects, accounts: accounts)
+        }
     }
 }

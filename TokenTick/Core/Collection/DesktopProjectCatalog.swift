@@ -6,6 +6,7 @@ struct DesktopProjectCatalog: Decodable {
     let assignments: [String: Assignment]
     let rootHints: [String: String]
     let projectless: Set<String>
+    let projectlessDirectories: [String: String]
 
     struct Project: Decodable {
         let name: String?
@@ -20,6 +21,7 @@ struct DesktopProjectCatalog: Decodable {
         case assignments = "thread-project-assignments"
         case rootHints = "thread-workspace-root-hints"
         case projectless = "projectless-thread-ids"
+        case projectlessDirectories = "thread-projectless-output-directories"
     }
 
     init(from decoder: any Decoder) throws {
@@ -28,6 +30,7 @@ struct DesktopProjectCatalog: Decodable {
         assignments = try values.decodeIfPresent([String: Assignment].self, forKey: .assignments) ?? [:]
         rootHints = try values.decodeIfPresent([String: String].self, forKey: .rootHints) ?? [:]
         projectless = try values.decodeIfPresent(Set<String>.self, forKey: .projectless) ?? []
+        projectlessDirectories = try values.decodeIfPresent([String: String].self, forKey: .projectlessDirectories) ?? [:]
     }
 
     static func read(codexHome: URL) throws -> Self? {
@@ -45,13 +48,13 @@ struct DesktopProjectCatalog: Decodable {
         if projectless.contains(threadID) { return "Chat" }
         if let assignment = assignments[threadID] {
             guard assignment.projectKind == "local" else { return nil }
-            let project = projects[assignment.projectId]
-            return Self.nonemptyName(project?.name) ?? Self.folderName(project?.rootPaths.first)
-                ?? Self.folderName(rootHints[threadID] ?? cwd)
+            guard let project = projects[assignment.projectId] else { return nil }
+            return Self.nonemptyName(project.name) ?? Self.folderName(project.rootPaths.first)
         }
+        if projectlessDirectories[threadID] != nil { return "Chat" }
         guard let hint = rootHints[threadID] ?? cwd else { return nil }
         // Remote 日志可能含 Windows 路径，不能让本机 URL 把它解析成当前目录的相对路径。
-        guard hint.hasPrefix("/") else { return Self.folderName(hint) }
+        guard hint.hasPrefix("/") else { return nil }
         let path = URL(fileURLWithPath: hint).standardizedFileURL.path
         var depth = -1
         var names = Set<String>()
@@ -66,7 +69,7 @@ struct DesktopProjectCatalog: Decodable {
             }
         }
         if names.count > 1 { return nil }
-        return names.first ?? Self.folderName(hint)
+        return names.first
     }
 
     static func nonemptyName(_ name: String?) -> String? {

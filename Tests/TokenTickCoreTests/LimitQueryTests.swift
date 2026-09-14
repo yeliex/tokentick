@@ -23,6 +23,45 @@ struct LimitQueryTests {
         #expect(window.lastUsedPercent == 2 && window.finalUsedPercent == nil)
         #expect(window.totalTokens == 0 && window.amountNanoUSD == 0)
         #expect(rows.last?.lastUsedPercent == 100)
+        #expect(rows.last?.actualResetAt == 1000)
+        #expect(rows.last?.endsAt == 1000)
+        #expect(rows.last?.usageEndsAt == 1000)
+        #expect(window.endsAt == Double(week + 1800))
+    }
+
+    @Test func earlyResetClosesUsageAtRecoveryWithoutBorrowingOtherAccounts() throws {
+        let f = try Fixture(); defer { f.clean() }
+        try f.add(100, 604900, 90)
+        try f.add(1000.5, 605800, 0)
+        try f.add(1900, 606600, 1)
+        try f.store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO usage(source_line,rollout_id,account_id,occurred_at,usage_date,total_tokens,amount,input_amount,source,evidence_json) VALUES
+                    (1,'before','a',1000.25,'1970-01-01',10,5,5,'local','{}'),
+                    (1,'after','a',1000.75,'1970-01-01',20,7,7,'local','{}');
+                """)
+        }
+        let previous = try #require(f.store.weeklyLimitHistory().rows.last)
+        #expect(previous.actualResetAt == 1000.5)
+        #expect(previous.endsAt == 1000.5)
+        #expect(previous.totalTokens == 10 && previous.amountNanoUSD == 5)
+        #expect(previous.requestCount == 1)
+        try f.add(200, 604950, 70, account: "b", scope: "account:b")
+        let own = try #require(f.store.weeklyLimitHistory(LimitQuery(account: .account("b"))).rows.first)
+        #expect(own.actualResetAt == nil && own.endsAt == 604950)
+    }
+
+    @Test func singleAccountHistoryClosesOlderCyclesAcrossUnknownObservations() throws {
+        let f = try Fixture(); defer { f.clean() }
+        try f.add(110, 604900, 90)
+        try f.add(210, 605000, 10, account: nil, scope: "thread:x")
+        try f.add(310, 605100, 5)
+        let rows = try f.store.weeklyLimitHistory().rows
+        #expect(rows.map(\.endsAt) == [605100, 300, 200])
+        #expect(rows.filter { $0.endsAt > 400 }.count == 1)
+        #expect(rows[1].accountID == nil)
+        let page = try f.store.weeklyLimitHistory(LimitQuery(limit: 1, offset: 1))
+        #expect(page.rows.first?.endsAt == 300)
     }
 
     @Test func deadlineJitterAndPercentDropsDoNotSplitAWindow() throws {

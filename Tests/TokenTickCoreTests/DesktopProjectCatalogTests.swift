@@ -9,14 +9,15 @@ struct DesktopProjectCatalogTests {
         {"local-projects":{"p":{"name":"TokenTick","rootPaths":["/projects/tokentick"]}},
          "thread-project-assignments":{"assigned":{"projectKind":"local","projectId":"p"}},
          "thread-workspace-root-hints":{"worktree":"/projects/tokentick","none":"/projects/tokentick"},
-         "projectless-thread-ids":["none"]}
+         "projectless-thread-ids":["none"],"thread-projectless-output-directories":{"output":"/chat/output","assigned":"/old-chat/output"}}
         """#
         let catalog = try JSONDecoder().decode(DesktopProjectCatalog.self, from: Data(json.utf8))
         #expect(catalog.projectName(threadID: "assigned", cwd: "/old-path") == "TokenTick")
+        #expect(catalog.projectName(threadID: "output", cwd: "/chat/output") == "Chat")
         #expect(catalog.projectName(threadID: "worktree", cwd: "/.codex/worktrees/123") == "TokenTick")
         #expect(catalog.projectName(threadID: "none", cwd: "/projects/tokentick") == "Chat")
         #expect(catalog.projectName(threadID: "child", cwd: "/projects/tokentick/Sources") == "TokenTick")
-        #expect(catalog.projectName(threadID: "unrelated", cwd: "/projects/tokentick-other") == "tokentick-other")
+        #expect(catalog.projectName(threadID: "unrelated", cwd: "/projects/tokentick-other") == nil)
     }
 
     @Test func ambiguousRootsStayUnknownAndDeeperRootsWin() throws {
@@ -40,7 +41,7 @@ struct DesktopProjectCatalogTests {
         """#
         let catalog = try JSONDecoder().decode(DesktopProjectCatalog.self, from: Data(json.utf8))
         #expect(catalog.projectName(threadID: "assigned", cwd: "/.codex/worktrees/123") == "tokentick")
-        #expect(catalog.projectName(threadID: "hinted", cwd: "/.codex/worktrees/456") == "shuttle")
+        #expect(catalog.projectName(threadID: "hinted", cwd: "/.codex/worktrees/456") == nil)
         #expect(catalog.projectName(threadID: "child", cwd: "/projects/tokentick/Sources") == "tokentick")
         #expect(catalog.projectName(threadID: "chat", cwd: "/projects/tokentick") == "Chat")
         #expect(catalog.projectName(threadID: "missing", cwd: nil) == nil)
@@ -49,8 +50,8 @@ struct DesktopProjectCatalogTests {
     @Test func remoteWindowsPathsNeverMatchTheMacWorkingDirectory() throws {
         let json: [String: Any] = ["local-projects": ["p": ["name": "本机项目", "rootPaths": [FileManager.default.currentDirectoryPath]]]]
         let catalog = try JSONDecoder().decode(DesktopProjectCatalog.self, from: JSONSerialization.data(withJSONObject: json))
-        #expect(catalog.projectName(threadID: "remote", cwd: #"D:\Users\someone\Documents\GitHub\AutomaticDSP"#) == "AutomaticDSP")
-        #expect(catalog.projectName(threadID: "remote", cwd: #"\\server\share\repo"#) == "repo")
+        #expect(catalog.projectName(threadID: "remote", cwd: #"D:\Users\someone\Documents\GitHub\AutomaticDSP"#) == nil)
+        #expect(catalog.projectName(threadID: "remote", cwd: #"\\server\share\repo"#) == nil)
         #expect(catalog.projectName(threadID: "relative", cwd: "somewhere/repo") == nil)
         #expect(DesktopProjectCatalog.folderName("D:\\") == nil)
     }

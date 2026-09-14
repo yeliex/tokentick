@@ -36,6 +36,7 @@ struct RolloutParser {
                 rolloutID: identity.rolloutID.uuidString.lowercased(), line: line, ordinal: event.ordinal,
                 threadID: state.session?.id, turnID: turn.turn_id, model: turn.model, serviceTier: turn.service_tier)
             state.contextModel = turn.model
+            state.reasoningEffort = turn.effort
             if !sameTurn {
                 state.serviceTier = nil
                 state.serviceTierSource = nil
@@ -65,6 +66,7 @@ struct RolloutParser {
         case .started(let started):
             guard let session = state.session, try !isInherited(event, session: session) else { return nil }
             state.turnID = started.turn_id
+            state.reasoningEffort = nil
             state.activeSettings = state.settings
             state.turnStartedLine = line
             state.turnStartedAt = event.timestamp
@@ -164,6 +166,7 @@ struct RolloutParser {
         let sameTurn = record == nil || record?.turn_id == state.turnID
         return UsageEvidence(fileName: identity.fileName, timestamp: timestamp, ordinal: event.ordinal,
             eventType: type, serviceTier: sameTurn ? state.serviceTier : nil, cumulative: cumulative, record: record,
+            reasoningEffort: sameTurn ? state.reasoningEffort : nil,
             modelSource: sameTurn ? state.modelSource : nil, serviceTierSource: sameTurn ? state.serviceTierSource : nil,
             threadSettings: sameTurn ? state.activeSettings : nil, turnStartedLine: sameTurn ? state.turnStartedLine : nil,
             turnStartedAt: sameTurn ? state.turnStartedAt : nil,

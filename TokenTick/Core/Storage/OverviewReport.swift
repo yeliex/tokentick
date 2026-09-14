@@ -29,10 +29,22 @@ public struct OverviewConversation: Sendable, Identifiable, Equatable {
     public let summary: UsageSummary
 }
 
+public struct OverviewUsageShare: Sendable, Equatable, Identifiable {
+    public var id: String { name }
+    public let name: String
+    public let tokens: Int64
+    public let amount: Int64?
+    public init(name: String, tokens: Int64, amount: Int64?) {
+        self.name = name; self.tokens = tokens; self.amount = amount
+    }
+}
+
 public struct OverviewReport: Sendable {
     public let query: UsageQuery
     public let total: UsageSummary?
     public let models: [UsageSummary]
+    public let modes: [OverviewUsageShare]
+    public let efforts: [OverviewUsageShare]
     public let trend: [OverviewTrendPoint]
     public let conversations: [OverviewConversation]
     public let unknownDateTokens: Int64
@@ -40,7 +52,7 @@ public struct OverviewReport: Sendable {
 
     /// 滚动查询的截止时间变化不代表显示数据变化。
     public func hasSameContent(as other: Self) -> Bool {
-        total == other.total && models == other.models && trend == other.trend
+        total == other.total && models == other.models && modes == other.modes && efforts == other.efforts && trend == other.trend
             && conversations == other.conversations && unknownDateTokens == other.unknownDateTokens
             && hourly == other.hourly && query.timezone == other.query.timezone
     }
@@ -71,6 +83,24 @@ extension UsageStore {
                 return date.map { OverviewTrendPoint(date: $0, summary: row) }
             }.sorted { $0.date < $1.date }
             let filters = UsageFiltersSQL(query.filters)
+            let modeExpression = """
+                CASE WHEN u.is_long_context IS NULL THEN '未知'
+                    WHEN json_extract(u.evidence_json, '$.pricingMode.isFast') = 1 OR u.tier = 'fast'
+                        THEN CASE WHEN u.is_long_context = 1 THEN '快速＋长上下文' ELSE '快速' END
+                    WHEN u.is_long_context = 1 THEN '长上下文' ELSE '普通' END
+                """
+            let effortExpression = "COALESCE(NULLIF(json_extract(u.evidence_json, '$.reasoningEffort'), ''), '未知')"
+            func shares(_ expression: String) throws -> [OverviewUsageShare] {
+                try Row.fetchAll(db, sql: """
+                    SELECT \(expression) AS name, SUM(u.total_tokens) AS tokens,
+                        SUM(tokentick_known_amount(u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount)) AS amount
+                    FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id
+                    WHERE (u.source = 'local' OR u.thread_id IS NOT NULL) AND (\(filters.predicate))
+                    GROUP BY name ORDER BY tokens DESC, name ASC
+                    """, arguments: filters.arguments).map { OverviewUsageShare(name: $0["name"], tokens: $0["tokens"], amount: $0["amount"]) }
+            }
+            let modes = try shares(modeExpression)
+            let efforts = try shares(effortExpression)
             let recent = try Row.fetchAll(db, sql: """
                 SELECT u.thread_id, t.title, t.project_name, MAX(u.occurred_at) AS last_active
                 FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id
@@ -83,7 +113,7 @@ extension UsageStore {
                 return summary.first.map { OverviewConversation(thread: ThreadInfo(id: id, title: row["title"],
                     projectName: row["project_name"], lastActiveAt: row["last_active"]), summary: $0) }
             }.compactMap { $0 }
-            return OverviewReport(query: query, total: total.rows.first, models: models, trend: trend,
+            return OverviewReport(query: query, total: total.rows.first, models: models, modes: modes, efforts: efforts, trend: trend,
                 conversations: conversations, unknownDateTokens: total.unknownDateTokens, hourly: false)
         }
     }

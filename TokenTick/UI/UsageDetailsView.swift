@@ -14,20 +14,31 @@ final class UsageDetailsState {
     var sort = UsageSort.automatic
     var customFrom = Date()
     var customThrough = Date()
-    var showingFilters = false
-    var records: UsageRecordDestination?
-    var backstack: [UsageQuery] = []
+    var detail: UsageDetailDestination?
     var restoredCriteria: UsageQuery?
+    var options: UsageFilterOptions?
+    var retry = 0
 }
 
 struct UsageRecordDestination { let title: String; let query: UsageQuery }
+
+enum UsageDetailDestination {
+    case summary(UsageSummaryDestination)
+    case records(UsageRecordDestination)
+}
+
+struct UsageSummaryDestination: Identifiable {
+    let id = UUID()
+    let row: UsageDisplayRow
+    let query: UsageQuery
+}
 
 
 struct UsageDetailsView: View {
     @Environment(ApplicationModel.self) private var app
     @Binding var initialQuery: UsageQuery?
     @Bindable var state: UsageDetailsState
-    private struct Request: Hashable { let section: NavigationSection; let query: UsageQuery; let refresh: Int }
+    private struct Request: Hashable { let section: NavigationSection; let query: UsageQuery; let refresh: Int; let retry: Int }
     private var timezone: TimeZone { TimeZone(identifier: app.status?.timezone ?? "UTC") ?? .gmt }
     private var query: UsageQuery {
         let style = Date.ISO8601FormatStyle(timeZone: timezone).year().month().day().dateSeparator(.dash)
@@ -38,93 +49,105 @@ struct UsageDetailsView: View {
     }
     var body: some View {
         VStack(spacing: 0) {
-            if let records = state.records {
-                UsageRecordsView(title: records.title, query: records.query, scope: .all, onClose: { state.records = nil })
-            } else {
-                HStack {
-                    if !state.backstack.isEmpty {
-                        Button { if let previous = state.backstack.popLast() { restore(previous) } } label: {
-                            Label("返回", systemImage: "chevron.left")
+                VStack(alignment: .leading, spacing: 14) {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 6) {
+                            Picker("聚合方式", selection: $state.section) {
+                                Text("每日").tag(NavigationSection.daily)
+                                Text("项目").tag(NavigationSection.projects)
+                                Text("任务").tag(NavigationSection.threads)
+                            }.pickerStyle(.segmented).labelsHidden().fixedSize(horizontal: true, vertical: true)
+                            UsageDateFilter(period: periodSelection, from: $state.customFrom, through: $state.customThrough,
+                                            periods: [.today, .week, .month, .quarter, .year, .all], timezone: timezone)
+                        TextField("搜索任务标题或 ID", text: $state.filters.search)
+                            .textFieldStyle(.roundedBorder).frame(width: 130)
+                        Picker("项目", selection: $state.filters.project) {
+                            Text("全部项目").tag(UsageValueFilter.all)
+                            ForEach(state.options?.projects ?? [], id: \.self) { Text(UsageFormatting.project($0)).tag(UsageValueFilter.value($0)) }
+
+                        }.labelsHidden().frame(width: 100)
+                        Picker("模型", selection: $state.filters.model) {
+                            Text("全部模型").tag(UsageValueFilter.all)
+                            ForEach(state.options?.models ?? [], id: \.self) { Text($0).tag(UsageValueFilter.value($0)) }
+
+                        }.labelsHidden().frame(width: 110)
+                        AccountScopeControl(account: $state.account, accounts: state.options?.accounts ?? [],
+                                            currentAccount: app.currentLimits?.accountID)
+                        Picker("排序", selection: $state.sort) {
+                            ForEach(UsageSort.allCases, id: \.self) { Text($0.title).tag($0) }
+                        }.labelsHidden().frame(width: 100)
                         }
-                    }
-                    Picker("聚合方式", selection: $state.section) {
-                        Text("每日").tag(NavigationSection.daily)
-                        Text("项目").tag(NavigationSection.projects)
-                        Text("任务").tag(NavigationSection.threads)
-                    }.pickerStyle(.segmented).labelsHidden().frame(width: 240)
-                    Spacer()
-                    Picker("日期范围", selection: periodSelection) {
-                        ForEach(UsagePeriod.allCases) { Text($0.rawValue).tag($0) }
-                    }.labelsHidden().frame(width: 145)
-                    Button { state.showingFilters.toggle() } label: { Label("筛选", systemImage: "line.3.horizontal.decrease") }
-                        .popover(isPresented: $state.showingFilters) {
-                            VStack {
-                                AccountScopeControl(account: $state.account).padding()
-                                UsageFilterControls(filters: $state.filters, period: periodSelection, from: $state.customFrom,
-                                                    through: $state.customThrough, timezone: timezone)
-                            }
-                        }
-                }.padding(.vertical, 8).padding(.bottom, 16)
-                HStack {
-                    TextField("搜索任务标题或 ID", text: $state.filters.search).textFieldStyle(.roundedBorder).frame(maxWidth: 260)
-                    Spacer()
-                    Picker("排序", selection: $state.sort) {
-                        ForEach(UsageSort.allCases, id: \.self) { Text($0.title).tag($0) }
-                    }.labelsHidden().frame(width: 180)
-                }.padding(.horizontal, 4).padding(.bottom, 12)
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(rangeLabel)
-                        if !state.filters.summary.isEmpty { Text(state.filters.summary).lineLimit(2) }
-                        Text(accountLabel)
-                    }.font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    if !state.filters.isEmpty || state.account != .all {
-                        Button("清除筛选") { state.filters = UsageFilters(); state.account = .all }.buttonStyle(.borderless)
-                    }
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text("\(UsageFormatting.tokens(currentTotal?.totalTokens)) Tokens").monospacedDigit()
-                        Text("预估费用 \(UsageFormatting.money(currentTotal?.knownAmountNanoUSD))")
-                            .foregroundStyle(.secondary).font(.caption).monospacedDigit()
-                    }
-                }.padding(.horizontal, 4).padding(.bottom, 14)
+                    }.scrollIndicators(.hidden).controlSize(.small).frame(height: 28)
+                    HStack(spacing: 20) {
+                        summaryMetric("Tokens", UsageFormatting.tokens(currentTotal?.totalTokens))
+                        summaryMetric("预估费用", UsageFormatting.money(currentTotal?.knownAmountNanoUSD))
+                        summaryMetric("请求次数", currentTotal.map { $0.records.formatted() } ?? "—")
+                        Spacer(minLength: 8)
+                        Text(rangeLabel).font(.caption).foregroundStyle(.secondary)
+                            .lineLimit(1).help(rangeLabel).textSelection(.enabled)
+                    }.padding(14)
+                        .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+                }.padding(.bottom, 14)
                 if let error = state.dashboard.error {
-                    ContentUnavailableView("查询失败", systemImage: "exclamationmark.triangle", description: Text(error))
+                    ContentUnavailableView {
+                        Label("查询失败", systemImage: "exclamationmark.triangle")
+                    } description: { Text(error) } actions: { Button("重试") { state.retry += 1 } }
                 } else if state.dashboard.loadedQuery != query || state.dashboard.loadedSection != state.section {
                     ProgressView("正在查询用量").frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     UsageTableView(rows: state.dashboard.rows, isThread: state.section == .threads,
-                                   hasMore: state.dashboard.hasMore, selection: $state.selectedRow, page: $state.page)
+                                   hasMore: state.dashboard.hasMore, totalGroups: state.dashboard.totalGroups, selection: $state.selectedRow, page: $state.page, openRow: openRow, showDetails: { row in
+                                       state.detail = .summary(UsageSummaryDestination(row: row,
+                                           query: query.focused(on: query.grouping, value: row.summary.group)))
+                                   })
                         .overlay {
                             if state.dashboard.rows.isEmpty { ContentUnavailableView("所选范围暂无用量", systemImage: "tablecells") }
                         }
                 }
-            }
         }
         .padding(24)
-        .inspector(isPresented: Binding(get: { state.selectedRow != nil && state.records == nil }, set: { if !$0 { state.selectedRow = nil } })) {
-            if state.dashboard.loadedQuery == query, let row = state.dashboard.rows.first(where: { $0.id == state.selectedRow }) {
-                UsageSummaryInspector(row: row, query: query.focused(on: query.grouping, value: row.summary.group),
-                    openRecords: { focused in state.records = UsageRecordDestination(title: row.title, query: focused); state.selectedRow = nil }) { target, focused in
-                        state.backstack.append(query)
-                        var next = focused
-                        next.grouping = target == .threads ? .thread : target == .projects ? .project : .day
-                        restore(next)
+        .sheet(isPresented: Binding(get: { state.detail != nil }, set: { if !$0 { state.detail = nil } })) {
+            VStack(spacing: 0) {
+                switch state.detail {
+                case .summary(let destination):
+                    HStack {
+                        Text(destination.row.title).font(.headline).lineLimit(1)
+                        Spacer()
+                        Button("关闭") { state.detail = nil }.keyboardShortcut(.cancelAction)
+                    }.padding(20)
+                    Divider()
+                    UsageSummaryInspector(row: destination.row, query: destination.query) { focused in
+                        state.detail = .records(UsageRecordDestination(title: destination.row.title, query: focused))
                     }
-                    .id(query.focused(on: query.grouping, value: row.summary.group))
-                    .inspectorColumnWidth(min: 280, ideal: 320, max: 380)
-            }
+                case .records(let destination):
+                    UsageRecordsView(title: destination.title, query: destination.query, scope: .all,
+                                     onClose: { state.detail = nil })
+                case nil:
+                    EmptyView()
+                }
+            }.frame(width: 800, height: 600)
         }
         .task {
             if let initialQuery {
-                state.records = nil; state.backstack = []
-                restore(initialQuery); self.initialQuery = nil
+                state.detail = .records(UsageRecordDestination(title: "请求明细", query: initialQuery))
+                self.initialQuery = nil
             }
         }
-        .task(id: Request(section: state.section, query: query, refresh: app.usageRefreshID)) {
+        .task(id: Request(section: state.section, query: query, refresh: app.usageRefreshID, retry: state.retry)) {
             do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
             guard let store = app.store else { return }
             await state.dashboard.load(store: store, section: state.section, query: query)
+        }
+        .task(id: Request(section: .daily, query: optionsQuery, refresh: app.usageRefreshID, retry: state.retry)) {
+            guard let store = app.store else { return }
+            do {
+                let scope = optionsQuery
+                let options = try await Task.detached { try store.usageFilterOptions(scope) }.value
+                guard !Task.isCancelled else { return }
+                if state.options != options { state.options = options }
+                if case .value(let project) = state.filters.project, !options.projects.contains(project) { state.filters.project = .all }
+                if case .value(let model) = state.filters.model, !options.models.contains(model) { state.filters.model = .all }
+            } catch { state.dashboard.error = error.localizedDescription }
         }
         .onChange(of: criteria) {
             if state.restoredCriteria == criteria { state.restoredCriteria = nil; return }
@@ -132,25 +155,58 @@ struct UsageDetailsView: View {
         }
 
     }
+    private func summaryMetric(_ title: String, _ value: String) -> some View {
+        HStack(spacing: 6) {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(value).font(.callout.weight(.semibold)).monospacedDigit().textSelection(.enabled)
+        }.fixedSize(horizontal: true, vertical: false)
+    }
+    private func openRow(_ row: UsageDisplayRow) {
+        let focused = query.focused(on: query.grouping, value: row.summary.group)
+        state.selectedRow = nil
+        if state.section == .threads || (state.section == .daily && row.summary.group == nil) {
+            state.detail = .records(UsageRecordDestination(title: row.title, query: focused))
+        } else {
+            var next = focused
+            next.grouping = .thread
+            restore(next)
+        }
+    }
+    private var optionsQuery: UsageQuery {
+        var scope = query
+        let from = scope.filters.occurredFrom, before = scope.filters.occurredBefore
+        scope.filters = UsageFilters()
+        scope.filters.occurredFrom = from; scope.filters.occurredBefore = before
+        scope.grouping = .total; scope.offset = 0; scope.sort = .automatic
+        return scope
+    }
     private var criteria: UsageQuery { var value = query; value.offset = 0; return value }
     private var currentTotal: UsageSummary? { state.dashboard.loadedQuery == query ? state.dashboard.total : nil }
     private var periodSelection: Binding<UsagePeriod> {
         Binding(get: { state.period }, set: {
             state.period = $0
             state.filters.occurredFrom = nil; state.filters.occurredBefore = nil
-            if $0 == .custom { state.showingFilters = true }
+
         })
     }
     private var rangeLabel: String {
         if state.filters.occurredFrom != nil || state.filters.occurredBefore != nil {
-            return "\(UsageFormatting.timestamp(state.filters.occurredFrom, timezone: timezone)) — \(UsageFormatting.timestamp(state.filters.occurredBefore, timezone: timezone)) · \(timezone.identifier)"
+            return "\(UsageFormatting.timestamp(state.filters.occurredFrom, timezone: timezone)) — \(UsageFormatting.timestamp(state.filters.occurredBefore, timezone: timezone))"
         }
-        return "\(query.fromDate ?? "最早") — \(query.throughDate ?? "至今") · \(timezone.identifier)"
+        if state.period == .all {
+            guard state.dashboard.loadedQuery == query,
+                  let from = state.dashboard.dataFromDate, let through = state.dashboard.dataThroughDate else { return "—" }
+            return "\(from) — \(through)"
+        }
+        return "\(query.fromDate ?? "—") — \(query.throughDate ?? "—")"
     }
-    private var accountLabel: String {
-        switch state.account { case .all: "全部账号"; case .unknown: "未知账号"; case .account(let id): "账号：\(id)" }
-    }
-    private func restore(_ request: UsageQuery) {
+    private func restore(_ original: UsageQuery) {
+        var request = original
+        if case .value(let day) = request.filters.day {
+            request.fromDate = day; request.throughDate = day
+            request.filters.day = .all
+            request.filters.occurredFrom = nil; request.filters.occurredBefore = nil
+        }
         state.section = request.grouping == .thread ? .threads : request.grouping == .project ? .projects : .daily
         state.filters = request.filters; state.account = request.account; state.sort = request.sort; state.page = request.offset / 100
         state.selectedRow = nil
@@ -159,23 +215,39 @@ struct UsageDetailsView: View {
         let style = Date.ISO8601FormatStyle(timeZone: timezone).year().month().day().dateSeparator(.dash)
         if let from = request.fromDate, let through = request.throughDate,
            let start = try? style.parse(from), let end = try? style.parse(through) {
-            state.customFrom = start; state.customThrough = end; state.period = .custom
+            state.customFrom = start; state.customThrough = end
+            state.period = [UsagePeriod.today, .week, .month, .quarter, .year].first {
+                let dates = $0.dates(timezone: timezone)
+                return dates.0 == from && dates.1 == through
+            } ?? .custom
         } else { state.period = .all }
     }
 }
 
 struct AccountScopeControl: View {
     @Binding var account: UsageAccountScope
-    private var mode: Binding<Int> {
-        Binding(get: { switch account { case .all: 0; case .unknown: 1; case .account: 2 } },
-                set: { account = $0 == 0 ? .all : $0 == 1 ? .unknown : .account("") })
+    var accounts: [String] = []
+    var currentAccount: String?
+    private var available: [String] {
+        var result = Set(accounts)
+        if let currentAccount { result.insert(currentAccount) }
+        if case .account(let id) = account, !id.isEmpty { result.insert(id) }
+        return result.sorted()
     }
     var body: some View {
-        VStack(alignment: .leading) {
-            Picker("账号", selection: mode) { Text("全部").tag(0); Text("未知").tag(1); Text("指定账号").tag(2) }
-            if case .account(let id) = account {
-                TextField("账号 ID", text: Binding(get: { id }, set: { account = .account($0) })).textFieldStyle(.roundedBorder)
+        Group {
+            if available.count > 1 {
+                Picker("账号", selection: $account) {
+                    Text("全部账号").tag(UsageAccountScope.all)
+                    ForEach(available, id: \.self) { id in
+                        Text(id == currentAccount ? "当前账号" : "账号 · " + String(id.suffix(8)))
+                            .help(id).tag(UsageAccountScope.account(id))
+                    }
+                }.labelsHidden().frame(width: 160)
             }
+        }
+        .onChange(of: available, initial: true) {
+            if account == .unknown || available.count <= 1 { account = .all }
         }
     }
 }

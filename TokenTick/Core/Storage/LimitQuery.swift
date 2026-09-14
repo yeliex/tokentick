@@ -51,6 +51,9 @@ public struct WeeklyLimitWindow: Codable, Sendable, Identifiable, Equatable {
     public var knownAmountNanoUSD: Int64? = nil
     public var unpricedTokens: Int64? = nil
     public var usageEndsAt: Int64? = nil
+    public var actualResetAt: Double? = nil
+    public var requestCount: Int? = nil
+    public var endsAt: Double { actualResetAt ?? Double(usageEndsAt ?? scheduledResetAt) }
     public var usageAttribution: String = "local_usage_by_turn_start_in_query_account_scope"
 }
 

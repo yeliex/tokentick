@@ -131,6 +131,8 @@ extension UsageStore {
             if case .object(let value) = try JSONDecoder().decode(SourceJSON.self, from: Data(raw.utf8)) { proof = value }
             if case .array(let values) = proof["alternateReports"] { alternatives = values }
         }
+        // 重扫可补齐同一请求的推理深度，不改变已有用量和主报告。
+        if let effort = usage.evidence.reasoningEffort { proof["reasoningEffort"] = .string(effort) }
         let previousReport = proof["report"]
         if preferIncoming || previousReport == nil { proof["report"] = incoming }
         func appendReport(_ report: SourceJSON?) {

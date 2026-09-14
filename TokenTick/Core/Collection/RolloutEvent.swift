@@ -27,13 +27,15 @@ struct RolloutEvent: Decodable {
         let turn_id: String?
         let model: String?
         let service_tier: String?
+        let effort: String?
         let hasServiceTier: Bool
-        private enum CodingKeys: String, CodingKey { case turn_id, model, service_tier }
+        private enum CodingKeys: String, CodingKey { case turn_id, model, service_tier, effort }
         init(from decoder: any Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
             turn_id = try values.decodeIfPresent(String.self, forKey: .turn_id)
             model = try values.decodeIfPresent(String.self, forKey: .model)
             service_tier = try values.decodeIfPresent(String.self, forKey: .service_tier)
+            effort = try values.decodeIfPresent(String.self, forKey: .effort)
             hasServiceTier = values.contains(.service_tier)
         }
     }

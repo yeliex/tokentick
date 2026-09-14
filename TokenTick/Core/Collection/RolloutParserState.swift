@@ -2,12 +2,13 @@ import Foundation
 
 struct RolloutParserState: Codable {
     // 解析状态可丢弃重建；版本变化只触发重扫，不改写事实。
-    static let currentVersion = 6
+    static let currentVersion = 7
     var version = currentVersion
     var session: RolloutEvent.Session?
     var turnID: String?
     var model: String?
     var serviceTier: String?
+    var reasoningEffort: String?
     var contextModel: String?
     var settings: UsageContextEvidence?
     var activeSettings: UsageContextEvidence?
@@ -47,6 +48,7 @@ struct UsageEvidence: Codable {
     let serviceTier: String?
     let cumulative: TokenUsage
     let record: RolloutEvent.Record?
+    var reasoningEffort: String? = nil
     var modelContextWindow: Int64? = nil
     var modelSource: UsageContextEvidence? = nil
     var serviceTierSource: UsageContextEvidence? = nil

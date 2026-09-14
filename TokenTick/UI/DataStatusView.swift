@@ -7,6 +7,22 @@ struct DataStatusView: View {
     let models: [UsageSummary]
     var body: some View {
         Form {
+            Section("同步") {
+                if app.isSyncing {
+                    HStack {
+                        ProgressView().controlSize(.small)
+                        Text(app.progressText)
+                    }
+                    if app.progress?.stage != .statistics {
+                        Button("取消同步") { app.cancelSync() }
+                    }
+                } else {
+                    LabeledContent("上次同步", value: UsageFormatting.timestamp(app.lastSync?.finishedAt))
+                }
+                if let error = app.error {
+                    Text(error).foregroundStyle(.secondary).textSelection(.enabled)
+                }
+            }
             Section("本地日志") {
                 LabeledContent("最近文件扫描", value: UsageFormatting.timestamp(app.status?.lastFileScanAt))
                 LabeledContent("已保存记录", value: app.status?.tables["usage"].map { $0.formatted() } ?? "—")

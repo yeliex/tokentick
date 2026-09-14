@@ -106,9 +106,12 @@ public struct UsageReport: Codable, Sendable {
     public let unknownDateTokens: Int64
     public let rows: [UsageSummary]
     public let hasMore: Bool
+    public let totalGroups: Int
+    public let dataFromDate: String?
+    public let dataThroughDate: String?
     public var amountUnit: String { "nanoUSD" }
 
-    enum CodingKeys: String, CodingKey { case timezone, grouping, fromDate, throughDate, unknownDateTokens, rows, hasMore, amountUnit }
+    enum CodingKeys: String, CodingKey { case timezone, grouping, fromDate, throughDate, unknownDateTokens, rows, hasMore, totalGroups, amountUnit, dataFromDate, dataThroughDate }
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         timezone = try values.decode(String.self, forKey: .timezone)
@@ -118,8 +121,11 @@ public struct UsageReport: Codable, Sendable {
         unknownDateTokens = try values.decode(Int64.self, forKey: .unknownDateTokens)
         rows = try values.decode([UsageSummary].self, forKey: .rows)
         hasMore = try values.decodeIfPresent(Bool.self, forKey: .hasMore) ?? false
+        dataFromDate = try values.decodeIfPresent(String.self, forKey: .dataFromDate)
+        dataThroughDate = try values.decodeIfPresent(String.self, forKey: .dataThroughDate)
+        totalGroups = try values.decodeIfPresent(Int.self, forKey: .totalGroups) ?? rows.count
     }
-    init(timezone: String, grouping: UsageGrouping, fromDate: String?, throughDate: String?, unknownDateTokens: Int64, rows: [UsageSummary], hasMore: Bool = false) {
+    init(timezone: String, grouping: UsageGrouping, fromDate: String?, throughDate: String?, unknownDateTokens: Int64, rows: [UsageSummary], hasMore: Bool = false, totalGroups: Int? = nil, dataFromDate: String? = nil, dataThroughDate: String? = nil) {
         self.timezone = timezone
         self.grouping = grouping
         self.fromDate = fromDate
@@ -127,6 +133,9 @@ public struct UsageReport: Codable, Sendable {
         self.unknownDateTokens = unknownDateTokens
         self.rows = rows
         self.hasMore = hasMore
+        self.totalGroups = totalGroups ?? rows.count
+        self.dataFromDate = dataFromDate
+        self.dataThroughDate = dataThroughDate
     }
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
@@ -137,6 +146,9 @@ public struct UsageReport: Codable, Sendable {
         try values.encode(unknownDateTokens, forKey: .unknownDateTokens)
         try values.encode(rows, forKey: .rows)
         try values.encode(hasMore, forKey: .hasMore)
+        try values.encode(totalGroups, forKey: .totalGroups)
+        try values.encode(dataFromDate, forKey: .dataFromDate)
+        try values.encode(dataThroughDate, forKey: .dataThroughDate)
         try values.encode(amountUnit, forKey: .amountUnit)
     }
 }

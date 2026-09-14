@@ -151,9 +151,10 @@ struct CurrentLimitsView: View {
                             .help(UsageFormatting.timestamp(Double(reset)))
                     }
                 }.font(.caption).foregroundStyle(.secondary)
-                if let prediction = prediction(forecast, window: window, now: now) {
-                    Text(prediction).font(.callout)
-                }
+                // 预测由无到有时保留行高，避免下方统计周期控件随刷新跳动。
+                Text(prediction(forecast, window: window, now: now) ?? " ")
+                    .font(.callout).lineLimit(1)
+                    .accessibilityHidden(prediction(forecast, window: window, now: now) == nil)
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
     }

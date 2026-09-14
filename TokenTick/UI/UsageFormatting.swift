@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 
 enum UsageFormatting {
-    static func project(_ name: String?) -> String { name == "Chat" ? "无项目聊天" : name ?? "未知归属" }
+    static func project(_ name: String?) -> String { name == "Chat" ? "聊天" : name ?? "未知归属" }
     static func tokens(_ value: Int64?) -> String {
         value.map { $0.formatted(.number.notation(.compactName).precision(.fractionLength(0...2)).locale(Locale(identifier: "en_US"))) } ?? "—"
     }

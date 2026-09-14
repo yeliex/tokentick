@@ -23,8 +23,9 @@ struct OverviewView: View {
                     Text("用量").font(.title2.weight(.semibold))
                     Spacer()
                     Picker("统计周期", selection: Binding(get: { period }, set: { storedPeriod = $0.rawValue })) {
-                        ForEach(OverviewPeriod.allCases) { Text($0.rawValue).tag($0) }
-                    }.pickerStyle(.segmented).labelsHidden().frame(width: 410)
+                        ForEach(OverviewPeriod.allCases) { Text($0 == .all ? "所有" : $0 == .year ? "1年" : $0.rawValue.replacingOccurrences(of: " ", with: "")).tag($0) }
+                    }.pickerStyle(.segmented).labelsHidden().controlSize(.regular)
+                        .fixedSize(horizontal: true, vertical: true).frame(width: 410, alignment: .trailing)
                 }
                 if loading && (report == nil || loadedPeriod != period) {
                     ProgressView("正在汇总用量").frame(maxWidth: .infinity, minHeight: 260)
@@ -38,7 +39,7 @@ struct OverviewView: View {
                             Text("Tokens").font(.callout).foregroundStyle(.secondary)
                             Text(UsageFormatting.tokens(total.totalTokens)).font(.system(size: 34, weight: .semibold)).monospacedDigit()
                                 .help(UsageFormatting.exactTokens(total.totalTokens)).textSelection(.enabled)
-                            Text("\(total.records.formatted()) 次消耗").font(.caption).foregroundStyle(.secondary)
+                            Text("\(total.records.formatted()) 次请求").font(.caption).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                         VStack(alignment: .leading, spacing: 10) {
                             Text("预估费用").font(.callout).foregroundStyle(.secondary)
@@ -62,7 +63,7 @@ struct OverviewView: View {
                         Label("\(UsageFormatting.tokens(report.unknownDateTokens)) Tokens 无法确定日期，未绘入趋势。", systemImage: "calendar.badge.exclamationmark")
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                    ModelUsageView(models: report.models)
+                    ModelUsageView(models: report.models, modes: report.modes, efforts: report.efforts)
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Text("最近对话").font(.headline)
@@ -79,7 +80,12 @@ struct OverviewView: View {
                                 openConversation(focused)
                             } label: {
                                 HStack(spacing: 16) {
-                                    Text(conversation.thread.title ?? conversation.id).lineLimit(1).help(conversation.thread.title ?? conversation.id)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(conversation.thread.title ?? conversation.id).lineLimit(1).help(conversation.thread.title ?? conversation.id)
+                                        Text(UsageFormatting.project(conversation.thread.projectName))
+                                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                            .help(UsageFormatting.project(conversation.thread.projectName))
+                                    }
                                     Spacer()
                                     Text(UsageFormatting.money(conversation.summary.knownAmountNanoUSD)).frame(width: 105, alignment: .trailing)
                                     TokenText(value: conversation.summary.totalTokens).frame(width: 100, alignment: .trailing)
@@ -93,7 +99,8 @@ struct OverviewView: View {
                     ContentUnavailableView("所选周期暂无用量", systemImage: "chart.bar")
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
-            }.padding(32).frame(maxWidth: 1280).frame(maxWidth: .infinity)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+                .padding(32).frame(maxWidth: 1280).frame(maxWidth: .infinity)
         }
         .task(id: request) {
             guard let store = app.store else { return }

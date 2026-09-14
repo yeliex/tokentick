@@ -9,7 +9,7 @@ struct UsageRecordsView: View {
     let scope: UsageRecordScope
     var onClose: () -> Void
     @State private var records: [UsageRecord] = []
-    @State private var selection: Int64?
+    @State private var selectedRecord: UsageRecord?
     @State private var page = 0
     @State private var hasMore = false
     @State private var loading = false
@@ -25,13 +25,13 @@ struct UsageRecordsView: View {
                 }
                 Spacer()
                 if loading { ProgressView().controlSize(.small) }
-                Button("返回", action: onClose).keyboardShortcut(.cancelAction)
+                Button("关闭", action: onClose).keyboardShortcut(.cancelAction)
             }.padding(16)
             Divider()
             if let error { Text(error).foregroundStyle(.secondary).textSelection(.enabled).padding(12) }
-            HSplitView {
+            VStack(spacing: 0) {
                 VStack(spacing: 0) {
-                    Table(records, selection: $selection) {
+                    Table(records) {
                         TableColumn("时间") { row in
                             Text(row.occurredAt.map { UsageFormatting.timestamp($0, timezone: TimeZone(identifier: query.timezone ?? "UTC") ?? .gmt) }
                                  ?? row.usageDate ?? "未知")
@@ -40,6 +40,9 @@ struct UsageRecordsView: View {
                             .width(min: 90, ideal: 120)
                         TableColumn("Tokens") { row in TokenText(value: row.totalTokens).monospacedDigit() }
                             .width(min: 80, ideal: 100)
+                        TableColumn("详情") { row in
+                            Button("详情") { selectedRecord = row }.buttonStyle(.borderless)
+                        }.width(50)
                         TableColumn("费用") { row in Text(UsageFormatting.money(row.knownAmountNanoUSD)).monospacedDigit() }
                             .width(min: 70, ideal: 90)
                     }
@@ -57,17 +60,20 @@ struct UsageRecordsView: View {
                         Button("下一页") { page += 1 }.disabled(!hasMore || loading)
                     }.padding(12)
                 }.frame(minWidth: 390, maxHeight: .infinity)
-                if let record = records.first(where: { $0.id == selection }) {
-                    UsageRecordDetail(record: record, timezone: TimeZone(identifier: query.timezone ?? "UTC") ?? .gmt)
-                        .frame(minWidth: 260, idealWidth: 300, maxWidth: 340)
-                } else {
-                    ContentUnavailableView("选择一条用量", systemImage: "doc.text.magnifyingglass",
-                        description: Text("查看分项计价和日志证据。"))
-                        .frame(minWidth: 260, idealWidth: 300, maxWidth: 340, maxHeight: .infinity)
-                }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minHeight: 500)
+        .sheet(item: $selectedRecord) { record in
+            VStack(spacing: 0) {
+                HStack {
+                    Text("请求详情").font(.headline)
+                    Spacer()
+                    Button("关闭") { selectedRecord = nil }.keyboardShortcut(.cancelAction)
+                }.padding(20)
+                Divider()
+                UsageRecordDetail(record: record, timezone: TimeZone(identifier: query.timezone ?? "UTC") ?? .gmt)
+            }.frame(width: 600, height: 580)
+        }
         .task(id: "\(page)/\(app.usageRefreshID)") {
             guard let store = app.store else { return }
             loading = records.isEmpty; error = nil
@@ -75,17 +81,20 @@ struct UsageRecordsView: View {
             request.limit = 100; request.offset = page * 100
             let current = request
             do {
-                let result = try await Task.detached(priority: .userInitiated) { try store.usageRecords(current, scope: scope) }.value
+                let worker = Task.detached(priority: .userInitiated) {
+                    try Task.checkCancellation()
+                    return try store.usageRecords(current, scope: scope)
+                }
+                let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                 guard !Task.isCancelled else { return }
-                records = result.rows; hasMore = result.hasMore
-                if let selection, !records.contains(where: { $0.id == selection }) { self.selection = nil }
+                if records != result.rows { records = result.rows }; hasMore = result.hasMore
             } catch {
                 guard !Task.isCancelled else { return }
                 self.error = error.localizedDescription; records = []; hasMore = false
             }
             loading = false
         }
-        .onChange(of: page) { selection = nil; records = [] }
+        .onChange(of: page) { records = [] }
     }
 }
 
