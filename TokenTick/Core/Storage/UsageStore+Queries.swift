@@ -20,12 +20,12 @@ extension UsageStore {
         return try pool.read { try Self.readUsageReport(query, timezone: timezone, db: $0) }
     }
 
-    static func readUsageReport(_ query: UsageQuery, timezone: TimeZone, db: Database) throws -> UsageReport {
+    static func readUsageReport(_ query: UsageQuery, timezone: TimeZone, db: Database, dateExpression: String? = nil) throws -> UsageReport {
         // 重建与读取之间另一个进程可能提交了用量；同一读快照内回退到事实聚合。
-        let current = try query.filters.isEmpty && Self.statisticsAreCurrent(db, timezone: timezone.identifier)
+        let current = try dateExpression == nil && query.filters.isEmpty && Self.statisticsAreCurrent(db, timezone: timezone.identifier)
         if !current { StatisticsSQL.prepare(db, timezone: timezone) }
         let factFilters = UsageFiltersSQL(query.filters)
-        let source = current ? "" : "WITH statistics(\(StatisticsSQL.columns)) AS (\(StatisticsSQL.aggregate(predicate: factFilters.predicate))) "
+        let source = current ? "" : "WITH statistics(\(StatisticsSQL.columns)) AS (\(StatisticsSQL.aggregate(predicate: factFilters.predicate, dateExpression: dateExpression))) "
         let dimension = [.total, .day].contains(query.grouping) ? "all" : query.grouping.rawValue
         let group = switch query.grouping {
         case .total: "NULL"

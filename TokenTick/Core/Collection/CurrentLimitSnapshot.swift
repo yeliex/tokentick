@@ -7,6 +7,11 @@ public struct CurrentLimitSnapshot: Codable, Sendable {
     public let scopeKey: String
     public let windows: [CurrentLimitWindow]
     public let sourceJSON: String
+    public var planType: String? = nil
+    public var availableResets: Int64? = nil
+    public var resetCreditExpiresAt: Int64? = nil
+    public var creditsBalance: String? = nil
+    public var unlimitedCredits: Bool? = nil
     public var fileName: String? = nil
     public var line: Int? = nil
     public var turnID: String? = nil
@@ -38,11 +43,32 @@ public struct CurrentLimitSnapshot: Codable, Sendable {
                       percent.isFinite, percent >= 0 else { continue }
                 windows.append(CurrentLimitWindow(limitID: id, kind: kind, usedPercent: percent,
                     durationMinutes: (window[snakeCase ? "window_minutes" : "windowDurationMins"] as? NSNumber)?.int64Value,
-                    resetsAt: (window[snakeCase ? "resets_at" : "resetsAt"] as? NSNumber)?.int64Value))
+                    resetsAt: (window[snakeCase ? "resets_at" : "resetsAt"] as? NSNumber)?.int64Value,
+                    displayName: bucket[snakeCase ? "limit_name" : "limitName"] as? String))
             }
         }
-        return Self(accountID: accountID, observedAt: observedAt, source: source, scopeKey: scopeKey,
+        var result = Self(accountID: accountID, observedAt: observedAt, source: source, scopeKey: scopeKey,
                     windows: windows, sourceJSON: String(decoding: data, as: UTF8.self))
+        let main = buckets["codex"] as? [String: Any] ?? raw["rateLimits"] as? [String: Any]
+        result.planType = main?[snakeCase ? "plan_type" : "planType"] as? String
+        if let resets = raw["rateLimitResetCredits"] as? [String: Any],
+           let count = resets["availableCount"] as? Int64, count >= 0 {
+            result.availableResets = count
+            if count > 0, let credits = resets["credits"] as? [[String: Any]] {
+                // 明细可能少于 availableCount，仅保存已返回的可用重置中最近的到期时间。
+                result.resetCreditExpiresAt = credits.compactMap { credit -> Int64? in
+                    guard credit["status"] as? String == "available",
+                          credit["resetType"] as? String == "codexRateLimits",
+                          let expires = credit["expiresAt"] as? Int64, Double(expires) > observedAt else { return nil }
+                    return expires
+                }.min()
+            }
+        }
+        if let credits = main?["credits"] as? [String: Any] {
+            result.creditsBalance = credits["balance"] as? String
+            result.unlimitedCredits = credits["unlimited"] as? Bool
+        }
+        return result
     }
 }
 
@@ -53,4 +79,5 @@ public struct CurrentLimitWindow: Codable, Sendable, Identifiable {
     public let usedPercent: Double
     public let durationMinutes: Int64?
     public let resetsAt: Int64?
+    public var displayName: String? = nil
 }

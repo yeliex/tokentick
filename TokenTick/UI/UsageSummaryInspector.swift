@@ -22,17 +22,16 @@ struct UsageDetailField: View {
 struct UsageSummaryInspector: View {
     let row: UsageDisplayRow
     let query: UsageQuery
-    let scope: UsageRecordScope
+    var openRecords: (UsageQuery) -> Void
     var navigate: (NavigationSection, UsageQuery) -> Void
     @Environment(ApplicationModel.self) private var app
     @State private var models: [UsageSummary] = []
     @State private var modelError: String?
-    @State private var showingRecords = false
     private struct Request: Hashable { let query: UsageQuery; let refresh: Int }
     var body: some View {
         Form {
             Section {
-                Button("查看用量明细") { showingRecords = true }
+                Button("查看逐条消耗") { openRecords(query) }
                 Button("查看每日用量") { navigate(.daily, query) }
                 Button("查看贡献任务") { navigate(.threads, query) }
                 Button("查看贡献项目") { navigate(.projects, query) }
@@ -55,11 +54,11 @@ struct UsageSummaryInspector: View {
             }
             Section("Token 分项") {
                 UsageDetailField("总量", value: UsageFormatting.tokens(row.summary.totalTokens)).help(UsageFormatting.exactTokens(row.summary.totalTokens))
-                UsageDetailField("输入（含缓存）", value: UsageFormatting.tokens(row.summary.inputTokens)).help(UsageFormatting.exactTokens(row.summary.inputTokens))
+                UsageDetailField("输入", value: UsageFormatting.tokens(row.summary.inputTokens)).help(UsageFormatting.exactTokens(row.summary.inputTokens))
                 UsageDetailField("缓存读取", value: UsageFormatting.tokens(row.summary.cachedInputTokens)).help(UsageFormatting.exactTokens(row.summary.cachedInputTokens))
                 UsageDetailField("缓存写入", value: UsageFormatting.tokens(row.summary.cacheWriteInputTokens)).help(UsageFormatting.exactTokens(row.summary.cacheWriteInputTokens))
-                UsageDetailField("输出（含推理）", value: UsageFormatting.tokens(row.summary.outputTokens)).help(UsageFormatting.exactTokens(row.summary.outputTokens))
-                UsageDetailField("推理", value: UsageFormatting.tokens(row.summary.reasoningOutputTokens)).help(UsageFormatting.exactTokens(row.summary.reasoningOutputTokens))
+                UsageDetailField("输出", value: UsageFormatting.tokens(row.summary.outputTokens)).help(UsageFormatting.exactTokens(row.summary.outputTokens))
+                UsageDetailField("思考", value: UsageFormatting.tokens(row.summary.reasoningOutputTokens)).help(UsageFormatting.exactTokens(row.summary.reasoningOutputTokens))
             }
             Section("已知金额 · USD") {
                 UsageDetailField("输入", value: UsageFormatting.money(row.summary.inputAmountNanoUSD))
@@ -67,11 +66,9 @@ struct UsageSummaryInspector: View {
                 UsageDetailField("缓存写入", value: UsageFormatting.money(row.summary.cacheWriteAmountNanoUSD))
                 UsageDetailField("输出", value: UsageFormatting.money(row.summary.outputAmountNanoUSD))
                 UsageDetailField("已知金额", value: UsageFormatting.money(row.summary.knownAmountNanoUSD))
-                Text("缺少价格或计价依据的金额保持未知。缓存包含在输入中，推理包含在输出中。")
-                    .font(.caption).foregroundStyle(.secondary)
             }
-        }.formStyle(.grouped).textSelection(.enabled)
-            .task(id: Request(query: query, refresh: app.refreshID)) {
+        }.formStyle(.grouped).scrollContentBackground(.hidden).textSelection(.enabled)
+            .task(id: Request(query: query, refresh: app.usageRefreshID)) {
                 guard let store = app.store else { return }
                 var request = query
                 request.grouping = .model; request.offset = 0; request.limit = 10_000; request.sort = .tokens
@@ -79,14 +76,11 @@ struct UsageSummaryInspector: View {
                 do {
                     let report = try await Task.detached(priority: .userInitiated) { try store.usageReport(current) }.value
                     guard !Task.isCancelled else { return }
-                    models = report.rows; modelError = nil
+                    if models != report.rows { models = report.rows }; modelError = nil
                 } catch {
                     guard !Task.isCancelled else { return }
                     models = []; modelError = error.localizedDescription
                 }
-            }
-            .sheet(isPresented: $showingRecords) {
-                UsageRecordsView(title: row.title, query: query, scope: scope)
             }
     }
 }

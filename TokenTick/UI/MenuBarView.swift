@@ -8,7 +8,8 @@ struct MenuBarView: View {
 
     private var activeLimits: [CurrentLimitWindow] {
         let now = Int64(Date().timeIntervalSince1970)
-        return app.currentLimits?.windows.filter { $0.resetsAt.map { $0 > now } ?? true } ?? []
+        guard let snapshot = app.currentLimits, Double(now) - snapshot.observedAt <= 900 else { return [] }
+        return snapshot.windows.filter { $0.resetsAt.map { $0 > now } ?? true }
     }
 
     var body: some View {

@@ -4,12 +4,13 @@ import Foundation
 public struct AutomaticSyncSchedule: Sendable {
     private var localDue: Date
     private var remoteDue: Date
+    private var remoteDeadline: Date
     private var localAllowed: Date
     private var changedAt: Date?
     private var localInterval: TimeInterval = 1_800
 
     public init(now: Date = Date()) {
-        localDue = now; remoteDue = now; localAllowed = now
+        localDue = now; remoteDue = now; remoteDeadline = now; localAllowed = now
     }
 
     public var nextCheck: Date {
@@ -45,7 +46,15 @@ public struct AutomaticSyncSchedule: Sendable {
             localAllowed = now.addingTimeInterval(10)
             changedAt = nil
         }
-        if scope == .all || scope == .api || scope == .remote { remoteDue = now.addingTimeInterval(300) }
+        if scope == .all || scope == .api || scope == .remote {
+            remoteDue = now.addingTimeInterval(300)
+            remoteDeadline = now.addingTimeInterval(1800)
+        }
+    }
+
+    public mutating func acceptedLog(observedAt: Date, now: Date = Date()) {
+        guard observedAt <= now, now.timeIntervalSince(observedAt) <= 300 else { return }
+        remoteDue = max(remoteDue, min(remoteDeadline, observedAt.addingTimeInterval(300)))
     }
 
     public mutating func cancelled(now: Date = Date()) {

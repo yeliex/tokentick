@@ -26,7 +26,7 @@ public struct LimitQuery: Sendable, Hashable {
     }
 }
 
-public struct WeeklyLimitWindow: Codable, Sendable, Identifiable {
+public struct WeeklyLimitWindow: Codable, Sendable, Identifiable, Equatable {
     public var id: String
     public let accountID: String?
     public let scopeKey: String

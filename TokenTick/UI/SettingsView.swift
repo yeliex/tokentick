@@ -1,85 +1,80 @@
-import TokenTickCore
 import SwiftUI
-import AppKit
+import TokenTickCore
 
 struct SettingsView: View {
+    @Environment(\.colorScheme) private var scheme
     @Environment(ApplicationModel.self) private var app
-    @State private var storage: StorageSummary?
-    @State private var storageError: String?
-    @State private var storageRefresh = 0
+    var body: some View {
+        TabView(selection: Binding(get: { app.settingsSection }, set: { app.settingsSection = $0 })) {
+            GeneralSettingsView().tabItem { Label("通用", systemImage: "gearshape") }.tag("通用")
+            DataSettingsView().tabItem { Label("数据状态", systemImage: "externaldrive") }.tag("数据状态")
+            StorageSettingsView().tabItem { Label("存储", systemImage: "internaldrive") }.tag("存储")
+            Form {
+                Section("TokenTick") {
+                    LabeledContent("版本", value: ApplicationInfo.version)
+                    LabeledContent("系统要求", value: "macOS \(ApplicationInfo.minimumMacOSVersion)+ · Apple Silicon")
+                    LabeledContent("金额单位", value: "USD · API 等值估算")
+                    Text("本地用量统计 · SwiftUI 原生界面").foregroundStyle(.secondary)
+                }
+                Section("分发与许可证") {
+                    Text("App 与 CLI 使用 ad-hoc 签名和 ZIP 分发。")
+                    Text("依赖 GRDB.swift（MIT）和 Zstandard（BSD／GPLv2 双许可）；完整许可证随分发包提供。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }.formStyle(.grouped).tabItem { Label("关于", systemImage: "info.circle") }.tag("关于")
+        }.frame(width: 700, height: 700)
+            .scrollContentBackground(.hidden)
+            .background(scheme == .dark ? Color.black.opacity(0.5) : Color.white.opacity(0.2))
+            .containerBackground(.thinMaterial, for: .window)
+            .tint(.primary)
+            .task { await app.start() }
+    }
+}
+
+private struct GeneralSettingsView: View {
+    @AppStorage("limitsShowRemaining") private var limitsShowRemaining = true
+    @Environment(ApplicationModel.self) private var app
     var body: some View {
         Form {
-            Section("TokenTick") {
-                LabeledContent("版本", value: ApplicationInfo.version)
-                LabeledContent("系统要求", value: "macOS \(ApplicationInfo.minimumMacOSVersion) 或更新版本")
-                LabeledContent("金额单位", value: "美元（USD）")
+            Section("额度显示") {
+                Picker("显示方式", selection: $limitsShowRemaining) {
+                    Text("剩余").tag(true)
+                    Text("已使用").tag(false)
+                }.pickerStyle(.segmented)
             }
             Section("统计") {
                 Picker("时区", selection: Binding(get: { app.status?.timezone ?? TimeZone.current.identifier },
-                                                set: { value in Task { await app.changeTimezone(value) } })) {
+                    set: { value in Task { await app.changeTimezone(value) } })) {
                     ForEach(TimeZone.knownTimeZoneIdentifiers, id: \.self) { Text($0).tag($0) }
                 }
-                Text("日期按所选时区统计，模型价格始终使用 UTC 日期。外观跟随系统。")
+                Text("日期标签按所选时区展示，模型价格始终使用 UTC 日期。外观跟随系统。")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("数据来源") {
-                Text("Codex 目录由 CODEX_HOME 环境变量决定，未设置时使用 ~/.codex。")
-                    .font(.caption).foregroundStyle(.secondary)
                 Toggle("应用运行时自动同步", isOn: Binding(get: { app.automaticSyncEnabled }, set: { app.automaticSyncEnabled = $0 }))
-                Text("目录监听触发采集；监听正常时每 30 分钟兜底核对，失效时每分钟核对。每五分钟刷新远端数据，价格每日获取一次。")
+                Text("自动采集本地日志、刷新远端额度并更新价格。退出应用后停止采集。")
+                    .font(.caption).foregroundStyle(.secondary)
+                LabeledContent("Codex 目录", value: LocalUsageScanner.defaultCodexHome.path).textSelection(.enabled)
+                Text("由当前进程的 CODEX_HOME 决定，未设置时使用 ~/.codex。")
                     .font(.caption).foregroundStyle(.secondary)
                 if let issue = app.automaticSyncIssue { Text(issue).font(.caption).foregroundStyle(.secondary) }
             }
-            Section("存储") {
-                if let url = app.store?.databaseURL {
-                    Text(url.path).font(.caption).textSelection(.enabled)
-                    Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-                }
-                if let storage {
-                    LabeledContent("数据库及运行文件", value: ByteCountFormatter.string(fromByteCount: storage.liveBytes, countStyle: .file))
-                    Text("主库 \(storage.databaseBytes.formatted()) 字节 · WAL \(storage.walBytes.formatted()) 字节 · 共享内存 \(storage.sharedMemoryBytes.formatted()) 字节")
-                        .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                    LabeledContent("迁移备份", value: "\(storage.backupCount) 份 · \(ByteCountFormatter.string(fromByteCount: storage.backupBytes, countStyle: .file))")
-                    Text("显示文件长度，写入期间可能变化；查询不会压缩数据库或清理备份。")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                if let storageError { Text(storageError).font(.caption).textSelection(.enabled) }
-                Button("刷新存储信息") { storageRefresh += 1 }
-                Button("重建统计缓存") { Task { await app.rebuild() } }.disabled(app.isSyncing || app.store == nil)
+        }.formStyle(.grouped)
+    }
+}
+
+private struct DataSettingsView: View {
+    @Environment(ApplicationModel.self) private var app
+    @State private var dashboard = DashboardModel()
+    var body: some View {
+        DataStatusView(days: dashboard.apiDays, models: dashboard.models)
+            .overlay(alignment: .topTrailing) { if dashboard.loading { ProgressView().controlSize(.small).padding() } }
+            .safeAreaInset(edge: .bottom) {
+                if let error = dashboard.error { Text(error).font(.caption).foregroundStyle(.secondary).padding() }
             }
-            if let storage, storage.backupCount > 0 {
-                Section("最近迁移备份") {
-                    Text("最近 \(storage.recentBackups.count) 份。这些是旧版保留的备份；新迁移不再自动备份。")
-                        .font(.caption).foregroundStyle(.secondary)
-                    ForEach(storage.recentBackups) { backup in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(backup.url.lastPathComponent).font(.caption).textSelection(.enabled)
-                            HStack {
-                                Text("\(UsageFormatting.timestamp(backup.modifiedAt?.timeIntervalSince1970)) · \(ByteCountFormatter.string(fromByteCount: backup.bytes, countStyle: .file))")
-                                    .font(.caption).foregroundStyle(.secondary)
-                                Spacer()
-                                Button("显示") { NSWorkspace.shared.activateFileViewerSelecting([backup.url]) }
-                                    .help(backup.url.path)
-                            }
-                        }
-                    }
-                    Button("打开全部备份") { NSWorkspace.shared.open(storage.backupDirectory) }
-                }
+            .task(id: app.refreshID) {
+                guard let store = app.store else { return }
+                await dashboard.load(store: store, section: .data, query: UsageQuery(grouping: .total))
             }
-        }
-        .formStyle(.grouped)
-        .frame(width: 580, height: 640)
-        .task { await app.start() }
-        .task(id: "\(app.refreshID):\(storageRefresh)") {
-            guard let store = app.store else { return }
-            do {
-                let result = try await Task.detached(priority: .utility) { try store.storageSummary() }.value
-                guard !Task.isCancelled else { return }
-                storage = result; storageError = nil
-            } catch {
-                guard !Task.isCancelled else { return }
-                storageError = error.localizedDescription
-            }
-        }
     }
 }

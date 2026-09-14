@@ -40,6 +40,10 @@ final class AutomaticSyncController {
 
     func started(_ scope: SynchronizationScope) { schedule.started(scope); arm() }
     func finished() { refreshHome(); if watcher == nil { watch() }; arm() }
+    func acceptedLog(observedAt: Double) {
+        schedule.acceptedLog(observedAt: Date(timeIntervalSince1970: observedAt))
+        arm()
+    }
     func cancelled() { schedule.cancelled(); arm() }
 
     private func watch() {

@@ -9,6 +9,7 @@ struct LimitsView: View {
     @State private var account = ""
     @State private var filtersPresented = false
     @State private var page = 0
+    @State private var selectedWindow: String?
     @State private var windows: [WeeklyLimitWindow] = []
     @State private var hasMore = false
     @State private var excludedObservations: [String: Int] = [:]
@@ -29,62 +30,47 @@ struct LimitsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let snapshot = app.currentLimits {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("当前额度观测").font(.headline)
-                    Text("\(snapshot.accountID ?? "未知账号") · \(snapshot.source) · \(UsageFormatting.timestamp(snapshot.observedAt))")
-                        .font(.caption).foregroundStyle(.secondary)
-                    ForEach(snapshot.windows) { window in
-                        HStack {
-                            Text("\(window.limitID) · \(window.durationMinutes.map { "\($0) 分钟" } ?? window.kind)")
-                            Spacer()
-                            Text("已用 \(window.usedPercent.formatted())%")
-                            Text("重置 \(UsageFormatting.timestamp(window.resetsAt.map(Double.init)))")
-                        }.font(.callout)
-                    }
-                    DisclosureGroup("完整额度来源（含附加类型）") {
-                        ScrollView { Text(snapshot.sourceJSON).font(.system(.caption, design: .monospaced)).textSelection(.enabled) }.frame(maxHeight: 120)
-                    }
-                }.padding(16)
-                Divider()
-            }
             HStack {
                 Picker("日期范围", selection: $period) {
                     ForEach(UsagePeriod.allCases) { Text($0.rawValue).tag($0) }
-                }.frame(width: 160)
+                }.labelsHidden().frame(width: 160)
                 Button { filtersPresented.toggle() } label: { Label("筛选", systemImage: "line.3.horizontal.decrease") }
                     .popover(isPresented: $filtersPresented) { filterForm }
                 Spacer()
                 if loading { ProgressView().controlSize(.small) }
             }.padding(16)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("窗口起算日期：\(query.fromDate ?? "最早") — \(query.throughDate ?? "至今") · \(timezone.identifier)")
-                Text("账号：\(account.isEmpty ? "全部" : account) · 主限额 codex · 七天限额窗口")
-                    .lineLimit(1).help("账号：\(account)")
-                Text("按稳定截止减七天展示起算时间；额度恢复后空闲期间的滚动零值不新增窗口。最后观测不代表最终用量。")
-                Text("窗口 tokens／金额来自所选账号范围的本地用量，跨界轮次按开始时间归属；全局包含未知账号，不代表额度实际扣费。")
-                if !excludedObservations.isEmpty {
-                    Text("已排除回放、过期及冲突点：\(excludedObservations.values.reduce(0, +).formatted()) 条")
-                }
-            }.font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16).padding(.bottom, 12)
-            Divider()
+            HStack {
+                Text("Codex · 每周额度").font(.headline)
+                Spacer()
+                Text("\(query.fromDate ?? "最早") — \(query.throughDate ?? "至今")")
+                    .font(.caption).foregroundStyle(.secondary)
+            }.padding(.horizontal, 8).padding(.bottom, 20)
             if let error { Text(error).font(.callout).textSelection(.enabled).padding(12) }
             if loadedQuery != query {
                 ProgressView("正在查询额度历史").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if windows.isEmpty {
                 ContentUnavailableView("所选范围暂无额度观测", systemImage: "gauge.with.dots.needle.33percent",
-                    description: Text("可调整筛选或同步服务端。未观测的历史不会补造。"))
+                    description: Text("调整日期范围或同步后再查看。"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(windows) { window in
-                            WeeklyLimitRow(window: window, timezone: timezone)
-                            Divider()
+                Table(windows, selection: $selectedWindow) {
+                    TableColumn("额度周期") { window in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(UsageFormatting.timestamp(Double(window.startedAtInferred), timezone: timezone))
+                            Text("至 " + UsageFormatting.timestamp(Double(window.scheduledResetAt), timezone: timezone))
+                                .font(.caption).foregroundStyle(.secondary)
                         }
-                    }.padding(.horizontal, 16)
-                }
+                    }.width(min: 170, ideal: 210)
+                    TableColumn("最后观测") { window in
+                        Text(window.lastUsedPercent.map { $0.formatted() + "%" } ?? "—")
+                    }.width(min: 85, ideal: 100)
+                    TableColumn("观测峰值") { window in Text(window.peakUsedPercent.formatted() + "%") }
+                        .width(min: 85, ideal: 100)
+                    TableColumn("Tokens") { window in TokenText(value: window.totalTokens) }.width(min: 90, ideal: 110)
+                    TableColumn("预估费用") { window in Text(UsageFormatting.money(window.knownAmountNanoUSD)) }
+                        .width(min: 100, ideal: 125)
+                }.tableStyle(.inset(alternatesRowBackgrounds: false)).monospacedDigit().scrollContentBackground(.hidden)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
             }
             Divider()
             HStack {
@@ -94,22 +80,32 @@ struct LimitsView: View {
                 Button("下一页") { page += 1 }.disabled(!hasMore || loadedQuery != query)
             }.padding(12)
         }
+        .padding(24)
+        .inspector(isPresented: Binding(get: { selectedWindow != nil }, set: { if !$0 { selectedWindow = nil } })) {
+            if loadedQuery == query, let window = windows.first(where: { $0.id == selectedWindow }) {
+                ScrollView { WeeklyLimitRow(window: window, timezone: timezone).padding(18) }
+                    .inspectorColumnWidth(min: 300, ideal: 340, max: 400)
+            }
+        }
         .task(id: request) {
             do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
             guard let store = app.store else { return }
             let current = query
-            loading = true; error = nil
+            loading = loadedQuery != current; error = nil
             do {
                 let result = try await Task.detached(priority: .userInitiated) { try store.weeklyLimitHistory(current) }.value
                 guard !Task.isCancelled else { return }
-                windows = result.rows; hasMore = result.hasMore; excludedObservations = result.excludedObservations
+                if windows != result.rows { windows = result.rows }
+                if hasMore != result.hasMore { hasMore = result.hasMore }
+                if excludedObservations != result.excludedObservations { excludedObservations = result.excludedObservations }
             } catch {
                 guard !Task.isCancelled else { return }
                 windows = []; hasMore = false; self.error = error.localizedDescription
             }
             loadedQuery = current; loading = false
         }
-        .onChange(of: criteria) { page = 0 }
+        .onChange(of: criteria) { page = 0; selectedWindow = nil }
+        .onChange(of: page) { selectedWindow = nil }
         .onChange(of: period) { if period == .custom { filtersPresented = true } }
     }
 
@@ -135,10 +131,9 @@ private struct WeeklyLimitRow: View {
     let timezone: TimeZone
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            VStack(alignment: .leading, spacing: 8) {
                 Text(window.limitID).fontWeight(.medium)
                 Text("窗口起算（推算）：\(UsageFormatting.timestamp(Double(window.startedAtInferred), timezone: timezone))")
-                Spacer()
                 Text("最后观测：\(window.lastUsedPercent.map { $0.formatted() + "%" } ?? "同刻冲突")").monospacedDigit()
             }
             Text("\(window.accountID ?? (window.scopeKey == "all" ? "全部账号的窗口证据" : "未知账号")) · 观测最高 \(window.peakUsedPercent.formatted())% · \(window.observationCount) 条观测")
@@ -152,7 +147,7 @@ private struct WeeklyLimitRow: View {
                 Text("明确账号的额度归零观测：\(UsageFormatting.timestamp(recovery, timezone: timezone))（不等于窗口起算）")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            HStack {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("本地 Tokens：\(UsageFormatting.tokens(window.totalTokens))")
                 Text("已知金额：\(UsageFormatting.money(window.knownAmountNanoUSD ?? window.amountNanoUSD))")
                 Text("未定价 Tokens：\(UsageFormatting.tokens(window.unpricedTokens))")
@@ -160,6 +155,8 @@ private struct WeeklyLimitRow: View {
             DisclosureGroup("统计证据") {
                 Text(window.sourceJSON).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
             }
-        }.padding(.vertical, 10)
+            Text("起算时间由稳定截止减七天推算；跨界轮次按开始时间归属，不代表额度实际扣费。")
+                .font(.caption).foregroundStyle(.secondary)
+        }.padding(.vertical, 10).textSelection(.enabled)
     }
 }

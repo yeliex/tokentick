@@ -1,177 +1,132 @@
 import TokenTickCore
 import SwiftUI
 
-struct ContentView: View {
-    @Environment(ApplicationModel.self) private var app
-    @SceneStorage("navigation.selection") private var selectedSection = NavigationSection.overview.rawValue
-    @State private var period = UsagePeriod.month
-    @State private var dashboard = DashboardModel()
-    @State private var page = 0
-    @State private var selectedRow: String?
-    @State private var filters = UsageFilters()
-    @State private var sort = UsageSort.automatic
-    @State private var customFrom = Date()
-    @State private var customThrough = Date()
-    @State private var showingFilters = false
-
-    private var section: NavigationSection { NavigationSection(rawValue: selectedSection) ?? .overview }
-    private var timezone: TimeZone { TimeZone(identifier: app.status?.timezone ?? "UTC") ?? .gmt }
-    private var isUsage: Bool { section != .data && section != .limits }
-    private var query: UsageQuery {
-        let style = Date.ISO8601FormatStyle(timeZone: timezone).year().month().day().dateSeparator(.dash)
-        let dates = period == .custom ? (customFrom.formatted(style), customThrough.formatted(style)) : period.dates(timezone: timezone)
-        return UsageQuery(grouping: section == .threads ? .thread : section == .projects ? .project : .day,
-            timezone: timezone.identifier, fromDate: isUsage ? dates.0 : nil, throughDate: isUsage ? dates.1 : nil,
-            limit: 100, offset: page * 100, filters: isUsage ? filters : UsageFilters(), sort: sort)
-    }
-    private struct Request: Hashable {
-        let section: String
-        let query: UsageQuery
-        let refresh: Int
-    }
-    private var request: Request { Request(section: selectedSection, query: query, refresh: app.refreshID) }
-    private var selection: Binding<NavigationSection?> {
-        Binding(get: { section }, set: { if let value = $0 { selectedSection = value.rawValue } })
-    }
-
-    var body: some View {
-        NavigationSplitView {
-            List(selection: selection) {
-                Section("用量") {
-                    ForEach([NavigationSection.overview, .daily, .threads, .projects]) { item in
-                        Label(item.title, systemImage: item.symbol).tag(item)
-                    }
-                }
-                Section("记录") {
-                    ForEach([NavigationSection.limits, .data]) { item in
-                        Label(item.title, systemImage: item.symbol).tag(item)
-                    }
-                }
-            }
-            .listStyle(.sidebar)
-            .navigationTitle(ApplicationInfo.name)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 260)
-        } detail: {
-            VStack(spacing: 0) {
-                if app.isSyncing {
-                    HStack {
-                        ProgressView().controlSize(.small)
-                        Text(app.progressText).font(.callout)
-                        Spacer()
-                        if app.progress?.stage != .statistics {
-                            Button("取消") { app.cancelSync() }.buttonStyle(.borderless)
-                        }
-                    }.padding(12)
-                    Divider()
-                }
-                if let error = (section == .limits ? nil : dashboard.error) ?? app.error {
-                    Label(error, systemImage: "exclamationmark.triangle").font(.callout)
-                        .foregroundStyle(.secondary).textSelection(.enabled).padding(12)
-                }
-                if isUsage {
-                    HStack {
-                        Text("\(query.fromDate ?? "最早") — \(query.throughDate ?? "至今") · \(timezone.identifier)")
-                        if !filters.summary.isEmpty { Text(filters.summary).lineLimit(1).help(filters.summary) }
-                        Spacer()
-                        if !filters.isEmpty { Button("清除筛选") { filters = UsageFilters() }.buttonStyle(.borderless) }
-                    }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16).padding(.vertical, 8)
-                    Divider()
-                }
-                content
-            }
-            .navigationTitle(section.title)
-            .toolbar {
-                if isUsage {
-                    Picker("日期范围", selection: $period) {
-                        ForEach(UsagePeriod.allCases) { Text($0.rawValue).tag($0) }
-                    }.frame(width: 130).accessibilityLabel("日期范围")
-                    TextField("搜索任务标题或 ID", text: $filters.search)
-                        .textFieldStyle(.roundedBorder).frame(width: 180)
-                    Button { showingFilters.toggle() } label: { Label("筛选", systemImage: "line.3.horizontal.decrease") }
-                        .popover(isPresented: $showingFilters) {
-                            UsageFilterControls(filters: $filters, period: $period, from: $customFrom,
-                                through: $customThrough, timezone: timezone)
-                        }
-                    Picker("排序", selection: $sort) {
-                        ForEach(UsageSort.allCases, id: \.self) { Text($0.title).tag($0) }
-                    }.frame(width: 155).accessibilityLabel("排序")
-                }
-                Button { app.synchronize() } label: { Label("同步", systemImage: "arrow.triangle.2.circlepath") }
-                    .disabled(app.isSyncing || app.store == nil).keyboardShortcut("r")
-            }
-            .overlay(alignment: .topTrailing) {
-                if section != .limits && dashboard.loading { ProgressView().controlSize(.small).padding(12).allowsHitTesting(false) }
-            }
-        }
-        .inspector(isPresented: Binding(get: { selectedRow != nil }, set: { if !$0 { selectedRow = nil } })) {
-            if dashboard.loadedQuery == query && dashboard.loadedSection == section, let row = dashboard.rows.first(where: { $0.id == selectedRow }) {
-                UsageSummaryInspector(row: row, query: query.focused(on: query.grouping, value: row.summary.group), scope: .all) { target, focused in
-                    filters = focused.filters
-                    selectedSection = target.rawValue
-                    selectedRow = nil; page = 0
-                }
-                .id(request.query.focused(on: query.grouping, value: row.summary.group))
-                .inspectorColumnWidth(min: 280, ideal: 320, max: 380)
-            }
-        }
-        .frame(minWidth: 860, minHeight: 580)
-        .task { await app.start() }
-        .task(id: request) {
-            // 输入期间取消尚未开始的查询，避免每个按键都聚合历史事实。
-            do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
-            guard section != .limits, let store = app.store else { return }
-            await dashboard.load(store: store, section: section, query: query)
-        }
-        .onChange(of: selectedSection) { page = 0; selectedRow = nil }
-        .onChange(of: period) {
-            page = 0; selectedRow = nil
-            if period == .custom { showingFilters = true }
-        }
-        .onChange(of: filters) { page = 0; selectedRow = nil }
-        .onChange(of: sort) { page = 0; selectedRow = nil }
-        .onChange(of: customFrom) { page = 0; selectedRow = nil }
-        .onChange(of: customThrough) { page = 0; selectedRow = nil }
-    }
-
-    @ViewBuilder private var content: some View {
-        if app.store == nil {
-            ContentUnavailableView {
-                Label(app.error == nil ? "正在打开数据库" : "无法打开数据库", systemImage: "externaldrive")
-            } actions: {
-                if app.error != nil { Button("重试") { Task { await app.start() } } }
-            }
-        } else if section == .limits {
-            LimitsView()
-        } else if dashboard.loadedQuery != query || dashboard.loadedSection != section {
-            ProgressView("正在查询用量").frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if section == .data {
-            DataStatusView(days: dashboard.apiDays, models: dashboard.models)
-        } else if dashboard.total == nil && !dashboard.loading {
-            ContentUnavailableView("所选范围暂无用量", systemImage: section.symbol,
-                                   description: Text("同步本地日志，或选择其他日期范围。"))
-        } else if section == .overview {
-            OverviewView(model: dashboard, timezone: timezone.identifier) { grouping, value in
-                filters = query.focused(on: grouping, value: value).filters
-                selectedSection = NavigationSection.threads.rawValue
-            }
-        } else {
-            VStack(spacing: 0) {
-                HStack {
-                    Text(app.status?.timezone ?? "UTC").foregroundStyle(.secondary)
-                    Spacer()
-                    Text("\(UsageFormatting.tokens(dashboard.total?.totalTokens)) tokens").monospacedDigit()
-                        .help(UsageFormatting.exactTokens(dashboard.total?.totalTokens))
-                }.font(.callout).padding(16)
-                if section == .daily {
-                    UsageTrendView(days: dashboard.days) { date in
-                        filters = query.focused(on: .day, value: date).filters
-                        selectedSection = NavigationSection.threads.rawValue
-                    }.padding(.horizontal, 24).padding(.bottom, 18)
-                }
-                UsageTableView(rows: dashboard.rows, isThread: section == .threads, hasMore: dashboard.hasMore, selection: $selectedRow, page: $page)
-            }
+private enum AppPage: String, CaseIterable, Identifiable {
+    case overview = "总览", usage = "用量明细", limits = "套餐用量"
+    var id: Self { self }
+    var symbol: String {
+        switch self {
+        case .overview: "chart.pie"
+        case .usage: "tablecells"
+        case .limits: "gauge.with.dots.needle.33percent"
         }
     }
 }
 
+struct ContentView: View {
+    @Environment(\.colorScheme) private var scheme
+    @Environment(ApplicationModel.self) private var app
+    @Environment(\.openSettings) private var openSettings
+    @SceneStorage("main.page") private var selectedPage = AppPage.overview.rawValue
+    @State private var showingSync = false
+    @State private var detailRequest: UsageQuery?
+    @State private var usageState = UsageDetailsState()
+    private var page: AppPage { AppPage(rawValue: selectedPage) ?? .overview }
+    var body: some View {
+        NavigationSplitView {
+            VStack(alignment: .leading, spacing: 28) {
+                HStack(spacing: 10) {
+                    Image("BrandIcon").resizable().frame(width: 30, height: 30)
+                    Text("TokenTick").font(.system(size: 18, weight: .semibold))
+                }.padding(.horizontal, 12).padding(.top, 18)
+                VStack(spacing: 6) {
+                    ForEach(AppPage.allCases) { item in
+                        Button { selectedPage = item.rawValue } label: {
+                            Label(item.rawValue, systemImage: item.symbol)
+                                .font(.system(size: 14, weight: page == item ? .semibold : .medium))
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                                .background(page == item ? Color.primary.opacity(0.08) : .clear,
+                                            in: RoundedRectangle(cornerRadius: 12))
+                        }.buttonStyle(.plain).accessibilityAddTraits(page == item ? .isSelected : [])
+                    }
+                }
+                Spacer()
+                SettingsLink { Label("设置", systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading).padding(12) }
+                    .buttonStyle(.plain)
+            }.padding(14)
+            .navigationSplitViewColumnWidth(min: 185, ideal: 210, max: 250)
+        } detail: {
+            VStack(spacing: 0) {
+                if app.store == nil {
+                    ContentUnavailableView {
+                        Label(app.error == nil ? "正在打开数据库" : "无法打开数据库", systemImage: "externaldrive")
+                    } actions: {
+                        if app.error != nil { Button("重试") { Task { await app.start() } } }
+                    }
+                } else {
+                    switch page {
+                    case .overview:
+                        OverviewView { query in detailRequest = query; selectedPage = AppPage.usage.rawValue }
+                    case .usage: UsageDetailsView(initialQuery: $detailRequest, state: usageState)
+                    case .limits: LimitsView()
+                    }
+                }
+            }
+            .background(scheme == .dark ? Color.black.opacity(0.5) : Color.white.opacity(0.2))
+            .navigationTitle(page.rawValue)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        Text(syncTime(now: context.date)).font(.caption).foregroundStyle(.secondary)
+                            .help(UsageFormatting.timestamp(app.lastSync?.finishedAt))
+                    }
+                }.sharedBackgroundVisibility(.hidden)
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        if app.isSyncing || app.error != nil || !(app.lastSync?.issues.isEmpty ?? true) { showingSync = true }
+                        else { app.synchronize() }
+                    } label: {
+                        ZStack {
+                            Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 14, weight: .medium)).opacity(app.isSyncing ? 0 : 1)
+                            if app.isSyncing { ProgressView().controlSize(.small) }
+                        }.frame(width: 28, height: 28).accessibilityLabel("刷新")
+                    }.popover(isPresented: $showingSync) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("同步").font(.headline)
+                            if let finished = app.lastSync?.finishedAt {
+                                LabeledContent("上次同步", value: UsageFormatting.timestamp(finished))
+                            }
+                            if app.isSyncing {
+                                Text(app.progressText).foregroundStyle(.secondary)
+                                if app.progress?.stage != .statistics { Button("取消同步") { app.cancelSync() } }
+                            }
+                            if let error = app.error { Text(error).foregroundStyle(.secondary) }
+                            if let issues = app.lastSync?.issues, !issues.isEmpty {
+                                Text("\(issues.count) 项同步问题").foregroundStyle(.secondary)
+                            }
+                            if !app.isSyncing { Button("重新同步") { showingSync = false; app.synchronize() } }
+                            Button("查看数据状态") { showingSync = false; app.settingsSection = "数据状态"; openSettings() }
+                        }.padding(22).frame(width: 320)
+                    }
+                    .disabled(app.store == nil).keyboardShortcut("r")
+                }
+            }
+        }
+        .containerBackground(.thinMaterial, for: .window)
+        .tint(.primary)
+        .frame(minWidth: 940, minHeight: 640)
+        .task { await app.start() }
+    }
+    private func syncTime(now: Date) -> String {
+        guard let finished = app.lastSync?.finishedAt else { return "尚未同步" }
+        let minutes = max(0, Int((now.timeIntervalSince1970 - finished) / 60))
+        if minutes == 0 { return "上次同步 刚刚" }
+        if minutes < 60 { return "上次同步 \(minutes) 分钟前" }
+        if minutes < 1440 { return "上次同步 \(minutes / 60) 小时前" }
+        return "上次同步 \(minutes / 1440) 天前"
+    }
+
+}
+
 #Preview { ContentView().environment(ApplicationModel()) }
+
+struct LumaSurface: ViewModifier {
+    @Environment(\.colorScheme) private var scheme
+    func body(content: Content) -> some View {
+        content.padding(24)
+            .background(scheme == .dark ? Color.white.opacity(0.045) : Color.white.opacity(0.68),
+                        in: RoundedRectangle(cornerRadius: 22))
+            .overlay { RoundedRectangle(cornerRadius: 22).strokeBorder(Color.primary.opacity(0.055)).allowsHitTesting(false) }
+            .shadow(color: .black.opacity(scheme == .dark ? 0.09 : 0.025), radius: 12, y: 4)
+    }
+}

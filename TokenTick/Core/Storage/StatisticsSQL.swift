@@ -55,9 +55,9 @@ enum StatisticsSQL {
     /// 先在 SQLite 中合并同日、同任务、同模型的用量分项，再展开四个维度，避免放大全部明细。
     static var aggregate: String { aggregate(predicate: "1") }
 
-    static func aggregate(predicate: String) -> String { """
+    static func aggregate(predicate: String, dateExpression: String? = nil) -> String { """
         WITH facts AS (
-            SELECT \(dayExpression) AS day,
+            SELECT \(dateExpression ?? dayExpression) AS day,
                 u.account_id, u.thread_id, t.project_name, u.model, u.total_tokens,
                 u.input_tokens, u.output_tokens, u.cache_read_tokens, u.cache_write_tokens, u.reasoning_tokens,
                 u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount,

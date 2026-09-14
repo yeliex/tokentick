@@ -15,8 +15,14 @@ public struct UsageFilters: Sendable, Equatable, Hashable {
     public var model: UsageValueFilter = .all
     public var day: UsageValueFilter = .all
     public var search = ""
+    /// 精确滚动范围采用左闭右开边界；不将只有日期的历史记录猜测到某个时刻。
+    public var occurredFrom: Double?
+    public var occurredBefore: Double?
     public init() {}
-    public var isEmpty: Bool { thread == .all && project == .all && model == .all && day == .all && search.isEmpty }
+    public var isEmpty: Bool {
+        thread == .all && project == .all && model == .all && day == .all && search.isEmpty
+            && occurredFrom == nil && occurredBefore == nil
+    }
 }
 
 public enum UsageSort: String, Sendable, CaseIterable {
@@ -75,6 +81,12 @@ public struct UsageQuery: Sendable, Hashable {
 
     func validate() throws {
         guard (1...10_000).contains(limit), offset >= 0 else { throw UsageQueryError.invalidPagination }
+        for timestamp in [filters.occurredFrom, filters.occurredBefore].compactMap({ $0 }) {
+            guard timestamp.isFinite else { throw UsageQueryError.invalidRange }
+        }
+        if let from = filters.occurredFrom, let before = filters.occurredBefore, from >= before {
+            throw UsageQueryError.invalidRange
+        }
         let focusedDate: String? = if case .value(let date) = filters.day { date } else { nil }
         for date in [fromDate, throughDate, focusedDate].compactMap({ $0 }) {
             guard let parsed = DateParsing.parseTimestamp(date + "T00:00:00Z"),

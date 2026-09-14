@@ -5,6 +5,46 @@
 	"objectVersion" = "56";
 	"archiveVersion" = "1";
 	"objects" = {
+		"0BFFF1C249F1AE32AAED9616" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "TokenTick/UI/UsageDetailsView.swift";
+			"sourceTree" = "<group>";
+		};
+		"8243D276881AFF2F0C3B8780" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "0BFFF1C249F1AE32AAED9616";
+		};
+		"5E04063F6B044BDC4F4869F1" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "TokenTick/UI/CurrentLimitsView.swift";
+			"sourceTree" = "<group>";
+		};
+		"A5077C071927F890C4537C32" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "5E04063F6B044BDC4F4869F1";
+		};
+		"8A3F357787FB01C35ACE25F6" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "TokenTick/UI/OverviewChartsView.swift";
+			"sourceTree" = "<group>";
+		};
+		"8C201586ED70116E47042557" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "8A3F357787FB01C35ACE25F6";
+		};
+		"E63A6DE30A98D855FA167F2C" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "TokenTick/UI/SettingsView.swift";
+			"sourceTree" = "<group>";
+		};
+		"70B1D599F03C479E45144952" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "E63A6DE30A98D855FA167F2C";
+		};
 		"739E83C01C9D47EAAF16F6A2" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -105,16 +145,6 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "24B60AB934D3663FE0D00C41";
 		};
-		"DF0DB0E9F4EDDCC819528FA7" = {
-			"isa" = "PBXFileReference";
-			"lastKnownFileType" = "sourcecode.swift";
-			"path" = "TokenTick/UI/UsageTrendView.swift";
-			"sourceTree" = "<group>";
-		};
-		"849B4C1EC3DBA607206C3B9F" = {
-			"isa" = "PBXBuildFile";
-			"fileRef" = "DF0DB0E9F4EDDCC819528FA7";
-		};
 		"98F54143AB4E86B28C3AFEE0" = {
 			"buildConfigurationList" = "862894B703A6DEDF96A9DD6C";
 			"targets" = (
@@ -154,6 +184,10 @@
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
 			"files" = (
+				"8243D276881AFF2F0C3B8780",
+				"A5077C071927F890C4537C32",
+				"8C201586ED70116E47042557",
+				"70B1D599F03C479E45144952",
 				"12F57F06E90963792A0B7A4F",
 				"2D82C6F909FB45BBA6FF9C4A",
 				"13C51972095142E1BCBC77C6",
@@ -164,7 +198,6 @@
 				"F563C223AF62ADE588400AA8",
 				"9B31CBE2D4230EDD3D9BF455",
 				"2F0B8EA3395354A8F9C1DE6D",
-				"849B4C1EC3DBA607206C3B9F",
 				"FE6DC7327F91075C0E3A2C9E",
 				"6476FB7C6A9B85DB7301FA46",
 				"6C7F8F2F637C336E0295D1B6",
@@ -240,7 +273,7 @@
 			"fileRef" = "604D840CD278C1BE6E43B5DB";
 		};
 		"338913A77F2AD96050B0B9CF" = {
-			"path" = "TokenTick/UI/SettingsView.swift";
+			"path" = "TokenTick/UI/StorageSettingsView.swift";
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
 			"sourceTree" = "<group>";
@@ -421,6 +454,10 @@
 			"isa" = "PBXGroup";
 			"name" = "UI";
 			"children" = (
+				"0BFFF1C249F1AE32AAED9616",
+				"5E04063F6B044BDC4F4869F1",
+				"8A3F357787FB01C35ACE25F6",
+				"E63A6DE30A98D855FA167F2C",
 				"958778895F030AAA42825BFF",
 				"739E83C01C9D47EAAF16F6A2",
 				"56C58CD9D77B4D37A8637BA1",
@@ -431,7 +468,6 @@
 				"ADB97143275898ACC50A191D",
 				"F745080864E33E41A42BB2AD",
 				"24B60AB934D3663FE0D00C41",
-				"DF0DB0E9F4EDDCC819528FA7",
 				"617600C445CBC20BF2424190",
 				"CB9423DA37914B9492C90220",
 				"348E469623AC8A6F45B73938",

@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-public struct ThreadInfo: Sendable {
+public struct ThreadInfo: Sendable, Equatable {
     public let id: String
     public let title: String?
     public let projectName: String?

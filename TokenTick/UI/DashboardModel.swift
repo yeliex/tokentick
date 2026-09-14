@@ -17,7 +17,7 @@ enum UsagePeriod: String, CaseIterable, Identifiable {
     }
 }
 
-struct UsageDisplayRow: Identifiable, Sendable {
+struct UsageDisplayRow: Identifiable, Sendable, Equatable {
     let summary: UsageSummary
     let thread: ThreadInfo?
     let grouping: UsageGrouping
@@ -44,7 +44,7 @@ final class DashboardModel {
     func load(store: UsageStore, section: NavigationSection, query: UsageQuery) async {
         generation += 1
         let request = generation
-        loading = true
+        loading = loadedQuery != query || loadedSection != section
         error = nil
         do {
             let result = try await Task.detached(priority: .userInitiated) {
@@ -70,7 +70,11 @@ final class DashboardModel {
                         section == .data ? try store.apiDailyUsage(limit: 30) : [], report.hasMore)
             }.value
             guard request == generation, !Task.isCancelled else { return }
-            rows = result.0; total = result.1; days = result.2; models = result.3; projects = result.4
+            if rows != result.0 { rows = result.0 }
+            if total != result.1 { total = result.1 }
+            if days != result.2 { days = result.2 }
+            if models != result.3 { models = result.3 }
+            if projects != result.4 { projects = result.4 }
             loadedQuery = query; loadedSection = section
             unknownDateTokens = result.5; apiDays = result.6; hasMore = result.7
         } catch {

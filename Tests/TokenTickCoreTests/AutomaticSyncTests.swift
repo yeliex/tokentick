@@ -5,6 +5,24 @@ import Testing
 @testable import TokenTickCore
 
 struct AutomaticSyncTests {
+    @Test func freshLogsDeferRemoteUntilQuietOrThirtyMinuteDeadline() {
+        let start = Date(timeIntervalSince1970: 1000)
+        var schedule = AutomaticSyncSchedule(now: start)
+        schedule.started(.all, now: start)
+        schedule.acceptedLog(observedAt: start.addingTimeInterval(200), now: start.addingTimeInterval(200))
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(300)) == nil)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(499)) == nil)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(500)) == .remote)
+        schedule = AutomaticSyncSchedule(now: start)
+        schedule.started(.all, now: start)
+        for second in stride(from: 200, through: 1600, by: 200) {
+            let now = start.addingTimeInterval(Double(second))
+            schedule.acceptedLog(observedAt: now, now: now)
+            #expect(schedule.takeDueScope(now: now) == nil)
+        }
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(1800)) == .all)
+    }
+
     @Test func startupBurstsPeriodicChecksAndRecoveryStayThrottled() {
         let start = Date(timeIntervalSince1970: 1_000)
         var schedule = AutomaticSyncSchedule(now: start)
