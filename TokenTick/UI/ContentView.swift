@@ -37,11 +37,16 @@ struct ContentView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                                 .background(page == item ? Color.primary.opacity(0.08) : .clear,
                                             in: RoundedRectangle(cornerRadius: 12))
+                                .contentShape(Rectangle())
                         }.buttonStyle(.plain).accessibilityAddTraits(page == item ? .isSelected : [])
                     }
                 }
                 Spacer()
-                SettingsLink { Label("设置", systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading).padding(12) }
+                SettingsLink {
+                    Label("设置", systemImage: "gearshape")
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                        .contentShape(Rectangle())
+                }
                     .buttonStyle(.plain)
             }.padding(14)
             .navigationSplitViewColumnWidth(min: 185, ideal: 210, max: 250)

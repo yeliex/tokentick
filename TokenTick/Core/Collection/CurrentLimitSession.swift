@@ -62,7 +62,7 @@ public struct CurrentLimitSession: Sendable {
             source: "local", scopeKey: current.scopeKey, windows: windows, sourceJSON: value.sourceJSON)
         merged.planType = value.planType ?? current.planType
         merged.availableResets = current.availableResets
-        merged.resetCreditExpiresAt = current.resetCreditExpiresAt
+        merged.resetCreditExpirations = current.resetCreditExpirations
         merged.creditsBalance = value.creditsBalance ?? current.creditsBalance
         merged.unlimitedCredits = value.unlimitedCredits ?? current.unlimitedCredits
         merged.fileName = value.fileName

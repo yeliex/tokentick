@@ -4,7 +4,7 @@ import TokenTickCore
 
 @MainActor @Observable
 final class ApplicationModel {
-    @ObservationIgnored private(set) var store: UsageStore?
+    private(set) var store: UsageStore?
     @ObservationIgnored private var syncTask: Task<Void, Never>?
     @ObservationIgnored private var automatic: AutomaticSyncController?
     private var started = false

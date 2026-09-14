@@ -60,7 +60,7 @@ struct UsageSummaryInspector: View {
                 UsageDetailField("输出", value: UsageFormatting.tokens(row.summary.outputTokens)).help(UsageFormatting.exactTokens(row.summary.outputTokens))
                 UsageDetailField("思考", value: UsageFormatting.tokens(row.summary.reasoningOutputTokens)).help(UsageFormatting.exactTokens(row.summary.reasoningOutputTokens))
             }
-            Section("已知金额 · USD") {
+            Section("已知金额") {
                 UsageDetailField("输入", value: UsageFormatting.money(row.summary.inputAmountNanoUSD))
                 UsageDetailField("缓存读取", value: UsageFormatting.money(row.summary.cacheReadAmountNanoUSD))
                 UsageDetailField("缓存写入", value: UsageFormatting.money(row.summary.cacheWriteAmountNanoUSD))

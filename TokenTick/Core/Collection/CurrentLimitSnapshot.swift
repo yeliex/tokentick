@@ -9,7 +9,7 @@ public struct CurrentLimitSnapshot: Codable, Sendable {
     public let sourceJSON: String
     public var planType: String? = nil
     public var availableResets: Int64? = nil
-    public var resetCreditExpiresAt: Int64? = nil
+    public var resetCreditExpirations: [Int64?]? = nil
     public var creditsBalance: String? = nil
     public var unlimitedCredits: Bool? = nil
     public var fileName: String? = nil
@@ -55,13 +55,13 @@ public struct CurrentLimitSnapshot: Codable, Sendable {
            let count = resets["availableCount"] as? Int64, count >= 0 {
             result.availableResets = count
             if count > 0, let credits = resets["credits"] as? [[String: Any]] {
-                // 明细可能少于 availableCount，仅保存已返回的可用重置中最近的到期时间。
-                result.resetCreditExpiresAt = credits.compactMap { credit -> Int64? in
+                // 明细可能少于总次数；保留每次重置的到期时间，nil 表示接口明确返回永不过期。
+                result.resetCreditExpirations = credits.filter { credit in
                     guard credit["status"] as? String == "available",
-                          credit["resetType"] as? String == "codexRateLimits",
-                          let expires = credit["expiresAt"] as? Int64, Double(expires) > observedAt else { return nil }
-                    return expires
-                }.min()
+                          credit["resetType"] as? String == "codexRateLimits" else { return false }
+                    return credit["expiresAt"] is NSNull
+                        || (credit["expiresAt"] as? Int64).map { Double($0) > observedAt } == true
+                }.map { $0["expiresAt"] as? Int64 }.sorted { ($0 ?? .max) < ($1 ?? .max) }
             }
         }
         if let credits = main?["credits"] as? [String: Any] {

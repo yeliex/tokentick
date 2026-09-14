@@ -40,7 +40,7 @@ struct OverviewChartsView: View {
                 Text("用量趋势").font(.headline)
                 Spacer()
                 Label("Tokens", systemImage: "square.fill").foregroundStyle(tokenColor)
-                Label("金额 · USD", systemImage: "line.diagonal").foregroundStyle(moneyColor)
+                Label("金额", systemImage: "line.diagonal").foregroundStyle(moneyColor)
             }.font(.caption)
             if points.isEmpty {
                 ContentUnavailableView("暂无用量", systemImage: "chart.bar").frame(height: 240)
@@ -48,7 +48,7 @@ struct OverviewChartsView: View {
                 HStack {
                     if let selected {
                         Text("\(UsageFormatting.timestamp(selected.date.timeIntervalSince1970, timezone: calendar.timeZone)) · \(UsageFormatting.tokens(selected.summary.totalTokens)) Tokens · \(UsageFormatting.money(selected.summary.knownAmountNanoUSD))")
-                    } else { Text("Tokens / USD").foregroundStyle(.secondary) }
+                    } else { Text("Tokens / $").foregroundStyle(.secondary) }
                 }.font(.caption).monospacedDigit().frame(height: 18)
                 Chart {
                     RuleMark(y: .value("平均 Tokens", tokenMean))
@@ -185,7 +185,7 @@ struct ModelUsageView: View {
                 }.frame(width: 170, height: 170)
                 VStack(spacing: 5) {
                     HStack {
-                        Text("模型"); Spacer(); Text("金额 · USD").frame(width: 100, alignment: .trailing)
+                        Text("模型"); Spacer(); Text("金额").frame(width: 100, alignment: .trailing)
                         Text("Tokens").frame(width: 95, alignment: .trailing)
                     }.font(.caption).foregroundStyle(.secondary)
                     ForEach(Array(models.enumerated()), id: \.offset) { index, model in

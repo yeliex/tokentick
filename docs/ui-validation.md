@@ -68,3 +68,14 @@
 ### 日志额度优先
 
 已接入扫描结果到当前额度会话，按时间和窗口边界合并，并由完整主额度日志延后远端同步（日志后 5 分钟、API 开始后最多 30 分钟）。本次 CurrentLimitSession、AutomaticSync 和 LimitForecast 定向测试 21 项通过，追加的部分窗口合并测试所在 CurrentLimitSession 全部 8 项通过；macOS Debug 构建通过，diff 检查通过。日志：`.build/log-limits-tests.log`、`.build/log-limits-merge-tests.log`、`.build/log-limits-build.log`。本次未通过等待 30 分钟的真实网络抓取验证请求数量；频率验证来自可控时间的调度测试。
+
+
+### 双主额度卡片与重置明细
+
+5 小时移除刻度，周额度保留刻度；24 小时内的重置改为今天／明天的具体时间。全部已返回的有效重置到期时间在同一行显示（支持横向滚动），credits 移入主额度卡片。CurrentLimitSession 8 项测试通过，Debug 构建通过。使用独立临时数据库和临时编译的 SwiftUI 预览展示 5 小时 28%、每周 62%、3 个不同重置到期时间和 credits；已通过 Computer Use 核验截图 `.build/quota-five-hour-preview.png`。预览数据仅在预览产物中，临时源码已恢复，不写入真实用量数据库。当时使用标记为“布局预览”的独立预览构建，验证后已恢复正常数据启动。
+
+双周期紧凑布局已通过独立 SwiftUI 预览构建及 Computer Use 核验，5 小时和每周百分比右对齐、窗口间距 18pt；重置明细和 credits 使用一致的行内对齐。截图 `.build/quota-compact-preview.png` 使用示例数据，临时预览注入源码已恢复。侧边栏整行点击已在真实 App 的文字右侧留白实测切换成功。
+
+数据库打开状态修复：移除 ApplicationModel.store 的 ObservationIgnored，使连接就绪直接通知界面。使用独立空数据库且 TOKENTICK_AUTOSYNC=0 冷启动，无点击或切换页面即显示总览，Computer Use 已核验。空用量状态占满内容宽度并居中，仅保留图标和标题，移除说明；Debug 构建通过（.build/store-observation-build.log）。
+
+金额统一使用 $，删除重复 USD 标注；最新 Debug 构建通过（.build/currency-symbol-build.log）。

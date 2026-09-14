@@ -29,9 +29,9 @@ struct CurrentLimitSessionTests {
     @Test func resetExpiryUsesOnlyAvailableUnexpiredCodexCredits() throws {
         let json = #"{"rateLimits":{},"rateLimitResetCredits":{"availableCount":5,"credits":[{"status":"available","resetType":"codexRateLimits","expiresAt":5000},{"status":"available","resetType":"codexRateLimits","expiresAt":3000},{"status":"available","resetType":"codexRateLimits","expiresAt":null},{"status":"redeemed","resetType":"codexRateLimits","expiresAt":2000},{"status":"available","resetType":"unknown","expiresAt":1500},{"status":"available","resetType":"codexRateLimits","expiresAt":500}]}}"#
         let value = try CurrentLimitSnapshot.parse(Data(json.utf8), accountID: "a", observedAt: 1000, source: "api", scopeKey: "a")
-        #expect(value.availableResets == 5 && value.resetCreditExpiresAt == 3000)
+        #expect(value.availableResets == 5 && value.resetCreditExpirations == [3000, 5000, nil])
         let missing = try CurrentLimitSnapshot.parse(Data(#"{"rateLimits":{},"rateLimitResetCredits":{"availableCount":2,"credits":null}}"#.utf8), accountID: "a", observedAt: 1000, source: "api", scopeKey: "a")
-        #expect(missing.availableResets == 2 && missing.resetCreditExpiresAt == nil)
+        #expect(missing.availableResets == 2 && missing.resetCreditExpirations == nil)
     }
 
     @Test func invalidationRejectsOldRequestsEvenWhenAccountSwitchesBack() {
@@ -70,12 +70,14 @@ struct CurrentLimitSessionTests {
         var state = CurrentLimitSession()
         var api = snapshot("a")
         api.planType = "pro"; api.availableResets = 2; api.creditsBalance = "12.50"
+        api.resetCreditExpirations = [3000, 5000]
         state.acceptAPI(api, generation: 0, now: 1000)
         let accepted1 = state.acceptLog(snapshot(nil, time: 1100, source: "local"), generation: 0, now: 1101)
         #expect(accepted1)
         #expect(state.snapshot?.source == "local" && state.snapshot?.accountID == "a")
         #expect(state.snapshot?.planType == "pro" && state.snapshot?.availableResets == 2)
         #expect(state.snapshot?.creditsBalance == "12.50")
+        #expect(state.snapshot?.resetCreditExpirations == [3000, 5000])
         let accepted2 = state.acceptLog(snapshot(nil, time: 1100, source: "local"), generation: 0, now: 1101)
         #expect(!accepted2)
         let accepted3 = state.acceptAPI(snapshot("a", time: 1050), generation: 0, now: 1101)

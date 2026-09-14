@@ -120,13 +120,13 @@ private struct UsageRecordDetail: View {
                 UsageDetailField("输出", value: UsageFormatting.tokens(record.outputTokens)).help(UsageFormatting.exactTokens(record.outputTokens))
                 UsageDetailField("思考", value: UsageFormatting.tokens(record.reasoningTokens)).help(UsageFormatting.exactTokens(record.reasoningTokens))
             }
-            Section("实际费率 · USD / 百万 tokens") {
+            Section("实际费率 · $ / 百万 tokens") {
                 UsageDetailField("输入", value: record.inputPrice ?? "未知")
                 UsageDetailField("缓存读取", value: record.cacheReadPrice ?? "未知")
                 UsageDetailField("缓存写入", value: record.cacheWritePrice ?? "未知")
                 UsageDetailField("输出", value: record.outputPrice ?? "未知")
             }
-            Section("精确金额 · USD") {
+            Section("精确金额") {
                 UsageDetailField("输入", value: UsageFormatting.exactMoney(record.inputAmountNanoUSD))
                 UsageDetailField("缓存读取", value: UsageFormatting.exactMoney(record.cacheReadAmountNanoUSD))
                 UsageDetailField("缓存写入", value: UsageFormatting.exactMoney(record.cacheWriteAmountNanoUSD))

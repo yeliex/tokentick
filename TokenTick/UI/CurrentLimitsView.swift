@@ -27,14 +27,7 @@ struct CurrentLimitsView: View {
                                 extendedGroup(windows: groups[name] ?? [], now: context.date)
                             }
                         }
-                        HStack(spacing: 24) {
-                            if snapshot.unlimitedCredits == true { Text("Credits · 不限额") }
-                            else if let balance = snapshot.creditsBalance {
-                                Text("Credits · \(Decimal(string: balance, locale: Locale(identifier: "en_US_POSIX")).map { $0.formatted(.number.precision(.fractionLength(0...2))) } ?? balance)")
-                                    .help(balance)
-                            }
-                            Spacer()
-                        }.font(.caption).foregroundStyle(.secondary)
+
                     }
                 } else {
                     ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 100)
@@ -43,18 +36,37 @@ struct CurrentLimitsView: View {
         }
     }
     private func limitGroup(windows: [CurrentLimitWindow], snapshot: CurrentLimitSnapshot, now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: windows.count > 1 ? 18 : 24) {
             ForEach(windows.sorted { ($0.durationMinutes ?? 0) < ($1.durationMinutes ?? 0) }) { window in
-                limitWindow(window, now: now)
+                limitWindow(window, now: now, compact: windows.count > 1)
             }
-            if let count = snapshot.availableResets {
+            if snapshot.availableResets != nil || snapshot.creditsBalance != nil || snapshot.unlimitedCredits == true {
                 Divider()
-                HStack {
-                    Text("可用重置 \(count) 次")
-                    Spacer()
-                    if let expiry = snapshot.resetCreditExpiresAt, Double(expiry) > now.timeIntervalSince1970 {
-                        Text("最近到期 \(Date(timeIntervalSince1970: Double(expiry)).formatted(.dateTime.year().month().day().hour().minute()))")
-                            .help("接口已返回的可用重置中最早的到期时间；其余重置可能有不同有效期。")
+                VStack(alignment: .leading, spacing: 10) {
+                    if let count = snapshot.availableResets {
+                        HStack(alignment: .center, spacing: 8) {
+                            Text("可用重置").fixedSize()
+                            Text("\(count) 次").fixedSize()
+                            Spacer(minLength: 12)
+                            if let expirations = snapshot.resetCreditExpirations, !expirations.isEmpty {
+                                let dates = expirations.map { expiry in
+                                    expiry.map { Date(timeIntervalSince1970: Double($0)).formatted(.dateTime.month().day().hour().minute()) + " 到期" } ?? "永不过期"
+                                }.joined(separator: " · ")
+                                ScrollView(.horizontal) {
+                                    Text(dates).fixedSize().help(dates)
+                                }.scrollIndicators(.hidden).frame(height: 18)
+                            }
+                        }
+                    }
+                    if snapshot.unlimitedCredits == true || snapshot.creditsBalance != nil {
+                        HStack(alignment: .center, spacing: 8) {
+                            Text("Credits").fixedSize()
+                            if snapshot.unlimitedCredits == true { Text("不限额") }
+                            else if let balance = snapshot.creditsBalance {
+                                Text(Decimal(string: balance, locale: Locale(identifier: "en_US_POSIX")).map { $0.formatted(.number.precision(.fractionLength(0...2))) } ?? balance)
+                                    .help(balance)
+                            }
+                        }.frame(minHeight: 18)
                     }
                 }.font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
             }
@@ -72,7 +84,7 @@ struct CurrentLimitsView: View {
                             .foregroundStyle(.secondary)
                         Spacer()
                         if let reset = window.resetsAt {
-                            Text(Double(reset) <= now.timeIntervalSince1970 ? "等待重置" : "\(duration(Double(reset) - now.timeIntervalSince1970))后重置")
+                            Text(resetTime(reset, now: now))
                                 .foregroundStyle(.secondary)
                         }
                     }.font(.caption)
@@ -92,19 +104,28 @@ struct CurrentLimitsView: View {
                 }
         }.frame(height: 6)
     }
-    private func limitWindow(_ window: CurrentLimitWindow, now: Date) -> some View {
+    private func limitWindow(_ window: CurrentLimitWindow, now: Date, compact: Bool) -> some View {
         let forecast = app.limitSession.forecasts.forecast(for: window, now: now.timeIntervalSince1970)
         let expired = window.resetsAt.map { Double($0) <= now.timeIntervalSince1970 } ?? false
         return VStack(alignment: .leading, spacing: 12) {
-            Text(periodName(window)).font(.callout).foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline) {
+                Text(periodName(window)).font(.callout).foregroundStyle(.secondary)
+                if compact && !expired {
+                    Spacer()
+                    Text("\(showRemaining ? "剩余" : "已使用") \(displayPercent(window).formatted(.number.precision(.fractionLength(0...1))))%")
+                        .font(.system(size: 16, weight: .semibold)).monospacedDigit()
+                }
+            }
             if expired {
                 Text("等待额度重置").foregroundStyle(.secondary)
             } else {
+                if !compact {
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
                     Text("\(displayPercent(window).formatted(.number.precision(.fractionLength(0...1))))%")
                         .font(.system(size: 36, weight: .semibold, design: .rounded)).monospacedDigit()
                     Text(showRemaining ? "剩余" : "已使用").font(.caption).foregroundStyle(.secondary)
                     Spacer()
+                }
                 }
                 GeometryReader { geometry in
                     ZStack(alignment: .leading) {
@@ -119,14 +140,14 @@ struct CurrentLimitsView: View {
                         }
                     }
                 }.frame(height: 7).padding(.vertical, 3)
-                    .accessibilityLabel("\(showRemaining ? "剩余" : "已使用") \(displayPercent(window))%，含每日、50% 和 80% 刻度")
+                    .accessibilityLabel("\(showRemaining ? "剩余" : "已使用") \(displayPercent(window))%")
                 HStack {
                     if let difference = forecast.progressDifference {
                         Text("\(difference > 0 ? "超前" : "结余") \(abs(difference).formatted(.number.precision(.fractionLength(0...1))))%")
                     }
                     Spacer()
                     if let reset = window.resetsAt {
-                        Text("\(duration(Double(reset) - now.timeIntervalSince1970))后重置")
+                        Text(resetTime(reset, now: now))
                             .help(UsageFormatting.timestamp(Double(reset)))
                     }
                 }.font(.caption).foregroundStyle(.secondary)
@@ -140,6 +161,7 @@ struct CurrentLimitsView: View {
         showRemaining ? max(0, 100 - window.usedPercent) : window.usedPercent
     }
     private func ticks(_ window: CurrentLimitWindow) -> [Double] {
+        guard window.durationMinutes != 300 else { return [] }
         let days = min(90, Int((window.durationMinutes ?? 0) / 1440))
         let daily = days > 1 ? (1..<days).map { Double($0) * 100 / Double(days) } : []
         return Array(Set(daily + [50, 80])).sorted()
@@ -172,6 +194,16 @@ struct CurrentLimitsView: View {
             }
             return "预计重置时剩余 \((value.remainingAtReset ?? 0).formatted(.number.precision(.fractionLength(0...1))))%"
         }
+    }
+    private func resetTime(_ timestamp: Int64, now: Date) -> String {
+        let seconds = Double(timestamp) - now.timeIntervalSince1970
+        guard seconds > 0 else { return "等待重置" }
+        if seconds < 86400 {
+            let date = Date(timeIntervalSince1970: Double(timestamp))
+            let day = Calendar.current.isDate(date, inSameDayAs: now) ? "今天" : "明天"
+            return "\(day) \(date.formatted(.dateTime.hour().minute())) 重置"
+        }
+        return "\(duration(seconds))后重置"
     }
     private func duration(_ seconds: Double) -> String {
         let minutes = max(0, Int(seconds / 60))

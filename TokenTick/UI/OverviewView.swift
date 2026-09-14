@@ -44,7 +44,6 @@ struct OverviewView: View {
                             Text("预估费用").font(.callout).foregroundStyle(.secondary)
                                 .help("按模型公开 API 价格估算，不代表订阅账单。")
                             Text(UsageFormatting.money(total.knownAmountNanoUSD)).font(.system(size: 34, weight: .semibold)).monospacedDigit().textSelection(.enabled)
-                            Text("USD").font(.caption).foregroundStyle(.secondary)
                                 .help(total.unpricedRecords > 0 ? "\(UsageFormatting.tokens(total.unpricedTokens)) Tokens 尚未完整计价，金额仅包含已知部分。" : "金额已完整计价。")
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -91,7 +90,8 @@ struct OverviewView: View {
                         }
                     }.usageSurface()
                 } else {
-                    ContentUnavailableView("所选周期暂无用量", systemImage: "chart.bar", description: Text("同步本地日志，或切换其他周期。"))
+                    ContentUnavailableView("所选周期暂无用量", systemImage: "chart.bar")
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
             }.padding(32).frame(maxWidth: 1280).frame(maxWidth: .infinity)
         }
