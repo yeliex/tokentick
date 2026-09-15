@@ -321,3 +321,14 @@ usageFilterOptions 根据查询时区、日期和账号范围，从有效用量�
 `MenuUsageView` 查询今天、7／30／90 天摘要，今天与总览共用 `OverviewPeriod.day.query`。总览持久化选择值兼容旧的 `1 天`，显示统一为“当天”。菜单 30 天图表使用 `overviewReport(.month)` 的同一范围和日桶，Tokens 与金额按各自峰值映射到共享画布；缩放下限仅用于防止除零，标题峰值使用实际可用数据，缺失显示未知。
 
 菜单图表隐藏两个坐标轴，另用小字号展示起止日期。保留 Tokens 柱形、已知金额折线与两条平均虚线；平均值为范围内已知总量除以 `max(1, (end − start) / 86400)`，不是只除以有记录的日桶数。金额缺失处断开折线。hover 通过 ChartProxy 把绘图区横坐标映射到日期，并按统计时区匹配日桶；显示柱形高亮、竖向 RuleMark 与不参与布局及鼠标命中的浮层，鼠标离开或视图消失时清除选中状态。金额和 Tokens 浮层保留各自原始单位，不使用映射后的绘图值。
+
+
+### 单主窗口、快捷键与菜单栏数字（2026-09-15）
+
+主 scene 使用 `Window(..., id: "main")`，菜单及设置入口通过 `openWindow(id: "main")` 打开或复用同一主窗口。启动关闭系统自动 Tab。`TokenTickAppDelegate` 观察普通标题窗口的关闭和成为主窗口通知：关闭时若没有其他可见或最小化的普通窗口，将 activation policy 改为 `.accessory`；普通窗口重新成为主窗口时恢复 `.regular`。关闭最后窗口不退出进程。菜单弹层不作为普通主窗口参与这一判断。
+
+`CommandGroup(replacing: .saveItem)` 显式绑定 ⌘W，通过 `NSApp.keyWindow?.performClose(nil)` 关闭当前窗口。`MainWindowSettingsButton` 同时用于 App 设置命令和菜单弹层内不可见的快捷键按钮，绑定 ⌘,：先恢复 `.regular`，打开主窗口并激活 App，再通过主线程 Task 让出执行后调用 `openSettings()`。设置仍是独立 scene，不作为主页面加入 `AppPage`。⌘Q 使用退出命令，主窗口刷新按钮保留 ⌘R 和同步期间禁用规则；未增加全局按键监听。
+
+`MenuBarExtra` 标签直接使用 `Image(nsImage:)`。从主桶优先选七天窗口，按 `limitsShowRemaining` 转换，限制到 0～100 后四舍五入。101 张数字模板图片在首次使用时创建并缓存，尺寸 18×18 点；一至两位数字使用 7 点粗体等宽数字，三位使用 5.5 点，字距为 −0.45 点。模板图片随系统菜单栏着色。数字随额度或偏好导致的标签更新而变化，不另设标签计时器；重置边界的回退也在标签更新时判断。当前实现没有数字专用悬停百分比提示。
+
+早期标签使用嵌套 `TimelineView` 时，主线程采样持续停留在 `MenuBarExtraHost.requestUpdate`、`MenuBarExtraController.updateButton` 和状态栏按钮布局路径。修复改用直接图片标签与稳定缓存实例；不再在菜单栏标签内部维护周期视图。该结论针对本次 macOS 27 测试环境，其他系统版本尚未复验。
