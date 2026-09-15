@@ -167,7 +167,7 @@ private struct CLISettingsSection: View {
 
     private func install() {
         let manager = FileManager.default
-        let executable = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/tokentick")
+        let executable = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/tokentick")
         guard manager.isExecutableFile(atPath: executable.path) else {
             installationStatus = String(localized: "The bundled CLI is missing. Reinstall TokenTick.")
             return

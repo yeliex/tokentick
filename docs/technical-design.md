@@ -287,7 +287,7 @@ For documentation or script changes, check relative links, shell syntax, and dis
 ./script/generate_appcast.sh <App-update.zip> <release-notes.md> .build/appcast
 ```
 
-The app target depends on the CLI target and embeds its signed executable at `Contents/MacOS/tokentick`. The CLI uses the app’s shared Core resource bundle when embedded; standalone distribution still requires its adjacent Core resource bundle. Settings creates `/usr/local/bin` if needed, installs an absolute symbolic link at `/usr/local/bin/tokentick`, and refuses to replace existing filesystem entries. Moving the app after installation requires removing the old link and installing it again.
+The app target depends on the distinctly named `TokenTickCLI` target to avoid build-directory collisions on case-insensitive filesystems. It embeds its signed executable at `Contents/Helpers/tokentick`. An adjacent resource-bundle symlink lets the embedded CLI use the app’s shared Core resources; standalone distribution still requires its adjacent Core resource bundle. Settings creates `/usr/local/bin` if needed, installs an absolute symbolic link at `/usr/local/bin/tokentick`, and refuses to replace existing filesystem entries. Moving the app after installation requires removing the old link and installing it again.
 
 Packaging builds arm64 Release app/CLI, signs and verifies them, and generates a full distribution plus `TokenTick-<version>.zip` containing only the app, with SHA-256 files. The full distribution includes the CLI's Core resource bundle, dependency licenses, signature details, and `BUILD.txt` recording revision, dirty state, toolchain, and architecture.
 

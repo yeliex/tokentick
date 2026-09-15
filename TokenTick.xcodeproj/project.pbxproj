@@ -5,11 +5,22 @@
 	"objectVersion" = "56";
 	"archiveVersion" = "1";
 	"objects" = {
+        "C11000000000000000000004" = {
+            isa = PBXShellScriptBuildPhase;
+            buildActionMask = 2147483647;
+            files = ();
+            inputPaths = ("$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/TokenTick_TokenTickCore.bundle",);
+            outputPaths = ("$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/TokenTick_TokenTickCore.bundle",);
+            name = "Link CLI resources";
+            runOnlyForDeploymentPostprocessing = 0;
+            shellPath = /bin/sh;
+            shellScript = "/bin/ln -sfn ../Resources/TokenTick_TokenTickCore.bundle \"$SCRIPT_OUTPUT_FILE_0\"\n";
+        };
         "C11000000000000000000001" = {
             isa = PBXCopyFilesBuildPhase;
             buildActionMask = 2147483647;
-            dstPath = "";
-            dstSubfolderSpec = 6;
+            dstPath = "$(CONTENTS_FOLDER_PATH)/Helpers";
+            dstSubfolderSpec = 1;
             files = ("C11000000000000000000002",);
             name = "Embed CLI";
             runOnlyForDeploymentPostprocessing = 0;
@@ -246,6 +257,7 @@
 				"EF9D4CEFD54446002341A6DA",
 				"3D4BAED624A3A343B660D01C",
                 "C11000000000000000000001",
+                "C11000000000000000000004",
 			);
 			"dependencies" = (
                 "C11000000000000000000003",
@@ -358,7 +370,7 @@
 			);
 			"dependencies" = (
 			);
-			"name" = "tokentick";
+			"name" = "TokenTickCLI";
 			"buildRules" = (
 			);
 			"packageProductDependencies" = (

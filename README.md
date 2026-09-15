@@ -37,7 +37,7 @@ Keep TokenTick in Applications before installing the CLI. The linked CLI updates
 
 ```sh
 sudo mkdir -p /usr/local/bin
-sudo ln -s /Applications/TokenTick.app/Contents/MacOS/tokentick /usr/local/bin/tokentick
+sudo ln -s /Applications/TokenTick.app/Contents/Helpers/tokentick /usr/local/bin/tokentick
 ```
 
 For an independent installation, the full distribution also includes `bin/tokentick` and its required resource bundle. From the extracted directory:
