@@ -275,3 +275,13 @@ Debug 构建通过（`.build/details-stability-build.log`）；总览与滚动�
 - 数字图标已实现整数显示、原尺寸、收紧字距和模板着色。最后字距修改已构建，但 0／两位数／100、深浅色、菜单选中状态的清晰度及数字更新未完成完整视觉复验；当前无专用悬停百分比提示。
 - 提交前运行 `swift test --filter 'LimitQueryTests|LocalUsageScannerTests|CodexAPITests|LimitPacingTests|OverviewReportTests'`，47 项测试通过。覆盖跨重启和跨文件周期结束、批次游标恢复、连续周期、当天及夏令时边界、额度刻度；不是全量测试声明。
 - 从暂存区导出本次提交范围单独构建，补齐 MenuUsageView 的 Xcode 编译引用后 `BUILD SUCCEEDED`。该构建不包含工作区中另一个任务的自动更新／发布和模型列表高度改动。构建日志位于 `/tmp/tokentick-commit-build.log`，线程采样位于 `/tmp/tokentick-hang-sample.txt`；均为本机临时证据，不作为长期归档承诺。
+
+
+### 2026-09-15 菜单快捷键收起修复与补验
+
+- 修复：设置快捷键先关闭触发菜单，再恢复主窗口和独立设置；应用命令路径同时关闭当前不能成为主窗口的弹层。普通页面入口也先 dismiss 再切换窗口，避免激活顺序留下菜单。
+- 实测展开的菜单内按 ⌘, 后进入设置，窗口列表只剩主窗口与设置两个普通窗口，没有菜单弹层。重复 ⌘, 后仍为同一设置窗口；⌘W 关闭设置后回到标识为 `main` 的主窗口。
+- 实测主窗口 ⌘R 后工具栏立即显示服务端读取状态，刷新按钮变为禁用的同步指示器。系统最小化命令后无可操作主窗口，进程保持 `.regular`；从菜单按 ⌘, 后重新显示设置，关闭设置后复用 `main`。
+- 实测关闭主窗口后进程 activationPolicy=1（accessory）。本轮构建启动成功，图标继续采用稳定缓存图片，并新增周期、显示口径与完整百分比的 help 和无障碍标签，不恢复 TimelineView。
+
+- 本轮通过 ⌘Q 退出后，进程查询确认 TokenTick 已结束。

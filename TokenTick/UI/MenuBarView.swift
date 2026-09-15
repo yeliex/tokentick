@@ -33,11 +33,11 @@ struct MenuBarView: View {
             VStack(spacing: 0) {
                 ForEach(AppPage.allCases) { page in
                     Button {
+                        dismiss()
                         app.requestedPage = page
                         NSApp.setActivationPolicy(.regular)
                         openWindow(id: "main")
                         NSApp.activate(ignoringOtherApps: true)
-                        dismiss()
                     } label: { menuLabel(page.rawValue, symbol: page.symbol) }
                 }
                 Button { NSApp.terminate(nil) } label: {

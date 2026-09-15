@@ -37,7 +37,7 @@ struct TokenTickApp: App {
         MenuBarExtra {
             MenuBarView().environment(model)
         } label: {
-            Image(nsImage: menuBarIcon)
+            Image(nsImage: menuBarIcon).help(menuBarTooltip).accessibilityLabel(menuBarTooltip)
         }
         .menuBarExtraStyle(.window)
     }
@@ -51,6 +51,17 @@ struct TokenTickApp: App {
         }
         let percent = showRemaining ? 100 - window.usedPercent : window.usedPercent
         return Self.quotaImages[Int(min(100, max(0, percent)).rounded())]
+    }
+
+    private var menuBarTooltip: String {
+        let windows = model.currentLimits?.windows.filter { $0.limitID == "codex" } ?? []
+        guard let window = windows.first(where: { $0.durationMinutes == 10_080 }) ?? windows.first,
+              window.usedPercent.isFinite else { return "TokenTick · 等待额度更新" }
+        if let reset = window.resetsAt, Double(reset) <= Date().timeIntervalSince1970 {
+            return "TokenTick · 等待额度重置"
+        }
+        let percent = showRemaining ? max(0, 100 - window.usedPercent) : window.usedPercent
+        return "TokenTick · \(window.durationMinutes == 10_080 ? "7 天" : "主订阅")\(showRemaining ? "剩余" : "已使用") \(percent.formatted(.number.precision(.fractionLength(0...1))))%"
     }
 
     // 标签直接使用稳定的图片实例，避免菜单栏宿主反复失效和重新布局。
@@ -74,11 +85,16 @@ struct TokenTickApp: App {
 }
 
 struct MainWindowSettingsButton: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         Button("设置…") {
+            // 在切换激活窗口前收起菜单；应用命令与弹层内快捷键均经过这里。
+            let sourceWindow = NSApp.keyWindow
+            dismiss()
+            if let sourceWindow, !sourceWindow.canBecomeMain { sourceWindow.orderOut(nil) }
             NSApp.setActivationPolicy(.regular)
             openWindow(id: "main")
             NSApp.activate(ignoringOtherApps: true)
