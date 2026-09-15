@@ -3,8 +3,8 @@ set -euo pipefail
 
 MODE="${1:-run}"
 case "$MODE" in
-  run|--verify|--debug|--logs|--telemetry) ;;
-  *) echo "用法：$0 [--verify|--debug|--logs|--telemetry]" >&2; exit 2 ;;
+  run|--verify|--debug|--logs|--telemetry|--preview-limits) ;;
+  *) echo "用法：$0 [--verify|--debug|--logs|--telemetry|--preview-limits]" >&2; exit 2 ;;
 esac
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,7 +30,11 @@ echo "构建成功：$APP_BUNDLE"
 if [ "$MODE" = "--debug" ]; then
   exec lldb -- "$APP_BUNDLE/Contents/MacOS/TokenTick"
 fi
-/usr/bin/open -n "$APP_BUNDLE"
+if [ "$MODE" = "--preview-limits" ]; then
+  /usr/bin/open -n "$APP_BUNDLE" --args --preview-limits
+else
+  /usr/bin/open -n "$APP_BUNDLE"
+fi
 case "$MODE" in
   --verify)
     sleep 1
