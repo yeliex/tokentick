@@ -226,6 +226,7 @@
 			);
 			"packageProductDependencies" = (
 				"6A80958D59791C1178F03805",
+				"ABCDEF000000000000000001",
 			);
 		};
 		"1EE63A94BAD0DF0FCB0E7B8C" = {
@@ -252,6 +253,7 @@
 			"buildActionMask" = "2147483647";
 			"files" = (
 				"9D0D104F1E1B2C997480A345",
+				"ABCDEF000000000000000002",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
@@ -351,6 +353,7 @@
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.yeliex.tokentick";
 				"CODE_SIGN_STYLE" = "Automatic";
 				"INFOPLIST_FILE" = "TokenTick/Resources/Info.plist";
+				"CODE_SIGN_ENTITLEMENTS" = "TokenTick/Resources/TokenTick.entitlements";
 				"ASSETCATALOG_COMPILER_APPICON_NAME" = "TokenTick";
 				"LD_RUNPATH_SEARCH_PATHS" = (
 					"$(inherited)",
@@ -577,6 +580,7 @@
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.yeliex.tokentick";
 				"CODE_SIGN_STYLE" = "Automatic";
 				"INFOPLIST_FILE" = "TokenTick/Resources/Info.plist";
+				"CODE_SIGN_ENTITLEMENTS" = "TokenTick/Resources/TokenTick.entitlements";
 				"ASSETCATALOG_COMPILER_APPICON_NAME" = "TokenTick";
 				"LD_RUNPATH_SEARCH_PATHS" = (
 					"$(inherited)",
@@ -616,6 +620,15 @@
 		"15617ECB3B00C79EF635A3A1" = {
 			"isa" = "PBXBuildFile";
 			"productRef" = "6E0711520849317683D1D76A";
+		};
+		"ABCDEF000000000000000001" = {
+			"isa" = "XCSwiftPackageProductDependency";
+			"package" = "E795003646D4952330D66DC9";
+			"productName" = "TokenTickUpdates";
+		};
+		"ABCDEF000000000000000002" = {
+			"isa" = "PBXBuildFile";
+			"productRef" = "ABCDEF000000000000000001";
 		};
 	};
 	"rootObject" = "98F54143AB4E86B28C3AFEE0";

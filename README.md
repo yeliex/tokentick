@@ -73,7 +73,29 @@ JSON 保留整数 tokens、纳美元金额、十进制单价、NULL 和统计时
 
 脚本构建 arm64 Release App／CLI，执行 ad-hoc 签名及验证，生成 `.build/releases/local-*/TokenTick-*-local-*.zip` 和 SHA-256 文件。不使用付费 Developer Program、不提交 Apple 公证，也不自动安装或发布 GitHub Release。
 
+同时生成仅包含 App 的 `TokenTick-<版本>.zip`，供首次下载安装和 Sparkle 更新使用。Sparkle 框架及辅助进程会按从内到外的顺序签名；ad-hoc 签名没有 Team ID，App 使用 `disable-library-validation` entitlement 载入动态框架，更新包使用独立的 Ed25519 签名校验。
+
 包内安装说明从下节生成；另附 `BUILD.txt`、签名信息和依赖许可证。`BUILD.txt` 记录提交、是否存在未提交修改、工具链和架构。
+
+## 发布与自动更新
+
+App 使用与 Shuttle 相同的 Sparkle 2.9.6，默认每小时检查一次更新，可在“设置 → 关于”关闭自动检查，也可从应用菜单或关于页手动检查。发现新版本后显示发布说明，并由 Sparkle 下载、校验、替换 App 和重新启动。
+
+更新源为公开仓库的 [appcast.xml](https://github.com/yeliex/tokentick/releases/latest/download/appcast.xml)。没有发布首个包含 appcast 的 Release 前，该地址不可用；首次接入 Sparkle 的版本仍需手动安装。自动更新仅覆盖 App，独立安装的 CLI 需手动替换。
+
+推送 `vMAJOR.MINOR.PATCH` 标签会触发 `.github/workflows/release.yml`，在 macOS 26 上构建，生成发布说明和签名 appcast，并发布为 GitHub 最新 Release。版本显示来自标签，Sparkle 用于比较版本的 `CFBundleVersion` 来自递增的 `GITHUB_RUN_NUMBER`；迁移工作流时必须保证构建号大于已有发布。
+
+发布需要仓库 Actions Secret `SPARKLE_PRIVATE_KEY` 与 `Info.plist` 中的 `SUPublicEDKey` 对应。本机签名私钥保存在钥匙串账户 `tokentick`，不要提交或打印私钥，也不要为每次发布重新生成密钥。
+
+本地可生成签名更新产物而不发布：
+
+```sh
+./script/package_release.sh 0.1.1 3
+# 使用上一步输出的 App 更新 ZIP 路径，输出目录必须尚不存在。
+./script/generate_appcast.sh <App更新ZIP> <发布说明.md> .build/appcast
+```
+
+持续集成通过 `TOKENTICK_SPARKLE_PRIVATE_KEY` 标准输入签名；本地默认读取钥匙串账户 `tokentick`。更新包签名和 macOS 代码签名是两套独立校验，不需要付费开发者账号。
 
 ## 安装
 
@@ -81,7 +103,7 @@ TokenTick 仅支持 macOS 26.0+、Apple Silicon。App 与 CLI 使用 ad-hoc 签�
 
 ### App
 
-解压 ZIP，将 `TokenTick.app` 放入个人 `~/Applications` 或 `/Applications`，再打开。升级时先退出旧实例，再替换 App。当前仍处于未上线开发阶段：数据库结构兼容时继续使用，结构变化时直接重建并重新扫描源日志，不维护历史迁移链，也不自动备份大数据库。
+解压 ZIP，将 `TokenTick.app` 放入个人 `~/Applications` 或 `/Applications`，再打开。接入自动更新的版本可通过“检查更新…”升级；旧版本或手动升级时先退出旧实例，再替换 App。当前仍处于开发阶段：数据库结构兼容时继续使用，结构变化时直接重建并重新扫描源日志，不维护历史迁移链，也不自动备份大数据库。
 
 首次从浏览器下载后，macOS 可能阻止打开。确认包的来源和校验值后，先尝试打开 App，再到“系统设置 → 隐私与安全性”选择“仍要打开”，遵循系统提示。参考 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。CLI 首次执行可能需要单独确认；安装步骤不关闭 Gatekeeper 或自动清除隔离属性。
 
@@ -104,4 +126,4 @@ ditto bin/TokenTick_TokenTickCore.bundle "$HOME/.local/bin/TokenTick_TokenTickCo
 
 App／CLI 默认共用 `~/Library/Application Support/TokenTick/usage.sqlite`，从进程 `CODEX_HOME`（默认 `~/.codex`）只读采集。App 运行期间自动同步，统计时区跟随系统；可在设置中开启开机启动。卸载 App／CLI 不删除统计数据库。
 
-在 ZIP 和校验文件所在目录执行 `shasum -a 256 -c <文件名>.sha256` 核对完整性。`BUILD.txt` 记录源码和构建状态，`Licenses` 包含 GRDB 和 Zstandard 许可证。金额为公开模型价格估算；API 每日参考差额不参与金额或本地用量统计。
+在 ZIP 和校验文件所在目录执行 `shasum -a 256 -c <文件名>.sha256` 核对完整性。完整 App／CLI 分发包中的 `BUILD.txt` 记录源码和构建状态，`Licenses` 包含 GRDB、Zstandard 和 Sparkle 许可证。金额为公开模型价格估算；API 每日参考差额不参与金额或本地用量统计。

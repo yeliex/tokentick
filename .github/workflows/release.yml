@@ -1,0 +1,56 @@
+name: 发布 TokenTick
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tokentick-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: 验证版本及签名配置
+        env:
+          VERSION: ${{ github.ref_name }}
+          SPARKLE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test -n "$SPARKLE_KEY"
+          xcodebuild -version
+      - name: 构建并验证 App 和 CLI
+        id: package
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: ./script/package_release.sh "${VERSION#v}" "$GITHUB_RUN_NUMBER"
+      - name: 生成发布说明
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="$VERSION" --jq .body > .build/release-notes.md
+          test -s .build/release-notes.md
+      - name: 生成签名更新源
+        env:
+          TOKENTICK_SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          UPDATE_ARCHIVE: ${{ steps.package.outputs.update_archive }}
+        run: ./script/generate_appcast.sh "$UPDATE_ARCHIVE" .build/release-notes.md .build/appcast
+      - name: 发布 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.ref_name }}
+          RELEASE_DIRECTORY: ${{ steps.package.outputs.release_directory }}
+        run: |
+          gh release create "$VERSION" "$RELEASE_DIRECTORY"/*.zip "$RELEASE_DIRECTORY"/*.sha256 \
+            .build/appcast/appcast.xml --verify-tag --latest \
+            --title "TokenTick ${VERSION#v}" --notes-file .build/release-notes.md

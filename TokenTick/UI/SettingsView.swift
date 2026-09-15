@@ -1,6 +1,7 @@
 import SwiftUI
 import ServiceManagement
 import TokenTickCore
+import TokenTickUpdates
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case general = "通用", data = "数据", about = "关于"
@@ -97,6 +98,8 @@ private struct GeneralSettingsView: View {
 }
 
 private struct AboutSettingsView: View {
+    @EnvironmentObject private var updates: UpdateController
+
     var body: some View {
         ScrollView {
             VStack(spacing: 32) {
@@ -108,7 +111,7 @@ private struct AboutSettingsView: View {
                         .accessibilityHidden(true)
                     Text(ApplicationInfo.name)
                         .font(.system(size: 30, weight: .semibold, design: .rounded))
-                    Text("版本 \(ApplicationInfo.version)")
+                    Text("版本 \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ApplicationInfo.version)")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 12)
@@ -117,6 +120,15 @@ private struct AboutSettingsView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, 16)
+
+                VStack(spacing: 12) {
+                    Toggle("自动检查更新", isOn: Binding(
+                        get: { updates.automaticallyChecksForUpdates },
+                        set: { updates.setAutomaticallyChecksForUpdates($0) }
+                    ))
+                    Button("检查更新…", action: updates.checkForUpdates)
+                        .disabled(!updates.canCheckForUpdates)
+                }
 
                 StorageSettingsView()
             }

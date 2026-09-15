@@ -1,4 +1,5 @@
 import TokenTickCore
+import TokenTickUpdates
 import AppKit
 import SwiftUI
 
@@ -7,6 +8,7 @@ struct TokenTickApp: App {
     @NSApplicationDelegateAdaptor(TokenTickAppDelegate.self) private var delegate
     @State private var model = ApplicationModel()
     @AppStorage("limitsShowRemaining") private var showRemaining = true
+    @StateObject private var updates = UpdateController()
 
     var body: some Scene {
         Window(ApplicationInfo.name, id: "main") {
@@ -27,15 +29,18 @@ struct TokenTickApp: App {
                 Button("关闭窗口") { NSApp.keyWindow?.performClose(nil) }
                     .keyboardShortcut("w")
             }
-
+            CommandGroup(after: .appInfo) {
+                Button("检查更新…", action: updates.checkForUpdates)
+                    .disabled(!updates.canCheckForUpdates)
+            }
         }
 
         Settings {
-            SettingsView().environment(model)
+            SettingsView().environment(model).environmentObject(updates)
         }
 
         MenuBarExtra {
-            MenuBarView().environment(model)
+            MenuBarView().environment(model).environmentObject(updates)
         } label: {
             Image(nsImage: menuBarIcon).help(menuBarTooltip).accessibilityLabel(menuBarTooltip)
         }
