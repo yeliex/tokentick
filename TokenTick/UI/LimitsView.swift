@@ -162,6 +162,10 @@ private struct WeeklyCycleDetail: View {
                 Text("周期详情").font(.title3.weight(.semibold))
                 Text("\(date(Double(window.startedAtInferred))) — \(date(Double(window.endsAt)))")
                     .font(.caption).foregroundStyle(.secondary)
+                if window.resetKind == "early" {
+                    Text("原定重置时间 \(date(Double(window.scheduledResetAt)))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .firstTextBaseline) {
