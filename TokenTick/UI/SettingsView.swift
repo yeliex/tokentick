@@ -125,6 +125,10 @@ private struct AboutSettingsView: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 5)
                         .background(.primary.opacity(0.05), in: Capsule())
+                    Link(destination: URL(string: "https://github.com/yeliex/tokentick")!) {
+                        Text(verbatim: "GitHub")
+                    }
+                    .font(.callout)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, 16)
