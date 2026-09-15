@@ -15,20 +15,16 @@ struct CurrentLimitsView: View {
                     }
                 }
                 if let snapshot = app.currentLimits {
-                    if context.date.timeIntervalSince1970 - snapshot.observedAt > 900 {
-                        Label("额度已过期，请刷新", systemImage: "clock.badge.exclamationmark").foregroundStyle(.secondary)
-                    } else {
-                        let main = snapshot.windows.filter { $0.limitID == "codex" }
-                        if !main.isEmpty { limitGroup(windows: main, snapshot: snapshot, now: context.date) }
-                        else { ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 100) }
-                        Group {
-                            let groups = Dictionary(grouping: snapshot.windows.filter { $0.limitID != "codex" }, by: \.limitID)
-                            ForEach(groups.keys.sorted(), id: \.self) { name in
-                                extendedGroup(windows: groups[name] ?? [], now: context.date)
-                            }
+                    let main = snapshot.windows.filter { $0.limitID == "codex" }
+                    if !main.isEmpty { limitGroup(windows: main, snapshot: snapshot, now: context.date) }
+                    else { ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 100) }
+                    Group {
+                        let groups = Dictionary(grouping: snapshot.windows.filter { $0.limitID != "codex" }, by: \.limitID)
+                        ForEach(groups.keys.sorted(), id: \.self) { name in
+                            extendedGroup(windows: groups[name] ?? [], now: context.date)
                         }
-
                     }
+
                 } else {
                     ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 100)
                 }

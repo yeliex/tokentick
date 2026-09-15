@@ -42,16 +42,6 @@ enum StatisticsSQL {
 
     static var columns: String { "\(groupColumns), \(metricColumns)" }
 
-    static var mergeStaged: String {
-        // SUM 保留全空分项，并在整数溢出时失败；不能用会转为 REAL 的逐次加法。
-        let sums = metricColumns.split(separator: ",").map { "SUM(\($0.trimmingCharacters(in: .whitespacesAndNewlines)))" }
-        return """
-            SELECT \(groupColumns), \(sums.joined(separator: ", "))
-            FROM statistics_rebuild WHERE timezone = :timezone
-            GROUP BY \(groupColumns)
-            """
-    }
-
     /// 先在 SQLite 中合并同日、同任务、同模型的用量分项，再展开四个维度，避免放大全部明细。
     static var aggregate: String { aggregate(predicate: "1") }
 

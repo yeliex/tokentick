@@ -17,11 +17,11 @@ struct CodexAPITests {
         for attempt in 0..<2 {
             let report = try store.saveAPIObservation(limits: limits, daily: daily, observedAt: Date(timeIntervalSince1970: 100))
             #expect(report.dailyBucketCount == 2)
-            #expect(report.savedWindows == (attempt == 0 ? 1 : 0))
+            #expect(report.savedWindows == 0)
             #expect(report.currentLimits?.windows.count == 2)
         }
         #expect(try store.tableCounts()["api_daily_usage"] == nil)
-        #expect(try store.tableCounts()["weekly_limit_observations"] == 1)
+        #expect(try store.tableCounts()["weekly_limit_cycles"] == 0)
         #expect(try store.usageSummaries().isEmpty)
         #expect(try store.weeklyLimitHistory().rows.isEmpty)
         #expect(try store.status().apiLastReport?.currentLimits == nil)
@@ -57,7 +57,7 @@ struct CodexAPITests {
         let report = try store.saveAPIObservation(limits: missing, daily: nil, observedAt: Date())
         #expect(report.skippedWindows == 1)
         #expect(report.currentLimits?.windows.count == 1)
-        #expect(try store.tableCounts()["weekly_limit_observations"] == 0)
+        #expect(try store.tableCounts()["weekly_limit_cycles"] == 0)
         #expect(try store.status().apiLastReport?.currentLimits == nil)
     }
 
@@ -74,7 +74,7 @@ struct CodexAPITests {
                 try store.saveAPIObservation(limits: limits, daily: daily, observedAt: Date())
             }
         }
-        #expect(try store.tableCounts()["weekly_limit_observations"] == 0)
+        #expect(try store.tableCounts()["weekly_limit_cycles"] == 0)
         let unknown = try JSONDecoder().decode(CodexRateLimits.self, from: Data(Self.limits.replacingOccurrences(of: "\"account-a\"", with: "null").utf8))
         let daily = try JSONDecoder().decode(CodexDailyUsage.self, from: Data(Self.daily.utf8))
         let report = try store.saveAPIObservation(limits: unknown, daily: daily, observedAt: Date())
@@ -137,7 +137,7 @@ struct CodexAPITests {
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
         try store.pool.write { db in
             try db.execute(sql: """
-                INSERT INTO usage(source_line,rollout_id,account_id,usage_date,model,total_tokens,source,evidence_json) VALUES
+                INSERT INTO usage(source_line,rollout_id,account_id,usage_date,model,total_tokens,source,pricing_source) VALUES
                     (1,'known','account-a','2026-09-09','m',100,'local','{}'),
                     (1,'remote',NULL,'2026-09-09',NULL,150,'local','{}'),
                     (1,'other','account-b','2026-09-09','m',800,'local','{}'),

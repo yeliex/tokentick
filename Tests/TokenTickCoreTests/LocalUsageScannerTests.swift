@@ -110,7 +110,7 @@ struct LocalUsageScannerTests {
         #expect(try fixture.total() == 120)
         let rows = try fixture.rows()
         #expect(rows.count == 1)
-        #expect(try fixture.store.tableCounts()["turn_usage"] == 1)
+        #expect(try fixture.store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(DISTINCT turn_key) FROM usage") } == 1)
         #expect(try fixture.store.pool.read { try String.fetchOne($0, sql: "SELECT response_id FROM usage") } == "response-1")
         // 原地重写触发从头重扫，旧别名也必须命中同一请求。
         try Data((fixture.header + fixture.turn + fixture.count(1) + fixture.record(1)).utf8).write(to: file, options: .atomic)
@@ -240,14 +240,14 @@ struct LocalUsageScannerTests {
         let file = try fixture.write(fixture.header + fixture.turn + fixture.record(1))
         _ = try fixture.scan()
         let oldLine = try fixture.store.pool.read { try Int.fetchOne($0, sql: "SELECT scanned_line FROM scan_files") }
-        let beforeTurn = try fixture.store.pool.read { try Row.fetchAll($0, sql: "SELECT * FROM turn_usage") }
+        let beforeTurn = try fixture.store.pool.read { try Row.fetchAll($0, sql: "SELECT DISTINCT turn_key,thread_id,turn_started_at FROM usage") }
         let different = fixture.record(1).replacingOccurrences(of: #""input_tokens":100"#, with: #""input_tokens":101"#)
         try fixture.append(fixture.count(2) + different, to: file)
         #expect(throws: (any Error).self) { try fixture.scan() }
         #expect(try fixture.total() == 120)
         let line = try fixture.store.pool.read { try Int.fetchOne($0, sql: "SELECT scanned_line FROM scan_files") }
         #expect(line == oldLine)
-        #expect(try fixture.store.pool.read { try Row.fetchAll($0, sql: "SELECT * FROM turn_usage") } == beforeTurn)
+        #expect(try fixture.store.pool.read { try Row.fetchAll($0, sql: "SELECT DISTINCT turn_key,thread_id,turn_started_at FROM usage") } == beforeTurn)
     }
 
     @Test func failedLaterBatchKeepsCommittedPrefixAndResumes() throws {

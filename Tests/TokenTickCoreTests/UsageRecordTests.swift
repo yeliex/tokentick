@@ -59,7 +59,7 @@ struct UsageRecordTests {
         let after = try #require(fixture.store.usageRecords(UsageQuery(), scope: .project("新项目")).rows.first(where: { $0.id == before.id }))
         #expect(after.title == "新标题" && after.fileName == "log.jsonl")
         #expect(after.lastKnownPath == "/missing/archived_sessions/log.jsonl.zst")
-        #expect(after.evidenceJSON == before.evidenceJSON && after.sourceLine == 3 && after.amountNanoUSD == 7)
+        #expect(after.reasoningEffort == before.reasoningEffort && after.sourceLine == 3 && after.amountNanoUSD == 7)
         let unknown = try #require(all.rows.first(where: { $0.source == "api" }))
         let json = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(unknown)) as? [String: Any])
         #expect(json["tier"] is NSNull && json["amountNanoUSD"] is NSNull)
@@ -91,7 +91,7 @@ struct UsageRecordTests {
                 try db.execute(sql: """
                     INSERT INTO threads(thread_id, title, project_name) VALUES ('t', '标题', 'unknown');
                     INSERT INTO scan_files(rollout_id, thread_id, file_name, current_path) VALUES ('rollout', 't', 'log.jsonl', '/missing/sessions/log.jsonl');
-                    INSERT INTO usage(source_line,rollout_id, thread_id, occurred_at, usage_date, total_tokens, model, source, evidence_json) VALUES
+                    INSERT INTO usage(source_line,rollout_id, thread_id, occurred_at, usage_date, total_tokens, model, source, pricing_source) VALUES
                         (1,'a', 't', ?, '2026-03-08', 10, 'model', 'local', '{"mode":"priority"}'),
                         (1,'b', 't', ?, '2026-03-08', 20, NULL, 'local', '{}'),
                         (1,'c', NULL, ?, '2026-03-09', 30, 'unknown', 'local', '{}'),

@@ -202,3 +202,42 @@ Debug 构建通过（`.build/details-stability-build.log`）；总览与滚动�
 | 性能记录 | 当前 Debug 隔离样本首次／无变化／增量、查询及最大驻留内存实测 | 已记录，非生产性能承诺 |
 
 源码、构建和真实 UI 证据按上述范围使用。完整 VoiceOver 遍历、其他 macOS 版本及长期压力测试不在本次完成门槛内；没有将工具返回的窗口缩略图当成完整视觉验证。保留工作区改动，未经另行授权不提交、推送、发布或合并。
+
+## 过期额度静默刷新（2026-09-15）
+
+- 移除超过 15 分钟后替换整张卡片的“额度已过期，请刷新”；同一登录会话内继续渲染已有快照。主窗口激活时检查时效并触发一次 API 同步，若已有同步则等待结束后复查；取消激活任务会停止等待。
+- 登录变化清空快照和拒绝旧请求的逻辑保留，过期观测仍不能生成预测。没有新增磁盘额度快照或跨进程恢复逻辑。
+- App Debug 构建通过（`.build/stale-limits-build.log`），CurrentLimitSessionTests／LimitForecastTests 共 14 项通过（`.build/stale-limits-tests.log`），diff 检查通过。现有测试覆盖账号隔离和预测过期边界；本轮未等待真实快照老化 15 分钟进行窗口激活实测，不将构建或 Core 测试作为该运行过程的实测证据。
+
+### 2026-09-15 总览查询字段优化
+
+- 新增 reasoning_effort 持久字段，v13 从已有证据回填；新请求及重扫升级同步写入。快速模式复用 tier 与已有 fast_trace 主键记录，时间范围增加 occurred_at 索引。
+- 21 项 OverviewReport／TurnUsage／FastEvidence 测试通过，覆盖迁移、缺失推理深度、重扫去重及显式普通档位优先于 trace；Debug App 构建通过。
+- 同一真实数据库副本、相同 now／Asia/Shanghai 时区，对照 HEAD 的旧查询：六个周期的完整报告内容均一致。单轮 Debug 耗时：1 天 1.46→0.11 秒，7 天 2.21→0.60 秒，30 天 4.90→1.99 秒，90 天 6.74→4.49 秒，一年 9.83→5.47 秒，历史总和 8.95→5.21 秒。这是查询耗时，不是 GUI 首屏计时，也不包含一次性迁移。
+- 本地复现代码、测量与结果保存在 .build/audit/overview-perf-y88_z0mv/{baseline.swift,main.swift,fields-comparison.json}；正式数据库未用于写入实验。通用聚合重复查询仍保留，后续优化可单独处理。
+
+### 2026-09-15 开发阶段数据库收敛
+
+- 当前建表定义替代历史迁移链，旧开发结构直接重建。删除 turn_usage、statistics_rebuild、weekly_limit_observations；usage 与 weekly_limit_cycles 不再包含 JSON 列。
+- 请求明细保存去重所需累计分项、轮次起点及计价选择；来源详情改为结构化字段。日常汇总按变更日期刷新，全量重建事务内完成。已结束的周期仅区分自然／提前重置，当前窗口不落库，重启恢复日志后继续增量。
+- 全量 149 项 Core 测试通过；后续恢复路径、轮次匹配、周期及筛选专项回归通过。App 和 CLI Debug 构建成功，git diff --check 通过。
+- 真实来源重建使用独立测试库：1,589 个日志文件、9,618,882,702 字节，126,010 条请求，采集问题 0。按 rollout_id＋source_line 对照当前旧库，全部 126,010 条请求的总量及 Tokens 分项一致；旧库额外 4 条均在本次扫描游标之后，没有本次已扫描请求缺失。
+- 测试库去除验证用临时索引并压缩后为 93,294,592 字节，旧库当时逻辑文件大小为 1,019,912,192 字节。真实日志、原库均未写入修改。
+- 最终代码在测试库上复测：1 天 0.079 秒、7 天 0.455 秒、30 天 1.351 秒、90 天 2.388 秒、一年 3.712 秒、历史总和 1.662 秒。均为单轮 Debug Core 查询，不等于 GUI 首屏时间。
+- 复现资料位于 .build/audit/schema-rebuild/（main.swift、scan.json、comparison.json、verified-measurements.json）。首次验证脚本在事务内调用 checkpoint 导致结束报错，发生在数据和测量保存之后；已修正为事务外调用并成功复验。首次扫描中曾为旧验证程序临时补充归属索引，最终代码复用 turn_key 索引，因此首次 629.7 秒仅记录实验过程，不作为最终版本扫描性能。
+- 本轮未替换正在运行的 App；新构建首次打开旧开发库会重建并重新采集。
+
+
+### 2026-09-15 套餐用量读取优化
+
+- 历史周期保存 total_tokens、request_count、amount、known_amount，页面查询不再访问 usage。同步补入请求或修正边界后更新，重新计价后同步更新；事实版本与周期均不变时跳过计算。
+- 删除周期表中可由 account_id 推导的 scope_key，缺失账号不推断归属。单一建表定义调整为 schema.2，未上线数据库仍按既定规则重建，不新增迁移链。
+- 28 项相关测试通过，随后新增的周期汇总测试随 5 项 LimitQueryTests 通过；覆盖跨边界轮次、提前重置、账号隔离、不完整金额、补入日志、持久化读取。App 构建成功；未重启正在运行的 App。
+- 对已有真实数据副本（126010 条请求、61 个历史周期）查询同一页 20 个周期：原 SQL 21.74 秒，保存汇总后读取约 0.11 毫秒；一次更新全部周期约 0.85 秒，两种查询结果一致。这是 SQLite 查询测量，不是完整 UI 渲染耗时。
+- 脚本及数据副本：`.build/audit/cycle-query/benchmark.py`、`results.json`、`usage.sqlite`。测试日志：`.build/cycle-summary-tests.log`、`.build/cycle-summary-extra-tests.log`；构建日志：`.build/cycle-summary-build.log`。
+
+### 2026-09-15 提交前验证
+
+- 最终结构为 schema.3，价格使用结构化规则和来源字段；扫描断点继续保留 JSON，仅精简无用状态，解析版本为 8。
+- 全部 152 项 Core 测试通过（`.build/precommit-tests.log`），包含重启后保留当前轮次设置、fork、去重、文件替换与截断。App 构建通过（`.build/parser-state-build.log`）。
+- 最新 App 已通过系统 UI 退出并重新打开，启动时显示“读取服务端用量…”及 loading；日志重建完成及完整界面表现尚未再次验收。

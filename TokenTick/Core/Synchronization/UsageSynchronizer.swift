@@ -30,9 +30,26 @@ public struct UsageSynchronizer: Sendable {
     public func synchronize(scope: SynchronizationScope = .all,
                             codexHome: URL = LocalUsageScanner.defaultCodexHome,
                             codexExecutable: URL? = nil,
-                            onProgress: (@Sendable (SynchronizationProgress) -> Void)? = nil) async throws -> SynchronizationReport {
+                            onProgress: (@Sendable (SynchronizationProgress) -> Void)? = nil,
+                            onCurrentLimits: (@Sendable (CurrentLimitSnapshot?) async -> Void)? = nil) async throws -> SynchronizationReport {
         let task = Task.detached(priority: .utility) {
             var report = SynchronizationReport(scope: scope, startedAt: Date().timeIntervalSince1970)
+            // 当前额度先获取并立即发布，不等待日志扫描和统计完成。
+            if scope == .all || scope == .api || scope == .remote {
+                onProgress?(SynchronizationProgress(stage: .api, scan: nil))
+                do {
+                    let result = try await CodexAPIClient.synchronize(store: store, executable: codexExecutable, codexHome: codexHome)
+                    report.api = result
+                    await onCurrentLimits?(result.currentLimits)
+                    if let issue = result.issue { report.issues.append(issue) }
+                    if !result.accountAvailable { report.issues.append("服务端未提供可确认的账号归属。") }
+                } catch {
+                    try Task.checkCancellation()
+                    report.issues.append("服务端：\(error.localizedDescription)")
+                    await onCurrentLimits?(nil)
+                }
+            }
+            try Task.checkCancellation()
             if scope == .all || scope == .local {
                 onProgress?(SynchronizationProgress(stage: .scanning, scan: nil))
                 do {
@@ -67,18 +84,6 @@ public struct UsageSynchronizer: Sendable {
                 } catch {
                     try Task.checkCancellation()
                     report.issues.append("计价：\(error.localizedDescription)")
-                }
-            }
-            if scope == .all || scope == .api || scope == .remote {
-                onProgress?(SynchronizationProgress(stage: .api, scan: nil))
-                do {
-                    let result = try await CodexAPIClient.synchronize(store: store, executable: codexExecutable, codexHome: codexHome)
-                    report.api = result
-                    if let issue = result.issue { report.issues.append(issue) }
-                    if !result.accountAvailable { report.issues.append("服务端未提供可确认的账号归属。") }
-                } catch {
-                    try Task.checkCancellation()
-                    report.issues.append("服务端：\(error.localizedDescription)")
                 }
             }
             try Task.checkCancellation()

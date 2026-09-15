@@ -81,7 +81,7 @@ struct LimitsView: View {
                                     }
                                     HStack {
                                         Text(window.endsAt > Date().timeIntervalSince1970 ? "进行中" : "已结束")
-                                        if window.actualResetAt != nil { Text("· 手动重置") }
+                                        if window.resetKind == "early" { Text("· 提前重置") }
                                         Spacer()
                                         Text(window.lastUsedPercent.map { $0.formatted(.number.precision(.fractionLength(0...1))) + "%" } ?? "—")
                                             .monospacedDigit()
@@ -171,8 +171,8 @@ private struct WeeklyCycleDetail: View {
                             .font(.system(size: 32, weight: .semibold)).monospacedDigit()
                     }
                     Spacer()
-                    if window.actualResetAt != nil {
-                        Text("手动重置").font(.caption).padding(8)
+                    if window.resetKind == "early" {
+                        Text("提前重置").font(.caption).padding(8)
                             .background(.primary.opacity(0.05), in: Capsule())
                     }
                 }

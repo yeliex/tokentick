@@ -21,7 +21,7 @@ extension UsageStore {
             let report = try pool.write { db in
                 let snapshot = try CurrentLimitSnapshot.parse(Data(limitsJSON.utf8), accountID: account,
                     observedAt: observedAt.timeIntervalSince1970, source: "api", scopeKey: account.map { "account:" + $0 } ?? "api:unknown")
-                let saved = try Self.saveWeeklyObservations(snapshot, db: db)
+                let saved = 0
                 let skipped = snapshot.windows.filter { $0.limitID == "codex" && $0.durationMinutes == 10_080 && $0.resetsAt == nil }.count
                 var report = APISyncReport(accountID: account, observedAt: observedAt.timeIntervalSince1970,
                                            accountAvailable: account != nil,
@@ -31,6 +31,10 @@ extension UsageStore {
                 report.currentLimits = snapshot
                 try Self.saveAPIReport(report, db: db)
                 return report
+            }
+            if let snapshot = report.currentLimits {
+                try observeWeeklyLimits([snapshot])
+                _ = try saveCompletedWeeklyCycles(now: observedAt)
             }
             apiMemory.withLock { memory in
                 guard observedAt.timeIntervalSince1970 >= memory.observedAt else { return }

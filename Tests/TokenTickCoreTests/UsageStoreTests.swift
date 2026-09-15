@@ -9,9 +9,9 @@ struct UsageStoreTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("usage.sqlite")
         let store = try UsageStore(databaseURL: url)
-        #expect(try store.tableCounts().count == 7)
+        #expect(try store.tableCounts().count == 6)
         try store.pool.write { db in
-            try db.execute(sql: "INSERT INTO usage (source_line,rollout_id, total_tokens, usage_date, source, evidence_json) VALUES (1,'api-day', 100, '2026-09-09', 'api', '{}')")
+            try db.execute(sql: "INSERT INTO usage (source_line,rollout_id, total_tokens, usage_date, source, pricing_source) VALUES (1,'api-day', 100, '2026-09-09', 'api', '{}')")
         }
         let reopened = try UsageStore(databaseURL: url)
         #expect(try reopened.tableCounts()["usage"] == 1)
@@ -22,32 +22,34 @@ struct UsageStoreTests {
         #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("Backups").path))
     }
 
-    @Test func weeklyMigrationKeepsWeekEvidenceWithoutCreatingBackup() throws {
+
+
+    @Test func developmentSchemaRebuildDropsOldFactsAndRedundantTables() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("usage.sqlite")
         let old = try DatabaseQueue(path: url.path)
-        try StoreSchema.migrator.migrate(old, upTo: "v4.statistics-recovery")
-        try old.write { db in
-            try db.execute(sql: """
-                INSERT INTO limit_windows(account_id,limit_id,window_kind,starts_at,resets_at,window_duration_mins,used_percent,last_observed_at,source_json) VALUES
-                ('a','codex','primary',0,18000,300,10,100,'{}'),
-                ('a','codex','secondary',0,604800,10080,90,100,'{}');
-                INSERT INTO api_daily_usage VALUES ('a','2026-09-09',123,100);
-                INSERT INTO app_metadata VALUES ('api_limits:a','{}'), ('statistics_cache_revision:UTC','0');
-                """)
-        }
+        try old.write { try $0.execute(sql: """
+            CREATE TABLE grdb_migrations(identifier TEXT PRIMARY KEY);
+            INSERT INTO grdb_migrations VALUES ('old-development-schema');
+            CREATE TABLE usage(evidence_json TEXT);
+            INSERT INTO usage VALUES ('discard');
+            CREATE TABLE turn_usage(id TEXT);
+            CREATE TABLE statistics_rebuild(id TEXT);
+            CREATE TABLE weekly_limit_observations(id TEXT);
+            """) }
         try old.close()
         let store = try UsageStore(databaseURL: url)
-        #expect(try store.tableCounts()["weekly_limit_observations"] == 1)
-        #expect(try store.apiDailyUsage().isEmpty)
+        #expect(try store.tableCounts()["usage"] == 0)
         try store.pool.read { db throws -> Void in
-            #expect(try !db.tableExists("limit_windows"))
-            #expect(try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key='api_limits:a'") == nil)
-            #expect(try !UsageStore.statisticsAreCurrent(db, timezone: "UTC"))
+            for name in ["turn_usage","statistics_rebuild","weekly_limit_observations"] {
+                #expect(try !db.tableExists(name))
+            }
+            for name in ["usage","weekly_limit_cycles"] {
+                #expect(try !db.columns(in: name).contains { $0.name.hasSuffix("_json") })
+            }
         }
-        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("Backups").path))
     }
 
     @Test func globalKeepsLocalUnknownAccountsAndAllAggregatesExcludeUnassignedAPI() throws {
@@ -57,7 +59,7 @@ struct UsageStoreTests {
         try store.pool.write { db in
             try db.execute(sql: """
                 INSERT INTO threads(thread_id,title,project_name) VALUES ('t','任务','项目');
-                INSERT INTO usage(source_line,rollout_id,account_id,thread_id,usage_date,total_tokens,source,evidence_json) VALUES
+                INSERT INTO usage(source_line,rollout_id,account_id,thread_id,usage_date,total_tokens,source,pricing_source) VALUES
                 (1,'local-known','a','t','2026-09-09',10,'local','{}'),
                 (1,'local-unknown',NULL,'t','2026-09-09',20,'local','{}'),
                 (1,'api-unassigned','a',NULL,'2026-09-09',100,'api','{}'),
@@ -75,33 +77,9 @@ struct UsageStoreTests {
         #expect(try store.usageRecords().rows.count == 4)
     }
 
-    @Test func unknownFutureMigrationRefusesToOpen() throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let url = directory.appendingPathComponent("usage.sqlite")
-        let store = try UsageStore(databaseURL: url)
-        try store.pool.write { db in
-            try db.execute(sql: "INSERT INTO grdb_migrations (identifier) VALUES ('v999.future')")
-        }
-        #expect(throws: UsageStore.StoreError.newerSchema) { try UsageStore(databaseURL: url) }
-        #expect(UsageStore.StoreError.newerSchema.localizedDescription.contains("请更新 TokenTick"))
-        #expect(try store.pool.read { db in try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations") }.contains("v999.future"))
-    }
 
-    @Test func migrationPreservesExistingDataWithoutBackup() throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent("usage.sqlite")
-        let original = try DatabaseQueue(path: url.path)
-        try original.write { db in
-            try db.execute(sql: "CREATE TABLE existing_data (value TEXT); INSERT INTO existing_data VALUES ('keep')")
-        }
-        _ = try UsageStore(databaseURL: url)
-        let current = try UsageStore(databaseURL: url)
-        #expect(try current.pool.read { try String.fetchOne($0, sql: "SELECT value FROM existing_data") } == "keep")
-        #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("Backups").path))
-    }
+
+
     @Test func restoredWALDatabaseWithoutSidecarsCanBeOpened() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -123,34 +101,6 @@ struct UsageStoreTests {
         #expect(title == "保留标题")
     }
 
-    @Test func statisticsRecoveryMigrationPreservesFactsCacheAndOtherCheckpoints() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let url = root.appendingPathComponent("usage.sqlite")
-        let old = try DatabaseQueue(path: url.path)
-        try StoreSchema.migrator.migrate(old, upTo: "v3.statistics-cache")
-        try old.write { db in
-            try db.execute(sql: """
-                INSERT INTO usage(dedup_key, usage_date, total_tokens, source, evidence_json)
-                    VALUES ('fixture', '2026-09-10', 7, 'local', '{"keep":true}');
-                INSERT INTO statistics(account_key, date, timezone, dimension, dimension_value,
-                    total_tokens, unpriced_tokens, unattributed_tokens, record_count)
-                    VALUES ('all', '2026-09-10', 'GMT', 'all', 'all', 7, 7, 7, 1);
-                INSERT INTO app_metadata(key, value) VALUES ('reprice_checkpoint', '{"keep":true}');
-                """)
-        }
-        let before = try old.read { db in
-            try ["usage", "statistics", "app_metadata"].map { try Row.fetchAll(db, sql: "SELECT * FROM \($0) ORDER BY 1") }
-        }
-        try StoreSchema.migrator.migrate(old, upTo: "v4.statistics-recovery")
-        let after = try old.read { db in
-            #expect(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM statistics_rebuild") == 0)
-            return try ["usage", "statistics", "app_metadata"].map { try Row.fetchAll(db, sql: "SELECT * FROM \($0) ORDER BY 1") }
-        }
-        #expect(before[0] == after[0] && before[1] == after[1])
-        #expect(try old.read { try String.fetchOne($0, sql: "SELECT value FROM app_metadata WHERE key = 'reprice_checkpoint'") } == "{\"keep\":true}")
-        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("Backups").path))
-    }
+
 
 }

@@ -85,11 +85,13 @@ extension UsageStore {
             let filters = UsageFiltersSQL(query.filters)
             let modeExpression = """
                 CASE WHEN u.is_long_context IS NULL THEN '未知'
-                    WHEN json_extract(u.evidence_json, '$.pricingMode.isFast') = 1 OR u.tier = 'fast'
+                    WHEN u.tier = 'fast' OR (u.tier IS NULL AND EXISTS (
+                        SELECT 1 FROM app_metadata WHERE key = 'fast_trace:' || u.thread_id || ':' || u.turn_id
+                    ))
                         THEN CASE WHEN u.is_long_context = 1 THEN '快速＋长上下文' ELSE '快速' END
                     WHEN u.is_long_context = 1 THEN '长上下文' ELSE '普通' END
                 """
-            let effortExpression = "COALESCE(NULLIF(json_extract(u.evidence_json, '$.reasoningEffort'), ''), '未知')"
+            let effortExpression = "COALESCE(NULLIF(u.reasoning_effort, ''), '未知')"
             func shares(_ expression: String) throws -> [OverviewUsageShare] {
                 try Row.fetchAll(db, sql: """
                     SELECT \(expression) AS name, SUM(u.total_tokens) AS tokens,

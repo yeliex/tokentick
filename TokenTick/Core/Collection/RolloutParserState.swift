@@ -2,7 +2,7 @@ import Foundation
 
 struct RolloutParserState: Codable {
     // 解析状态可丢弃重建；版本变化只触发重扫，不改写事实。
-    static let currentVersion = 7
+    static let currentVersion = 8
     var version = currentVersion
     var session: RolloutEvent.Session?
     var turnID: String?
@@ -10,13 +10,8 @@ struct RolloutParserState: Codable {
     var serviceTier: String?
     var reasoningEffort: String?
     var contextModel: String?
-    var settings: UsageContextEvidence?
-    var activeSettings: UsageContextEvidence?
-    var modelSource: UsageContextEvidence?
-    var serviceTierSource: UsageContextEvidence?
-    var turnStartedLine: Int?
+    var settings: ParserSettings?
     var turnStartedAt: String?
-    var modelCandidates: [String]?
     var cumulative: TokenUsage?
     var fallbackCumulative: TokenUsage?
     var fallbackUsage: TokenUsage?
@@ -24,20 +19,11 @@ struct RolloutParserState: Codable {
     var recordUsage: TokenUsage?
     var recordTurnID: String?
     var recordResponseID: String?
-    var inheritedEvents = 0
 }
 
-struct UsageContextEvidence: Codable {
-    let eventType: String
-    let fileName: String
-    let rolloutID: String
-    let line: Int
-    let ordinal: UInt64?
-    let threadID: String?
-    let turnID: String?
+struct ParserSettings: Codable {
     let model: String?
     let serviceTier: String?
-    var provider: String? = nil
 }
 
 struct UsageEvidence: Codable {
@@ -49,13 +35,7 @@ struct UsageEvidence: Codable {
     let cumulative: TokenUsage
     let record: RolloutEvent.Record?
     var reasoningEffort: String? = nil
-    var modelContextWindow: Int64? = nil
-    var modelSource: UsageContextEvidence? = nil
-    var serviceTierSource: UsageContextEvidence? = nil
-    var threadSettings: UsageContextEvidence? = nil
-    var turnStartedLine: Int? = nil
     var turnStartedAt: String? = nil
-    var modelCandidates: [String]? = nil
 }
 
 struct CollectedUsage {

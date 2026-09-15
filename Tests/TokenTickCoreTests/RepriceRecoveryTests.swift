@@ -79,7 +79,7 @@ struct RepriceRecoveryTests {
                 for index in 1...1025 {
                     try db.execute(sql: """
                         INSERT INTO usage(source_line,rollout_id, usage_date, model, tier, input_tokens, output_tokens,
-                            cache_read_tokens, cache_write_tokens, reasoning_tokens, total_tokens, source, evidence_json)
+                            cache_read_tokens, cache_write_tokens, reasoning_tokens, total_tokens, source, pricing_source)
                         VALUES (1,?, '2026-09-09', 'gpt-6-astra', 'standard', 1000, 100, 600, 200, 80, 1100, 'local', '{}')
                         """, arguments: ["fixture-\(index)"])
                 }

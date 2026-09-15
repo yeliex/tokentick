@@ -15,7 +15,7 @@ struct FastEvidenceTests {
             for (key, fast) in [("missing", nil as Bool?), ("ordinary", false)] {
                 try db.execute(sql: """
                     INSERT INTO usage(source_line,rollout_id,thread_id,turn_id,model,usage_date,tier,input_tokens,output_tokens,
-                      cache_read_tokens,cache_write_tokens,total_tokens,source,evidence_json)
+                      cache_read_tokens,cache_write_tokens,total_tokens,source,pricing_source)
                     VALUES (1,?,?,?,'gpt-6-astra','2026-09-10',?,1000,100,500,0,1100,'local','{"keep":true}')
                     """, arguments: [key, Self.thread, Self.turn, fast.map { $0 ? "fast" : "standard" }])
             }
@@ -37,7 +37,7 @@ struct FastEvidenceTests {
         let revision = try store.status().factsRevision
         try CodexFastEvidence.collect(codexHome: root, store: store)
         #expect(try store.status().factsRevision == revision)
-        let values = try store.pool.read { try String.fetchAll($0, sql: "SELECT value FROM app_metadata UNION ALL SELECT evidence_json FROM usage") }
+        let values = try store.pool.read { try String.fetchAll($0, sql: "SELECT value FROM app_metadata UNION ALL SELECT pricing_source FROM usage") }
         #expect(!values.contains(where: { $0.contains("private-user-body") }))
         // 同路径清空后 row ID 被复用，必须通过锚点变化重新核对。
         try trace.write { db in

@@ -18,7 +18,7 @@
 | `TokenTick/Core/Storage` | DDL、采集事务、归属、查询、重算及统计缓存 |
 | `TokenTick/UI` | 原生视图、查询结果和应用状态 |
 
-来源读取通过 `UsageStore` 提交采集结果、任务映射和 Fast 证据；目标数据库 SQL 归 `Storage`。所有权判断、报告匹配和证据合并使用调用方的同一事务，文件拆分不改变写锁、批次或断点边界。查询结果类型及行映射与查询 SQL 分开维护。
+来源读取通过 `UsageStore` 提交采集结果、任务映射和 Fast 证据；目标数据库 SQL 归 `Storage`。所有权判断、请求匹配和结构化字段更新使用调用方的同一事务，文件拆分不改变写锁、批次或断点边界。查询结果类型及行映射与查询 SQL 分开维护。
 
 App 与 CLI 默认共用 `~/Library/Application Support/TokenTick/usage.sqlite`。每次操作调用实时 `getenv` 解析 `CODEX_HOME`，空值回退到 `~/.codex`；单次扫描固定根目录。其他 shell 的 export 不会自动修改运行中进程的环境。
 
@@ -70,115 +70,37 @@ App 与 CLI 默认共用 `~/Library/Application Support/TokenTick/usage.sqlite`�
 | `long_input_price`、`long_output_price` | TEXT，可空 | 该档位长上下文输入／输出单价 |
 | `long_cache_read_price`、`long_cache_write_price` | TEXT，可空 | 长上下文缓存单价 |
 | `long_context_threshold` | INTEGER，可空 | 整次输入严格超过此阈值时采用 long 价格 |
-| `source_json` | TEXT，非空 | 原始 cost、全部 tiers／modes、上下文规则及直接／推导依据 |
+| `context_rule` | TEXT，非空 | 普通、按上下文阈值或不支持的计价规则 |
+| `source_url`、`is_bundled` | TEXT／INTEGER | 价格来源及是否内置 |
+| `combination_rule`、`combination_source` | TEXT，可空 | 快速模式与长上下文组合的直接／推导依据 |
 
 `default`／`standard` 归一为 `standard`，`priority`／`fast` 归一为 `fast`；其他明确档位保留文本。Fast 独立行，其 long 列表示 Fast＋长上下文。不增加 fast_* 列、price_id、currency、pricing_version、pricing_status 或额外生效时间。
 
-### 3.4 `turn_usage`：turn 所有权
+### 3.4 usage：请求明细
 
-| 字段 | 类型／约束 | 含义 |
-| --- | --- | --- |
-| `id` | TEXT，主键，非空 | 内部所有权关联键 |
-| `turn_id` | TEXT，可空，唯一 | 真实 turn ID |
-| `thread_id` | TEXT，非空 | 当前最早来源任务 |
-| `source_created_at` | REAL，可空 | 来源 session 创建时间，不能用 mtime 或复制后的事件时间代替 |
-| `started_at` | REAL，非空 | 可确认的 turn 开始时间；缺失时取该组最早用量时间 |
-| `last_event_at` | REAL，非空 | 最后用量事件时间 |
+保留请求身份（turn_key、turn_id、response_id）、任务／账号、时间、模型与观测 tier、Tokens 各分项、应用费率和金额分项、rollout／行号／ordinal。
 
-有 turnId 时内部 id 为 `turn:<ID>`；没有 turnId 时使用 `unattributed:<threadID>` 隔离该任务的历史记录。这个内部关联不等于源系统的 turn，也不能据此证明跨任务重复。缺 turnId 的回退分组跨额度窗口时精度有限，不能承诺逐请求归属。
+- turn_started_at 与 source_created_at 支持按轮次起点统计和 fork 原始所有权判断，不另设轮次表。
+- legacy_total／input／output／cache_read／cache_write／reasoning 保存旧格式累计分项。响应 ID 或完整累计向量用于去重，不只比较总 Tokens。
+- reasoning_effort 是独立推理深度字段；pricing_tier、pricing_source 和 price_date 保存实际计价选择，观测 tier 与推断档位分开。
+- 不保存 evidence_json、report 或 alternateReports；请求详情展示结构化字段与来源位置。
+- 索引覆盖时间范围、任务／账号／模型时间、来源位置、turn_key、响应身份与累计总量候选。
 
-### 3.5 `usage`：逐条有效消耗
+### 3.5 weekly_limit_cycles：已结束额度周期
 
-| 字段 | 类型／约束 | 含义 |
-| --- | --- | --- |
-| `id` | INTEGER PRIMARY KEY | 数据库行身份 |
-| `account_id`、`thread_id`、`turn_id` | TEXT，可空 | 已明确的账号、任务和 turn |
-| `response_id` | TEXT，可空 | 源系统真实响应 ID；不以 turn＋序号伪造 |
-| `turn_key` | TEXT，可空，外键 → turn_usage.id | 所有权关联，删除所有权记录时级联删除其用量 |
-| `occurred_at` | REAL，可空 | 单条报告的 UTC 时间戳 |
-| `usage_date` | TEXT，可空 | UTC 计价日期，与 occurred_at 至少存在一个 |
-| `hour`、`minute` | INTEGER，可空 | occurred_at 的 UTC 小时 0–23、分钟 0–59 |
-| `model`、`tier` | TEXT，可空 | 已观测模型与服务档位，原始 tier 保留在证据中 |
-| `is_long_context` | INTEGER，可空，0／1 | 按单条输入与价格规则得到的上下文分类 |
-| `input_tokens`、`output_tokens` | INTEGER，可空，非负 | 输入含缓存，输出含推理 |
-| `cache_read_tokens`、`cache_write_tokens` | INTEGER，可空，非负 | 输入中的缓存分项 |
-| `reasoning_tokens` | INTEGER，可空，非负 | 输出中的推理分项 |
-| `total_tokens` | INTEGER，非空，非负 | 本条有效消耗总量 |
-| `input_price`、`output_price`、`cache_read_price`、`cache_write_price` | TEXT，可空 | 实际采用的分项费率，已包含 tier／上下文规则 |
-| `input_amount`、`output_amount`、`cache_read_amount`、`cache_write_amount` | INTEGER，可空，非负 | 分项纳美元金额 |
-| `amount` | INTEGER，可空，非负 | 所有分项完整可算时的总金额 |
-| `source` | TEXT，非空，local／api | 当前日志采集写 local；API 日桶不写入本表 |
-| `rollout_id` | TEXT，非空 | 逻辑日志来源 |
-| `source_line` | INTEGER，非空，> 0 | 解压后行号 |
-| `source_ordinal` | INTEGER，可空，≥ 0 | 上游事件序号，不是轮内响应序号 |
-| `evidence_json` | TEXT，非空 | 主报告、匹配的其他报告、累计基线、模型／模式与计价依据 |
+字段为 id、account_id、limit_id、started_at、scheduled_reset_at、ended_at、reset_kind、last_observed_at、last_used_percent、source_file、source_line、total_tokens、request_count、amount、known_amount。reset_kind 只分 natural／early。不保存结果 JSON、逐次观察或当前窗口。历史周期的用量和费用在同步时聚合落库，页面只读取周期表；补入日志、周期边界变化或重新计价后更新汇总，无数据变化时跳过。
 
-没有业务 dedup_key、独立请求金额表、is_fast 或 turn 聚合分项字段。`response_id`、`turn_id` 和 `source_ordinal` 不互相替代；历史无响应 ID 的一行只承诺是一条有效用量，不能断言是一笔独立网络请求。
+周期用量按同轮次最早的 usage.turn_started_at（缺失时 occurred_at）在开始／结束范围内汇总并保存。当前窗口只保存在进程内，启动时回读源日志恢复。
 
-索引：
+### 3.6 statistics：日汇总
 
-- `(thread_id, occurred_at)`、`(account_id, occurred_at)`、`(model, occurred_at)`。
-- `(usage_date, hour, minute)` 支持 UTC 时间桶。
-- `(rollout_id, source_line)` 是普通定位索引，不能唯一：文件替换后相同行号可能对应不同事件。
-- `(turn_key, response_id)` 在 response_id 非空时唯一，约束已明确的轮内响应。
-- `(turn_key, json_extract(evidence_json, '$.legacyCumulative.total_tokens'))` 缩小旧报告匹配范围，匹配后仍核对完整累计分项和用量。
+按 account_key、date、timezone、dimension、dimension_value 唯一保存 Tokens／金额分项及请求数。dimension 为 all／thread／project／model，月／年累加日数据；交叉筛选直接查询 usage。
 
-主报告存于 evidence_json.report，已匹配的其他报告存于 alternateReports，各自保留行号和 ordinal。计价证据区分 rollout、trace、default_standard；观测 tier 为空时，采用普通费率也不把观测字段伪写成 standard。
+不使用 statistics_rebuild。全量重建事务内删除并重新插入，失败回滚；日常刷新依据 app_metadata 中的变更日标记仅重算受影响日期。
 
-### 3.6 `weekly_limit_observations`：七天额度原始观测
+### 3.7 维护元数据
 
-| 字段 | 类型／约束 | 含义 |
-| --- | --- | --- |
-| `id` | TEXT，主键，非空 | 观测身份 |
-| `scope_key` | TEXT，非空 | 来源账号或任务范围 |
-| `account_id` | TEXT，可空 | 明确账号，不回填猜测值 |
-| `limit_id` | TEXT，非空 | 历史只保存主桶 codex |
-| `observed_at` | REAL，非空 | 实际观测时间 |
-| `resets_at` | INTEGER，非空 | 当时报告的预计截止秒值 |
-| `used_percent` | REAL，非空 | 当时使用率 |
-| `source_json` | TEXT，非空 | 窗口时长及来源定位等证据 |
-| `turn_id`、`exclusion_reason` | TEXT，可空 | turn 身份和已知排除原因 |
-| `collected_at` | REAL，可空 | 采集时间 |
-
-索引：`(scope_key, limit_id, observed_at, id)`。完整实时快照不落此表，只有符合主桶七天范围的观测持久化。
-
-### 3.7 `weekly_limit_cycles`：可重建窗口缓存
-
-| 字段 | 类型／约束 | 含义 |
-| --- | --- | --- |
-| `id` | TEXT，主键，非空 | 查询范围内窗口身份 |
-| `account_id` | TEXT，可空 | 可明确归属的账号 |
-| `limit_id` | TEXT，非空 | codex |
-| `scheduled_reset_at` | INTEGER，非空 | 稳定代表截止 |
-| `event_at` | REAL，可空 | 推算起算时间，用于筛选／分页 |
-| `query_scope` | TEXT，非空，默认 all | 全局、未知或指定账号 |
-| `result_json` | TEXT，非空 | 窗口统计结果和必要来源 |
-
-索引：`(scheduled_reset_at)`、`(query_scope, event_at, id)`。result_json 包含推算开始、首次观测、首次正用量、最后观测／百分比、峰值、冲突与覆盖数量、恢复观测、窗口本地 tokens、完整／已知金额、未定价 tokens 和用量截止。最终百分比无依据时保持 NULL。
-
-### 3.8 `statistics`：日统计缓存
-
-联合主键 `(account_key, date, timezone, dimension, dimension_value)`，五列均为非空 TEXT。
-
-| 字段组 | 列及类型 |
-| --- | --- |
-| 非空整数 | total_tokens、unpriced_tokens、unattributed_tokens、record_count、unpriced_records（默认 0） |
-| 可空 token 整数 | input_tokens、output_tokens、cache_read_tokens、cache_write_tokens、reasoning_tokens |
-| 可空金额整数 | input_amount、output_amount、cache_read_amount、cache_write_amount、complete_amount、known_amount |
-
-账号键为 `all`、`unknown`、`value:<ID>`；dimension 为 `all`、`thread`、`project`、`model`，dimension_value 为 `all`、`unknown` 或 `value:<值>`。不能用 NULL 期待复合主键提供正确去重，也不能让业务名称与内部哨兵冲突。
-
-complete_amount 是完整计价记录的金额合计；known_amount 包含可算的部分金额。是否全部完整必须结合 unpriced_records，不能依赖 SQL SUM 忽略 NULL 后的结果。unattributed_tokens 表示缺少 thread 的用量。
-
-### 3.9 内部维护表
-
-| 表 | 结构和职责 |
-| --- | --- |
-| `statistics_rebuild` | 与 statistics 同列的内部暂存表，没有正式缓存的主键／非空约束，按 timezone 建索引；只供分批聚合及最终发布，不向界面查询暴露 |
-| `app_metadata` | key TEXT 非空主键、value TEXT 非空；保存缓存版本、时区、解析／重算进度、同步结果、Fast 补证及游标等内部状态 |
-| `grdb_migrations` | GRDB 管理的已应用迁移标识，不手工写入 |
-
-API 日桶表不存在。API 同步摘要（结果时间、账号、桶数量、错误）可以持久化；每日 tokens、账号用量摘要正文和完整实时额度仅在内存中。
+app_metadata 保存数据版本、时区、价格刷新状态、扫描来源游标等少量维护信息。统计变更日按 UTC 记录，刷新本地日缓存时同时覆盖相邻日期以兼容时区偏移；各时区缓存均更新后清理变更标记。项目归属变化使日缓存全量失效。价格及扫描状态中的小型 JSON 保留其独立契约，不复制到请求明细。
 
 ## 4. 日志采集与去重
 
@@ -194,33 +116,19 @@ API 日桶表不存在。API 同步摘要（结果时间、账号、桶数量、
 - Codex 冷压缩条件按至少七天未修改；读取可以流式解压，追加前才需物化。TokenTick 不用“七天”判断是否已采集，也不主动压缩／解压替换源文件。
 - 截断或替换触发核对和重扫；revert、归档或文件消失不表示此前真实消耗退款。
 
-### 4.2 turn 所有权
+### 4.2 轮次归属
 
-按来源创建时间优先扫描，在每条用量入库前查询 turn 所有权。
+按 turn_key 查 usage 中已有的任务及 source_created_at。不同任务包含同一轮次时，仅采用来源更早的原始任务；原始任务晚到则事务内替换副本请求。无 turn ID 时按任务隔离，不跨任务猜测身份。
 
-1. 无所有者时建立记录；相同所有者追加时继续处理新消耗。
-2. 其他任务包含同一 turn 且来源更晚／相同，跳过该副本，不插入 usage。
-3. 更早来源晚到且两边创建时间可比较时，同一事务删除旧所有者的该 turn 用量、更新所有权，再写最早来源的逐条用量；缓存随事实失效。
-4. 缺少创建证据不能用改写后的事件日期认定更早；缺 turnId 的历史不宣称能完整跨任务去重。
+### 4.3 请求匹配
 
-不查祖先链，不用 responseId 决定 fork 所有者。
-
-### 4.3 轮内消耗匹配
-
-现代 `token_usage_record` 携带真实响应 ID 和用量，历史 `token_count` 使用累计总量与 last_token_usage。累计快照用于识别重复／回放和匹配证据，不能把每次累计值直接相加。
-
-- 有 responseId 时，在已选所有者内按 turn＋真实 responseId 匹配。
-- 重复累计、零增量和不能确认的新基线下降不生成额外消耗，不产生负数。
-- 新格式后出现同轮、完整用量分项一致的对应旧报告，按解析状态绑定同一消耗；两种格式的任务累计基线可以不同。
-- 旧格式在前时，只有累计、完整用量和 turn 均吻合才补真实响应 ID。不能仅凭 tokens 一样、ordinal 相近或固定时间差合并。
-- 数据库对候选再次核对完整累计、tokens、已知模型／tier／响应身份；冲突回滚本批和游标，保留可调查问题。
-- 同一消耗只留一条 usage，可保留两份不同 ordinal 的报告证据。不同真实响应即使 tokens 完全相同也分别计量。
+同一轮次按 response_id 或完整 legacy 累计分项匹配。匹配后检查 Tokens、已知模型和观测档位是否冲突；冲突回滚且不推进游标。明确响应的报告优先作为来源位置；重复采集只补齐结构化元数据，不保存报告副本。
 
 ### 4.4 模型、Fast 与项目映射
 
 `thread_settings_applied` 在 task_started／turn_started 绑定该轮设置；持久设置变化不追溯修改已执行的 turn。同轮 context 缺 service_tier 时保留已绑定证据，显式 NULL 清除；不能把另一轮或当前登录配置填到历史。
 
-压缩发生在新 turn_context 前且模型存在多个候选时，保留未知与候选证据，不能直接采用新模型。rollout 无 tier 时，从当前 CODEX_HOME 的 `logs_*.sqlite` 读取与 thread＋turn 匹配的顶层 response.create.service_tier 或 TurnInput／UserInput 证据。配置更新 Submission ID 不当 turn ID，正文嵌套字段不作依据。额外日志按文件身份与行 ID 增量读取，DB／WAL 变化触发处理，忽略仅 SHM 变化；后到 Fast 证据重算相关用量。
+压缩发生在新 turn_context 前且模型存在多个候选时，保留未知，候选上下文只用于解析，不能直接采用新模型。rollout 无 tier 时，从当前 CODEX_HOME 的 `logs_*.sqlite` 读取与 thread＋turn 匹配的顶层 response.create.service_tier 或 TurnInput／UserInput 证据。配置更新 Submission ID 不当 turn ID，正文嵌套字段不作依据。额外日志按文件身份与行 ID 增量读取，DB／WAL 变化触发处理，忽略仅 SHM 变化；后到 Fast 证据重算相关用量。
 
 项目映射依次使用明确 projectless 标记、Codex 项目名称、项目根目录文件夹名、可用 cwd 文件夹名。根目录优先于 worktree／源码子目录；多个同深度候选有歧义时保留未知。remote 的 Windows／UNC 路径按原分隔符取名，不当本机路径匹配。
 
@@ -236,7 +144,7 @@ API 日桶表不存在。API 同步摘要（结果时间、账号、桶数量、
 | 模式 cost 中的 tiers | 明确组合费率，优先于推导 |
 | context_over_200k | 兼容字段，名称不足以确认阈值；单独出现不硬编码为 200K |
 
-每档位只表达一个长上下文阈值；多有效阈值或无法解释的上下文规则报告 unsupported，不静默选一层。原始阶梯完整留在价格证据中。
+每档位只表达一个长上下文阈值；多有效阈值或无法解释的上下文规则报告 unsupported，不静默选一层。只保存识别出的规则和有效单价，不保存原始阶梯 JSON。
 
 缺明确组合价格时，对输入、输出、缓存读取、缓存写入分别计算：
 
@@ -273,23 +181,15 @@ mode_long_x = mode_x × standard_long_x ÷ standard_x
 
 ### 6.2 历史七天窗口
 
-仅使用 limit_id=codex、durationMinutes=10080 的观测，与 primary／secondary 字段位置无关。
+仅处理 codex 中 durationMinutes=10080 的有效窗口。继承／fork 回放、过期及超过七天加五秒的异常窗口不参与。相同账号、固定截止锚点 60 秒内的记录在内存合并，只保存每个窗口的首末时间及末次比例，不累积原始 JSON。
 
-先排除已标记无效点、非所有者的 fork turn、fork 创建时刻附近两秒的复制观测、已过期点以及剩余时长大于七天加五秒的异常点。明确账号同一观测时刻的截止冲突超过 60 秒时排除该组。
+不同文件可以乱序到达；窗口按首次观察时间排序。新窗口在旧窗口最后观察之后且早于旧计划截止出现时，旧周期以首次新窗口观察时间结束，标为 early；否则到计划截止后标为 natural。无需捕捉零值，也不推断重置卡。
 
-1. 按截止排序，只用正用量建立窗口；固定首个截止为锚点，60 秒内归并，不以不断移动的邻居作链式扩展。
-2. 选择正用量观测次数最多的截止秒值作代表，相同次数保持先选值。附近 30 秒内的零值可以补充观测范围，但不能建立窗口或改变代表截止。
-3. 推算开始 = 代表截止 − 604800 秒。恢复后空闲的零值会滚动，不等于该窗口真正固定后的起算时间。
-4. 分开首次观测、首次正用量、最后观测、最后百分比和峰值；同刻最后值冲突则最后百分比为空，不因百分比下降自动拆周期。
-5. 账号明确时，正值→不同截止的零值→新窗口较低正值，可关联首次归零观测。它是恢复被观察到的时间，不声称是手动操作时间；无足够证据时不补造。
-
-全局、未知账号、指定账号分别从对应证据重建，不能借全局结果回填账号。日期范围按推算起算时间筛选，包含当前已固定窗口。
-
-窗口本地用量采用 `[推算开始, min(预计截止, 下一窗口推算开始))`。有 turn 所有权时间时按 started_at 归属，否则使用 occurred_at；跨界 turn 整体按开始时间近似。账号筛选只取明确匹配的本地记录。完整金额、已知分项金额和未定价 tokens 分开返回，不能从使用率推导金额。
+只有已结束且观察到正用量的周期持久化。启动时每个已扫描文件回读游标前的日志以恢复额度状态，之后继续增量；重复恢复幂等。当前窗口不写数据库。
 
 ### 6.3 实时额度
 
-`CurrentLimitSnapshot` 只存内存，保留所有可得类型和真实观测时间。总览和菜单仅使用 Codex 当前确认登录账号的快照，不借用其他账号或已经缺失的窗口；日志只有明确匹配当前账号、观测新鲜且未被排除时才能补充，不能用最新历史日志推断登录账号。账号切换清除快照和预测，异步旧结果在应用前再次核对账号。历史持久化只提取主桶七天证据，完整实时快照不从数据库恢复。
+`CurrentLimitSnapshot` 只存内存，保留所有可得类型和真实观测时间。总览和菜单仅使用 Codex 当前确认登录账号的快照，不借用其他账号或已经缺失的窗口；日志只有明确匹配当前账号、观测新鲜且未被排除时才能补充，不能用最新历史日志推断登录账号。账号切换清除快照和预测，异步旧结果在应用前再次核对账号。历史持久化只保留主桶七天已结束周期，完整实时快照不从数据库恢复。
 
 App 每两秒只检查当前 CODEX_HOME 与 auth.json 的修改时间、长度和文件身份，不读取凭据正文。元数据变化使 `CurrentLimitSession` 代次递增并清空状态；开启自动同步且空闲时触发 API 核对。请求开始和结果应用前均核对环境，旧代次不能恢复快照，即使账号切换后又切回也一样。账号身份仍来自实时 API 的 accountId，不从文件元数据推断；未确认身份、API 失败或无快照时清空显示。凭据由其他存储管理而未产生文件变化时依靠周期 API 刷新重新确认，不宣称能立即收到所有外部登录变化。
 
@@ -328,18 +228,13 @@ App 启动全来源同步；FSEvents 文件事件合并 2 秒，本地事件扫�
 
 同步中只合并待办，不并发启动扫描者。取消后至少 60 秒安静期；休眠暂停，唤醒重绑监听并核对，不重放所有错过的定时任务。环境来源变化时重绑目录。各来源失败独立报告，不抹除其他来源已提交结果。
 
-### 7.3 迁移与可恢复维护
+### 7.3 开发阶段重建与维护
 
-WAL 支持读写并行；App／CLI 使用同一 flock 写锁协调扫描、迁移和维护任务。迁移按 GRDB 编号顺序执行，已发布迁移不就地修改；失败事务回滚，未来 schema 拒绝写入，不自动复制主库／WAL 备份。
+当前未上线，StoreSchema 只有 schema.3 建表定义；旧结构直接清空重建，再从源日志重新采集，不维护升级链。WAL 及 flock 协调 App／CLI 写入。
 
-当前迁移包含将旧宽价格拆成 tier 行、未上线聚合用量清空后重扫，以及删除旧 API 日桶。这是一条保留的升级路径，不是每次启动清库；价格、任务映射和周额度证据保留。新建库执行完整迁移链，结构迁移与解析版本、计价算法和统计断点分开管理。
+请求及计价变化在同一事务推进统计版本并标记变更日期，项目归属变化使缓存失效。统计重建在一个事务内发布；中断回滚且不保留中间表。交叉筛选、精确滚动时间及缓存不可用时查询已提交 usage。
 
-用量变化、项目归属变化通过同事务触发器推进事实版本；标题变化不影响金额。窗口缓存同时依赖额度证据版本及用量／计价版本。
-
-- 金额重算每批 512 行，金额与断点同事务提交。恢复核对范围、事实版本、价格／默认 JSON 指纹和内部断点版本；变化则重新核对。自身重算后保存更新后的版本，避免误判自己的写入。
-- 统计重建每批最多 8192 行，聚合结果写 statistics_rebuild，断点一起提交；完成后原子发布正式缓存。失败不暴露半成品，依据变化废弃旧进度重新计算。
-- 日缓存过期时尝试重建；扫描写锁忙或读快照版本已变化时直接聚合已提交事实，不将旧缓存标成当前值。已迁移数据库的新连接不等待整个扫描完成。
-- 设置的容量／旧备份列表只读文件元数据，不扫描全部用量或主动 checkpoint；旧备份不自动删除。
+金额重算仍按批次和已有断点机制处理，区别于不再需要断点的统计缓存重建。设置只读数据库及旧备份元数据，不新增备份。
 
 ## 8. 上游契约入口
 
@@ -386,12 +281,12 @@ UsageStore.usageFilterOptions 在一次数据库读快照内返回模型、项�
 
 DashboardModel、统计详情和请求明细保留后台任务句柄，通过取消处理器传播取消，应用结果前再次检查取消与请求代次。请求列表在完整行内容不变时不重新赋值。移除用量明细 inspector 及动态 HSplitView，避免选中行时反复增删原生分栏及重新计算尺寸约束。
 
-周周期缓存修订版为6：已确认恢复观测关联紧接的新周期，用其发生时刻结束旧周期；不能取更晚周期的恢复观测。单账号全局周期序列包含未知账号证据，不因账号字段缺失让多个旧周期继续进行中，但不修改原始归属。actualResetAt 保存小数秒恢复时间，usageEndsAt 保留兼容的整秒统计边界；实际查询使用未截断的结束时间。requestCount 与 Tokens、金额采用同一周期区间和账号条件，来自本地 usage 行数，与 observationCount 分开。界面只展示合并卡片、已使用比例及必要的手动重置标签，不展示峰值／观测次数／统计依据。
+周额度只保存已结束的周期，结束边界保留小数秒。requestCount、Tokens 和金额在同步时从 usage 使用相同的轮次起点、周期区间及账号条件汇总落库，页面直接读取；界面只展示合并卡片、使用比例和必要的提前重置标签，不展示峰值、观察次数或统计依据。
 
 ### 总览三环统计
 
 - `OverviewReport` 在同一数据库快照、相同周期内读取模型、互斥使用模式及推理深度分组；沿用有效请求范围和已知金额函数，三组总量保持一致。`hasSameContent` 包含新增维度，数据未变化时不更新界面。
-- 推理深度来自 `turn_context.effort`，按当前轮次绑定；新轮次清空，跨轮次请求不继承。持久化在请求证据的 `reasoningEffort` 中，解析状态升级到 7，旧游标一次性重扫回填并沿用请求身份去重；后续恢复增量扫描。
+- 推理深度来自 `turn_context.effort`，按当前轮次绑定；新轮次清空，跨轮次请求不继承。持久化在 `usage.reasoning_effort` 中，新数据库从日志直接采集。解析状态升级到 8，旧游标一次性重扫回填并沿用请求身份去重；后续恢复增量扫描。
 - 三个 SwiftUI 圆弧组共用画布，独立归一化，固定半径与细描边保持环间留白。按指针半径和角度命中扇区，放大该扇区并联动列表高亮；减少动态效果设置下关闭过渡动画。右侧三组列表横排，窄窗口通过 ViewThatFits 把图移到列表上方，中心留空。保留金额、Tokens 和当前指标占比，各组未知以中性色排最后。
 
 ### 项目来源与周期筛选选项
@@ -399,3 +294,16 @@ DashboardModel、统计详情和请求明细保留后台任务句柄，通过取
 Codex 项目映射读取 local-projects、thread-project-assignments、projectless-thread-ids 和 thread-projectless-output-directories；显式项目归属优先于历史聊天输出目录。无显式归属时仅匹配已保存项目根目录，取消任意 cwd 文件夹名作为项目名的回退。聊天保存为既有 Chat 分组，界面显示“聊天”；无法确认归属保留空值。刷新名称映射不修改请求、Tokens 或计价。
 
 usageFilterOptions 根据查询时区、日期和账号范围，从有效用量事实中取项目／模型去重选项，忽略已选项目、模型和搜索，避免选项互相锁死。界面按日期范围和数据版本重载选项，过期异步结果取消后不写回。
+
+### 窗口激活时更新过期额度
+
+主窗口使用 SwiftUI scenePhase 的 task 在激活时检查当前登录会话快照；超过 15 分钟则保留旧卡片并后台 synchronize(.api)。已有同步时等待其结束，再核对登录环境和快照时效，已更新则不追加请求；离开窗口会取消等待。账号环境变化仍 invalidate，过期预测仍由 LimitForecastHistory 拒绝。无快照的首次启动沿用现有启动同步，不从历史七天数据伪造完整实时快照。
+
+
+### 总览查询字段优化
+
+- 模式统计使用已有 `usage.tier`；仅当观测档位为空时，通过 `app_metadata` 主键查找对应任务／轮次的 `fast_trace` 记录。明确的普通档位优先于 trace，不把推断值写回观测档位。
+- 推理深度统计读取 `usage.reasoning_effort`，不在每次总览查询中解析大段 `evidence_json`；缺失及空字符串仍归为未知。
+- `usage(occurred_at)` 索引支持精确滚动时间范围，不修改时间边界、金额口径或请求去重规则。
+
+扫描断点继续使用 file_state_json 和 parser_state_json，字段不参与独立查询。文件头校验长度由 scanned_offset 推导；解析状态只保留恢复所需的上下文、累计基线与去重状态。settings 仅保存模型和服务档位，不保存来源证据、候选模型或重复的活动设置；继承事件计数仅在本次扫描内存中维护。

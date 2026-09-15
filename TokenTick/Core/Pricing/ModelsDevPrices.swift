@@ -27,7 +27,7 @@ struct ModelsDevPrices {
             }
             let standard = try rates(entry.cost)
             let (long, threshold, rule) = try context(entry.cost)
-            let source = PriceSource(url: sourceURL, cost: entry.cost ?? .null, experimental: entry.experimental,
+            let source = PriceSource(url: sourceURL,
                                      combinationRule: nil, combinationSource: nil, contextRule: rule)
             var result = [ModelPrice(model: model, date: date, tier: "standard", rates: standard, long: long,
                                      longContextThreshold: threshold, contextRule: rule, source: source)]
@@ -42,7 +42,7 @@ struct ModelsDevPrices {
                     let hasContext = cost["tiers"] != nil || cost["context_over_200k"] != nil
                     let modeLong = try hasContext ? explicitLong : modeRates.applyingContextRatio(base: standard, long: long)
                     let modeRule = hasContext ? explicitRule : rule
-                    let proof = PriceSource(url: sourceURL, cost: entry.cost ?? .null, experimental: entry.experimental,
+                    let proof = PriceSource(url: sourceURL,
                         combinationRule: hasContext ? "explicit-mode-context:" + name : (rule == .requestInputGreaterThan ? "derived-component-context-ratio" : nil),
                         combinationSource: sourceURL, contextRule: modeRule)
                     result.append(ModelPrice(model: model, date: date, tier: tier, rates: modeRates, long: modeLong,

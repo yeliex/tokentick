@@ -128,7 +128,7 @@ extension UsageStore {
             let projects = try String.fetchAll(db, sql: "SELECT DISTINCT t.project_name FROM usage u JOIN threads t ON t.thread_id = u.thread_id WHERE \(predicate) AND t.project_name IS NOT NULL ORDER BY t.project_name", arguments: arguments)
             let accounts = try String.fetchAll(db, sql: """
                 SELECT account_id FROM usage WHERE account_id IS NOT NULL
-                UNION SELECT account_id FROM weekly_limit_observations WHERE account_id IS NOT NULL
+                UNION SELECT account_id FROM weekly_limit_cycles WHERE account_id IS NOT NULL
                 ORDER BY account_id
                 """)
             return UsageFilterOptions(models: models, projects: projects, accounts: accounts)

@@ -80,7 +80,7 @@ struct AutomaticSyncTests {
         let url = root.appendingPathComponent("usage.sqlite")
         let store = try UsageStore(databaseURL: url)
         try store.pool.write { db in
-            try db.execute(sql: "INSERT INTO usage(source_line,rollout_id, usage_date, total_tokens, source, evidence_json) VALUES (1,'a', '2026-09-09', 9, 'local', '{}')")
+            try db.execute(sql: "INSERT INTO usage(source_line,rollout_id, usage_date, total_tokens, source, pricing_source) VALUES (1,'a', '2026-09-09', 9, 'local', '{}')")
         }
         try FileWriteLock(url: url.appendingPathExtension("write.lock")).withLock {
             let reopened = try UsageStore(databaseURL: url)

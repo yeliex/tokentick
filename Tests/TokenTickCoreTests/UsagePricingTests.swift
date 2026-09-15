@@ -82,12 +82,11 @@ struct UsagePricingTests {
         #expect(try fixturePrice(json: legacy.replacingOccurrences(of: #""context_over_200k""#, with: #""tiers":[],"context_over_200k""#)).contextRule == .unsupported)
     }
 
-    @Test func multipleTiersArePreservedWithoutSilentlyChoosingOne() throws {
+    @Test func multipleTiersRemainUnsupportedWithoutSilentlyChoosingOne() throws {
         let json = #"{"openai":{"models":{"m":{"id":"m","cost":{"input":1,"output":2,"tiers":[{"tier":{"type":"context","size":100},"input":2},{"tier":{"type":"context","size":200},"input":3}]}}}}}"#
         let price = try fixturePrice(json: json)
         #expect(price.contextRule == .unsupported)
         #expect(price.long == .unknown)
-        #expect(price.source.cost["tiers"] != nil)
     }
 
     @Test func sourceValidationDoesNotAcceptNegativePricesOrWrongProvider() throws {

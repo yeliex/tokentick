@@ -27,50 +27,24 @@ public struct LimitQuery: Sendable, Hashable {
 }
 
 public struct WeeklyLimitWindow: Codable, Sendable, Identifiable, Equatable {
-    public var id: String
+    public let id: String
     public let accountID: String?
-    public let scopeKey: String
     public let limitID: String
     public let startedAtInferred: Int64
     public let scheduledResetAt: Int64
-    public let firstObservedAt: Double
-    public let firstPositiveAt: Double
     public let lastObservedAt: Double
     public let lastUsedPercent: Double?
-    public let peakUsedPercent: Double
-    public let observationCount: Int
-    public let conflictingObservations: Int
-    public let unknownAccountObservations: Int
-    public let observedAccountIDs: [String]
-    public let recoveryObservedAt: Double?
-    public let sourceJSON: String
-    // 金额与 tokens 来自本地明细；最后额度观测仍不能冒充重置时的最终百分比。
-    public var totalTokens: Int64? = nil
-    public var amountNanoUSD: Int64? = nil
-    public var finalUsedPercent: Double? = nil
-    public var knownAmountNanoUSD: Int64? = nil
-    public var unpricedTokens: Int64? = nil
-    public var usageEndsAt: Int64? = nil
-    public var actualResetAt: Double? = nil
-    public var requestCount: Int? = nil
-    public var endsAt: Double { actualResetAt ?? Double(usageEndsAt ?? scheduledResetAt) }
-    public var usageAttribution: String = "local_usage_by_turn_start_in_query_account_scope"
-}
-
-extension UsageAccountScope {
-    var weeklyScopeKey: String {
-        switch self {
-        case .all: "all"
-        case .unknown: "unknown"
-        case .account(let id): "account:" + id
-        }
-    }
+    public let resetKind: String
+    public let endsAt: Double
+    public let totalTokens: Int64?
+    public let amountNanoUSD: Int64?
+    public let knownAmountNanoUSD: Int64?
+    public let requestCount: Int?
+    public var observedAccountIDs: [String] { accountID.map { [$0] } ?? [] }
 }
 
 public struct WeeklyLimitHistory: Encodable, Sendable {
     public let timezone: String
     public let rows: [WeeklyLimitWindow]
     public let hasMore: Bool
-    public let excludedObservations: [String: Int]
-    public let coverage = "weekly_windows_by_inferred_start; recovery_time_separate; final_usage_and_account_attribution_may_be_unknown"
 }

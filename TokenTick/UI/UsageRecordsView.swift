@@ -101,7 +101,6 @@ struct UsageRecordsView: View {
 private struct UsageRecordDetail: View {
     let record: UsageRecord
     let timezone: TimeZone
-    @State private var evidenceExpanded = false
     var body: some View {
         Form {
             Section("轮次归属") {
@@ -143,7 +142,7 @@ private struct UsageRecordDetail: View {
                 UsageDetailField("已知金额", value: UsageFormatting.exactMoney(record.knownAmountNanoUSD))
                 UsageDetailField("完整金额", value: UsageFormatting.exactMoney(record.amountNanoUSD))
             }
-            Section("统计证据") {
+            Section("来源信息") {
                 UsageDetailField("来源", value: record.source == "local" ? "本地日志" : "API")
                 UsageDetailField("Rollout ID", value: record.rolloutID ?? "未知")
                 UsageDetailField("文件名", value: record.fileName ?? "未知")
@@ -155,8 +154,8 @@ private struct UsageRecordDetail: View {
                         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
                     }.disabled(!FileManager.default.fileExists(atPath: path))
                 }
-                Button(evidenceExpanded ? "收起统计证据 JSON" : "查看统计证据 JSON") { evidenceExpanded.toggle() }
-                if evidenceExpanded { Text(record.evidenceJSON).font(.system(.caption, design: .monospaced)) }
+                UsageDetailField("推理深度", value: record.reasoningEffort ?? "未知")
+                UsageDetailField("计价模式", value: record.pricingIsFast ? "快速" : "普通")
             }
         }.formStyle(.grouped).scrollContentBackground(.hidden).textSelection(.enabled)
     }

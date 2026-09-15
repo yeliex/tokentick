@@ -12,7 +12,7 @@ struct RollingUsageTests {
         try store.pool.write { db in
             try db.execute(sql: """
                 INSERT INTO threads(thread_id, title, project_name) VALUES ('a','任务 A','项目 A');
-                INSERT INTO usage(source_line,rollout_id,thread_id,account_id,occurred_at,usage_date,total_tokens,model,source,evidence_json) VALUES
+                INSERT INTO usage(source_line,rollout_id,thread_id,account_id,occurred_at,usage_date,total_tokens,model,source,pricing_source) VALUES
                   (1,'before','a','account-a',?,'2026-09-09',1,'m','local','{}'),
                   (1,'start','a','account-a',?,'2026-09-09',20,'m','local','{}'),
                   (1,'inside','a',NULL,?,'2026-09-10',40,'m','local','{}'),

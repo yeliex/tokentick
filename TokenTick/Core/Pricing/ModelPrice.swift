@@ -49,20 +49,17 @@ struct ModelPrice: Codable, Equatable, Sendable {
 
     enum ContextRule: String, Codable { case uniform, requestInputGreaterThan, unsupported }
 
-    /// 价格和规则决定是否需要新快照，名称和原始 JSON 的字段顺序不参与比较。
+    /// 价格和规则决定是否需要新快照，来源描述不参与比较。
     func samePricing(as other: Self) -> Bool {
         tier == other.tier && rates == other.rates && long == other.long
             && longContextThreshold == other.longContextThreshold && contextRule == other.contextRule
             && source.combinationRule == other.source.combinationRule
-            && (contextRule != .unsupported || source.cost == other.source.cost)
     }
 }
 
 struct PriceSource: Codable, Equatable, Sendable {
     var isBundled: Bool? = nil
     let url: String
-    let cost: SourceJSON
-    let experimental: SourceJSON?
     let combinationRule: String?
     let combinationSource: String?
     let contextRule: ModelPrice.ContextRule

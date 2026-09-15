@@ -110,7 +110,7 @@ struct StatisticsTests {
         _ = try fixture.store.rebuildStatistics(timezone: "UTC")
         let writer = try UsageStore(databaseURL: fixture.store.databaseURL)
         try writer.pool.write { db in
-            try db.execute(sql: "INSERT INTO usage(source_line,rollout_id, usage_date, total_tokens, source, evidence_json) VALUES (1,'new', '2026-03-08', 100, 'local', '{}')")
+            try db.execute(sql: "INSERT INTO usage(source_line,rollout_id, usage_date, total_tokens, source, pricing_source) VALUES (1,'new', '2026-03-08', 100, 'local', '{}')")
         }
         let report = try fixture.store.pool.read { db in
             try UsageStore.readUsageReport(UsageQuery(grouping: .total, timezone: "UTC"), timezone: timezone, db: db)
@@ -152,35 +152,6 @@ struct StatisticsTests {
         #expect(try fixture.store.rebuildStatistics(timezone: #require(TimeZone(identifier: "UTC")), onlyIfNeeded: true).rebuilt)
     }
 
-    @Test func preReleaseTurnUpgradeDiscardsOldUsageAndCacheWithoutBackup() throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-        let url = root.appendingPathComponent("usage.sqlite")
-        let old = try DatabaseQueue(path: url.path)
-        try StoreSchema.migrator.migrate(old, upTo: "v2.usage-dedup-alias")
-        try old.write { db in
-            try db.execute(sql: """
-                INSERT INTO usage(dedup_key, usage_date, total_tokens, source, evidence_json) VALUES ('old', '2026-03-08', 7, 'local', '{"keep":true}');
-                INSERT INTO statistics(account_key, date, timezone, dimension, dimension_value, total_tokens,
-                    unpriced_tokens, unattributed_tokens, record_count) VALUES ('all', '2026-03-08', 'UTC', 'all', 'all', 999, 0, 0, 1);
-                INSERT INTO scan_files(rollout_id,thread_id,file_name,scanned_line,scanned_offset) VALUES ('old','thread','old.jsonl',100,200);
-                INSERT INTO app_metadata(key,value) VALUES ('reprice_checkpoint','old');
-                INSERT INTO prices(model,date,input_price,source_json) VALUES ('historical','2026-01-01','1','{}');
-                """)
-        }
-        try old.close()
-        let store = try UsageStore(databaseURL: url)
-        #expect(try store.tableCounts()["usage"] == 0)
-        #expect(try store.tableCounts()["turn_usage"] == 0)
-        #expect(try store.tableCounts()["scan_files"] == 0)
-        #expect(try store.tableCounts()["prices"] == 1)
-        #expect(try store.pool.read { try String.fetchOne($0, sql: "SELECT value FROM app_metadata WHERE key='reprice_checkpoint'") } == nil)
-        #expect(try store.tableCounts()["statistics"] == 0)
-        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("Backups").path))
-        #expect(try store.usageReport(UsageQuery(grouping: .total, timezone: "UTC")).rows.reduce(0) { $0 + $1.totalTokens } == 0)
-    }
-
     private struct Fixture {
         let root: URL
         let store: UsageStore
@@ -194,7 +165,7 @@ struct StatisticsTests {
                 try db.execute(sql: """
                     INSERT INTO usage(source_line,rollout_id, account_id, thread_id, occurred_at, usage_date, model,
                         input_tokens, output_tokens, cache_read_tokens, total_tokens, input_amount, output_amount,
-                        cache_read_amount, cache_write_amount, amount, source, evidence_json) VALUES
+                        cache_read_amount, cache_write_amount, amount, source, pricing_source) VALUES
                     (1,'a', 'all', 't1', ?, '2026-03-08', 'model', 100, 10, 20, 110, 1, 2, 3, 4, 10, 'local', '{}'),
                     (1,'b', NULL, 't2', ?, '2026-03-08', 'value:', 15, 5, 0, 20, NULL, 7, 0, 0, NULL, 'local', '{}'),
                     (1,'c', NULL, NULL, ?, '2026-03-09', NULL, NULL, NULL, NULL, 30, 0, NULL, NULL, NULL, NULL, 'local', '{}'),

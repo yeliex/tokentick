@@ -15,7 +15,6 @@ struct FileSnapshot: Codable {
     let device: UInt64
     let compressed: Bool
     var completed = false
-    var prefixCount = 0
     var prefixHash = ""
     var tailHash = ""
 
@@ -37,7 +36,7 @@ struct FileSnapshot: Codable {
         guard !compressed, !snapshot.compressed, offset > 0, snapshot.size >= offset,
               inode == snapshot.inode, device == snapshot.device,
               snapshot.size > size || (snapshot.size == size && snapshot.modifiedAt == modifiedAt) else { return false }
-        return try Self.hash(url: url, offset: 0, count: prefixCount) == prefixHash
+        return try Self.hash(url: url, offset: 0, count: Int(min(offset, 4_096))) == prefixHash
             && Self.hash(url: url, offset: offset - min(offset, 4_096), count: Int(min(offset, 4_096))) == tailHash
     }
 

@@ -65,7 +65,7 @@ struct DesktopProjectCatalogTests {
             try db.execute(sql: "CREATE TABLE threads(id TEXT PRIMARY KEY,title TEXT,cwd TEXT); INSERT INTO threads VALUES ('t','标题','/old/worktree')")
         }
         try store.pool.write { db in
-            try db.execute(sql: "INSERT INTO usage(source_line,rollout_id,thread_id,source,usage_date,total_tokens,evidence_json) VALUES (1,'one','t','local','2026-09-01',100,'{}'),(1,'two','t','local','2026-09-02',200,'{}')")
+            try db.execute(sql: "INSERT INTO usage(source_line,rollout_id,thread_id,source,usage_date,total_tokens,pricing_source) VALUES (1,'one','t','local','2026-09-01',100,'{}'),(1,'two','t','local','2026-09-02',200,'{}')")
         }
         let facts = try store.pool.read { try Row.fetchAll($0, sql: "SELECT * FROM usage ORDER BY id") }
         for project in ["A", "B", "Chat", "A"] {

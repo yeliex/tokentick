@@ -13,7 +13,7 @@ struct TurnUsageTests {
             + f.count(1) + f.turn("two") + f.count(2)
         _ = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: updated)
         #expect(try f.scan().issueCount == 0)
-        let rows = try f.store.pool.read { try Row.fetchAll($0, sql: "SELECT turn_id,json_extract(evidence_json,'$.reasoningEffort') AS effort FROM usage ORDER BY turn_id") }
+        let rows = try f.store.pool.read { try Row.fetchAll($0, sql: "SELECT turn_id,reasoning_effort AS effort FROM usage ORDER BY turn_id") }
         #expect(rows.count == 2)
         #expect(rows[0]["effort"] as String? == "high")
         #expect(rows[1]["effort"] as String? == nil)
@@ -27,7 +27,7 @@ struct TurnUsageTests {
             (f.turn("shared") + f.count(1)).replacingOccurrences(of: "2026-09-01", with: "2026-09-02") + f.turn("child-only") + f.count(3))
         #expect(try f.scan().issueCount == 0)
         #expect(try f.total() == 360)
-        #expect(try f.store.tableCounts()["turn_usage"] == 2)
+        #expect(try f.store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(DISTINCT turn_key) FROM usage") } == 2)
         try f.append(f.count(3), to: original)
         #expect(try f.scan().issueCount == 0)
         #expect(try f.total() == 480)
@@ -51,7 +51,7 @@ struct TurnUsageTests {
         let row = try f.store.pool.read { try Row.fetchOne($0, sql: "SELECT thread_id,usage_date FROM usage") }
         #expect(row?["thread_id"] as String? == f.parent)
         #expect(row?["usage_date"] as String? == "2026-09-01")
-        #expect(try f.store.tableCounts()["turn_usage"] == 1)
+        #expect(try f.store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(DISTINCT turn_key) FROM usage") } == 1)
     }
 
     @Test func mixedFormatsWithDifferentCumulativeBaselinesSurviveRestartAndReplay() throws {
@@ -84,7 +84,7 @@ struct TurnUsageTests {
         let nextDay = f.count(6, cumulative: 1_000_320).replacingOccurrences(of: "2026-09-01", with: "2026-09-02")
         _ = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: base + long + fast + other + nextDay)
         #expect(try f.scan().issueCount == 0)
-        #expect(try f.store.tableCounts()["turn_usage"] == 1)
+        #expect(try f.store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(DISTINCT turn_key) FROM usage") } == 1)
         #expect(try f.store.tableCounts()["usage"] == 6)
         let rows = try f.store.pool.read { try Row.fetchAll($0, sql: "SELECT * FROM usage WHERE model='gpt-6-astra' ORDER BY id") }
         #expect(rows.count == 4)
@@ -135,11 +135,6 @@ struct TurnUsageTests {
         #expect(rows.count == 2 && rows.map(\.responseID) == ["resp-1","resp-2"])
         #expect(rows.map(\.sourceOrdinal) == [10,20])
         #expect(try f.total() == 240)
-        for (row, ordinal) in zip(rows,[12,22]) {
-            let proof = try JSONDecoder().decode(SourceJSON.self, from: Data(row.evidenceJSON.utf8))
-            guard case .array(let reports) = proof["alternateReports"] else { Issue.record("缺少双格式报告证据"); continue }
-            #expect(reports.count == 1 && reports[0]["ordinal"] == .number(Decimal(ordinal)))
-        }
         #expect(try f.scan().insertedRequests == 0)
     }
 

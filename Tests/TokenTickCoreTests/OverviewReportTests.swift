@@ -4,6 +4,27 @@ import Testing
 @testable import TokenTickCore
 
 struct OverviewReportTests {
+
+
+    @Test func fastTraceOnlyAppliesWhenObservedTierIsAbsent() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        try store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO app_metadata(key,value) VALUES ('fast_trace:thread:turn','{}');
+                INSERT INTO usage(source_line,rollout_id,thread_id,turn_id,total_tokens,tier,is_long_context,usage_date,source,pricing_source) VALUES
+                    (1,'trace','thread','turn',100,NULL,0,'2026-09-01','local','{}'),
+                    (1,'standard','thread','turn',200,'standard',0,'2026-09-01','local','{}'),
+                    (1,'fast','thread','other',300,'fast',0,'2026-09-01','local','{}'),
+                    (1,'default','thread','other',400,NULL,0,'2026-09-01','local','{}');
+                """)
+        }
+        let report = try store.overviewReport(period: .all, now: Date(), timezone: "UTC")
+        #expect(report.modes.first { $0.name == "快速" }?.tokens == 400)
+        #expect(report.modes.first { $0.name == "普通" }?.tokens == 600)
+    }
+
     @Test func nestedSharesPartitionRequestsAndRespectPeriodAndKnownAmounts() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -12,13 +33,13 @@ struct OverviewReportTests {
         try store.pool.write { db in
             for (index, mode) in [(0, 0), (1, 0), (0, 1), (1, 1)].enumerated() {
                 try db.execute(sql: """
-                    INSERT INTO usage(source_line,rollout_id,occurred_at,total_tokens,input_tokens,input_amount,is_long_context,source,evidence_json)
-                    VALUES (1,?,?,100,100,10,?,'local',?)
-                    """, arguments: [String(index), now.timeIntervalSince1970 - 1, mode.1,
+                    INSERT INTO usage(source_line,rollout_id,occurred_at,total_tokens,input_tokens,input_amount,is_long_context,tier,reasoning_effort,source,pricing_source)
+                    VALUES (1,?,?,100,100,10,?,?,'high','local',?)
+                    """, arguments: [String(index), now.timeIntervalSince1970 - 1, mode.1, mode.0 == 1 ? "fast" : "standard",
                         "{\"pricingMode\":{\"isFast\":\(mode.0)},\"reasoningEffort\":\"high\"}"])
             }
             try db.execute(sql: """
-                INSERT INTO usage(source_line,rollout_id,occurred_at,total_tokens,source,evidence_json) VALUES
+                INSERT INTO usage(source_line,rollout_id,occurred_at,total_tokens,source,pricing_source) VALUES
                     (1,'unknown',?,50,'local','{}'), (1,'old',?,999,'local','{}'), (1,'api',?,999,'api','{}')
                 """, arguments: [now.timeIntervalSince1970 - 1, now.timeIntervalSince1970 - 86401, now.timeIntervalSince1970 - 1])
         }
@@ -37,7 +58,7 @@ struct OverviewReportTests {
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
         try store.pool.write { db in
             try db.execute(sql: """
-                INSERT INTO usage(source_line,rollout_id,occurred_at,usage_date,total_tokens,model,source,evidence_json) VALUES
+                INSERT INTO usage(source_line,rollout_id,occurred_at,usage_date,total_tokens,model,source,pricing_source) VALUES
                     (1,'old',NULL,'2026-01-01',10,'a','local','{}'),
                     (1,'recent',NULL,'2026-09-14',20,'b','local','{}');
                 """)
@@ -67,12 +88,12 @@ struct OverviewReportTests {
         try store.pool.write { db in
             try db.execute(sql: """
                 INSERT INTO threads(thread_id,title,project_name) VALUES ('a','任务 A','项目 A'),('b','任务 B','项目 A'),('c','任务 C',NULL);
-                INSERT INTO usage(source_line,rollout_id,thread_id,account_id,usage_date,total_tokens,model,source,evidence_json) VALUES
+                INSERT INTO usage(source_line,rollout_id,thread_id,account_id,usage_date,total_tokens,model,source,pricing_source) VALUES
                     (1,'a','a','account-a','2026-09-14',10,'model-a','local','{}'),
                     (1,'b','b','account-a','2026-09-14',20,'model-a','local','{}'),
                     (1,'c','c',NULL,'2026-09-14',30,NULL,'local','{}');
-                INSERT INTO weekly_limit_observations(id,scope_key,account_id,limit_id,observed_at,resets_at,used_percent,source_json)
-                    VALUES ('w','account:account-b','account-b','codex',1000,2000,10,'{}');
+                INSERT INTO weekly_limit_cycles(id,account_id,limit_id,started_at,scheduled_reset_at,ended_at,reset_kind,last_observed_at,last_used_percent)
+                    VALUES ('b','account-b','codex',0,604800,604800,'natural',600000,80);
                 """)
         }
         let options = try store.usageFilterOptions()
@@ -88,7 +109,7 @@ struct OverviewReportTests {
         try store.pool.write { db in
             try db.execute(sql: """
                 INSERT INTO threads(thread_id,title) VALUES ('a','任务 A'),('b','任务 B');
-                INSERT INTO usage(source_line,rollout_id,thread_id,usage_date,total_tokens,source,evidence_json) VALUES
+                INSERT INTO usage(source_line,rollout_id,thread_id,usage_date,total_tokens,source,pricing_source) VALUES
                     (1,'a','a','2026-09-14',10,'local','{}'),
                     (1,'b','b','2026-09-14',20,'local','{}'),
                     (1,'c',NULL,'2026-09-14',30,'local','{}');
@@ -115,7 +136,7 @@ struct OverviewReportTests {
         try store.pool.write { db in
             try db.execute(sql: """
                 INSERT INTO threads(thread_id,title,project_name) VALUES ('a','任务 A','项目 A'),('b','任务 B','项目 B');
-                INSERT INTO usage(source_line,rollout_id,thread_id,account_id,occurred_at,usage_date,total_tokens,model,source,evidence_json) VALUES
+                INSERT INTO usage(source_line,rollout_id,thread_id,account_id,occurred_at,usage_date,total_tokens,model,source,pricing_source) VALUES
                     (1,'old','b','a',?,'2026-09-13',1000,'m','local','{}'),
                     (1,'start','a','a',?,'2026-09-13',10,'m','local','{}'),
                     (1,'middle','b',NULL,?,'2026-09-13',20,NULL,'local','{}'),
@@ -154,7 +175,7 @@ struct OverviewReportTests {
         let now = try #require(DateParsing.parseTimestamp("2026-09-14T12:30:00Z"))
         try store.pool.write { db in
             try db.execute(sql: """
-                INSERT INTO usage(source_line,rollout_id,occurred_at,usage_date,total_tokens,source,evidence_json)
+                INSERT INTO usage(source_line,rollout_id,occurred_at,usage_date,total_tokens,source,pricing_source)
                 VALUES(1,'test',?,'2026-09-14',100,'local','{}')
                 """, arguments: [now.timeIntervalSince1970 - 60])
         }
@@ -177,7 +198,7 @@ struct OverviewReportTests {
             for (index, time) in ["2026-09-13T18:00:00Z", "2026-09-14T02:00:00Z"].enumerated() {
                 let date = try #require(DateParsing.parseTimestamp(time))
                 try db.execute(sql: """
-                    INSERT INTO usage(source_line,rollout_id,occurred_at,usage_date,total_tokens,input_tokens,input_amount,source,evidence_json)
+                    INSERT INTO usage(source_line,rollout_id,occurred_at,usage_date,total_tokens,input_tokens,input_amount,source,pricing_source)
                     VALUES(1,?,?,?,10,10,100,'local','{}')
                     """, arguments: [String(index), date.timeIntervalSince1970, String(time.prefix(10))])
             }

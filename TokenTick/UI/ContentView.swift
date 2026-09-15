@@ -14,6 +14,7 @@ private enum AppPage: String, CaseIterable, Identifiable {
 }
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var scheme
     @Environment(ApplicationModel.self) private var app
     @SceneStorage("main.page") private var selectedPage = AppPage.overview.rawValue
@@ -71,15 +72,24 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     TimelineView(.periodic(from: .now, by: 60)) { context in
-                        Text(syncTime(now: context.date)).font(.caption).foregroundStyle(.secondary)
-                            .help(UsageFormatting.timestamp(app.lastSync?.finishedAt))
+                        Text(app.isSyncing ? app.progressText : syncTime(now: context.date))
+                            .font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                            .help(app.isSyncing ? app.progressText : UsageFormatting.timestamp(app.lastSync?.finishedAt))
                     }
                 }.sharedBackgroundVisibility(.hidden)
                 ToolbarItem(placement: .primaryAction) {
-                    Button("刷新", systemImage: "arrow.triangle.2.circlepath") {
+                    Button {
                         app.synchronize()
+                    } label: {
+                        Group {
+                            if app.isSyncing {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                            }
+                        }.frame(width: 16, height: 16)
                     }
-                    .labelStyle(.iconOnly)
+                    .accessibilityLabel(app.isSyncing ? "正在同步" : "刷新")
                     .help(app.isSyncing ? "正在同步" : "刷新")
                     .disabled(app.store == nil || app.isSyncing).keyboardShortcut("r")
                 }
@@ -89,6 +99,9 @@ struct ContentView: View {
         .tint(.primary)
         .frame(minWidth: 940, minHeight: 640)
         .task { await app.start() }
+        .task(id: scenePhase) {
+            if scenePhase == .active { await app.refreshExpiredLimits() }
+        }
     }
     private func syncTime(now: Date) -> String {
         guard let finished = app.lastSync?.finishedAt else { return "尚未同步" }

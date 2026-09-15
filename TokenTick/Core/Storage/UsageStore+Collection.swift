@@ -24,8 +24,7 @@ extension UsageStore {
         var file = file
         file.completed = completed
         if !file.compressed {
-            file.prefixCount = Int(min(offset, 4_096))
-            file.prefixHash = try FileSnapshot.hash(url: url, offset: 0, count: file.prefixCount)
+            file.prefixHash = try FileSnapshot.hash(url: url, offset: 0, count: Int(min(offset, 4_096)))
             file.tailHash = try FileSnapshot.hash(url: url, offset: offset - min(offset, 4_096), count: Int(min(offset, 4_096)))
         }
         let encoder = JSONEncoder()
@@ -34,7 +33,6 @@ extension UsageStore {
         let stateJSON = String(decoding: try encoder.encode(state), as: UTF8.self)
         let counts = try pool.write { db in
             let counts = try Self.collectTurns(usages, session: state.session, db: db)
-            for snapshot in limits { _ = try Self.saveWeeklyObservations(snapshot, db: db) }
             let threadID = identity.threadID.uuidString.lowercased()
             // 名称由最新 Codex thread 缓存更新，不从路径猜出一个无法核验的项目名。
             try db.execute(sql: "INSERT INTO threads(thread_id) VALUES (?) ON CONFLICT DO NOTHING", arguments: [threadID])
@@ -50,6 +48,7 @@ extension UsageStore {
                                   line, offset, Date().timeIntervalSince1970, fileJSON, stateJSON])
             return counts
         }
+        try observeWeeklyLimits(limits)
         report.insertedRequests += counts.inserted
         report.upgradedRequests += counts.upgraded
         report.duplicateRequests += counts.duplicates

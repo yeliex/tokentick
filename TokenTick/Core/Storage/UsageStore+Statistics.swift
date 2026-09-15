@@ -8,14 +8,6 @@ public struct StatisticsRebuildReport: Codable, Sendable {
     public let rebuilt: Bool
 }
 
-private struct StatisticsRebuildCheckpoint: Codable {
-    // 聚合口径或断点结构改变时递增，使此前的中间结果重新计算。
-    static let currentVersion = 2
-    let version: Int
-    let revision: Int64
-    var lastID: Int64 = 0
-}
-
 extension UsageStore {
     public func statisticsTimezone() throws -> String {
         try pool.read { db in
@@ -42,51 +34,53 @@ extension UsageStore {
 
     func rebuildStatistics(timezone: TimeZone, onlyIfNeeded: Bool) throws -> StatisticsRebuildReport {
         try FileWriteLock(url: databaseURL.appendingPathExtension("write.lock")).withLock(nonBlocking: onlyIfNeeded) {
-            while true {
+            try Task.checkCancellation()
+            return try pool.write { db in
+                let revision = try Self.statisticsRevision(db)
+                if try onlyIfNeeded && Self.statisticsAreCurrent(db, timezone: timezone.identifier) {
+                    return StatisticsRebuildReport(timezone: timezone.identifier, revision: revision,
+                        rows: try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM statistics WHERE timezone=?", arguments: [timezone.identifier]) ?? 0,
+                        rebuilt: false)
+                }
+                StatisticsSQL.prepare(db, timezone: timezone)
+                let cached = try Int64.fetchOne(db, sql: "SELECT CAST(value AS INTEGER) FROM app_metadata WHERE key=?",
+                    arguments: ["statistics_cache_revision:\(timezone.identifier)"])
+                var predicate = "1"
+                var arguments: StatementArguments = ["timezone": timezone.identifier]
+                if onlyIfNeeded, let cached {
+                    let changed = try String.fetchAll(db, sql: "SELECT substr(key,16) FROM app_metadata WHERE key LIKE 'statistics_day:%' AND CAST(value AS INTEGER)>?",
+                        arguments: [cached])
+                    // UTC 变更日覆盖相邻本地日期，兼容时区偏移和夏令时，不扩大显示查询范围。
+                    var days: Set<String> = changed.isEmpty ? [] : ["unknown"]
+                    for day in changed {
+                        days.insert(day)
+                        if day != "unknown" {
+                            for offset in [-1,1] {
+                                if let adjacent = try String.fetchOne(db, sql: "SELECT date(?,?)", arguments: [day,"\(offset) days"]) { days.insert(adjacent) }
+                            }
+                        }
+                    }
+                    let names = days.sorted().enumerated().map { index, day -> String in
+                        let key = "day\(index)"; arguments += [key: day]; return ":" + key
+                    }
+                    predicate = names.isEmpty ? "0" : "(\(StatisticsSQL.dayExpression)) IN (\(names.joined(separator: ",")))"
+                    let deletion = names.isEmpty ? "0" : "date IN (\(names.joined(separator: ",")))"
+                    try db.execute(sql: "DELETE FROM statistics WHERE timezone=:timezone AND \(deletion)", arguments: arguments)
+                } else {
+                    try db.execute(sql: "DELETE FROM statistics WHERE timezone=:timezone", arguments: arguments)
+                }
+                try db.execute(sql: "INSERT INTO statistics (\(StatisticsSQL.columns)) \(StatisticsSQL.aggregate(predicate: predicate))",
+                    arguments: arguments)
+                let rows = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM statistics WHERE timezone=?", arguments: [timezone.identifier]) ?? 0
                 try Task.checkCancellation()
-                if let report = try pool.write({ db -> StatisticsRebuildReport? in
-                    let revision = try Self.statisticsRevision(db)
-                    if try onlyIfNeeded && Self.statisticsAreCurrent(db, timezone: timezone.identifier) {
-                        return StatisticsRebuildReport(timezone: timezone.identifier, revision: revision,
-                            rows: try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM statistics WHERE timezone = ?", arguments: [timezone.identifier]) ?? 0,
-                            rebuilt: false)
-                    }
-                    StatisticsSQL.prepare(db, timezone: timezone)
-                    let key = "statistics_rebuild_checkpoint:\(timezone.identifier)"
-                    let json = try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = ?", arguments: [key])
-                    var checkpoint: StatisticsRebuildCheckpoint
-                    if let json, let saved = try? JSONDecoder().decode(StatisticsRebuildCheckpoint.self, from: Data(json.utf8)),
-                       saved.version == StatisticsRebuildCheckpoint.currentVersion, saved.revision == revision, saved.lastID >= 0 {
-                        checkpoint = saved
-                    } else {
-                        try db.execute(sql: "DELETE FROM statistics_rebuild WHERE timezone = ?", arguments: [timezone.identifier])
-                        checkpoint = StatisticsRebuildCheckpoint(version: StatisticsRebuildCheckpoint.currentVersion, revision: revision)
-                    }
-                    if let endID = try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM (SELECT id FROM usage WHERE id > ? ORDER BY id LIMIT 8192)",
-                                                     arguments: [checkpoint.lastID]) {
-                        try db.execute(sql: "INSERT INTO statistics_rebuild (\(StatisticsSQL.columns)) \(StatisticsSQL.aggregate(predicate: "u.id > :lastID AND u.id <= :endID"))",
-                                       arguments: ["timezone": timezone.identifier, "lastID": checkpoint.lastID, "endID": endID])
-                        checkpoint.lastID = endID
-                        let value = String(decoding: try JSONEncoder().encode(checkpoint), as: UTF8.self)
-                        // 断点与中间聚合必须同一事务提交，重试才能既不遗漏也不重复。
-                        try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                                       arguments: [key, value])
-                        return nil
-                    }
-                    try db.execute(sql: "DELETE FROM statistics WHERE timezone = ?", arguments: [timezone.identifier])
-                    try db.execute(sql: "INSERT INTO statistics (\(StatisticsSQL.columns)) \(StatisticsSQL.mergeStaged)",
-                                   arguments: ["timezone": timezone.identifier])
-                    let rows = db.changesCount
-                    try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                                   arguments: ["statistics_cache_revision:\(timezone.identifier)", String(revision)])
-                    try db.execute(sql: """
-                        UPDATE app_metadata SET value = 'false' WHERE key = 'statistics_dirty'
-                        AND (SELECT value FROM app_metadata WHERE key = 'statistics_timezone') = ?
-                        """, arguments: [timezone.identifier])
-                    try db.execute(sql: "DELETE FROM statistics_rebuild WHERE timezone = ?", arguments: [timezone.identifier])
-                    try db.execute(sql: "DELETE FROM app_metadata WHERE key = ?", arguments: [key])
-                    return StatisticsRebuildReport(timezone: timezone.identifier, revision: revision, rows: rows, rebuilt: true)
-                }) { return report }
+                try db.execute(sql: "INSERT INTO app_metadata(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    arguments: ["statistics_cache_revision:\(timezone.identifier)", String(revision)])
+                try db.execute(sql: "UPDATE app_metadata SET value='false' WHERE key='statistics_dirty' AND (SELECT value FROM app_metadata WHERE key='statistics_timezone')=?", arguments: [timezone.identifier])
+                try db.execute(sql: """
+                    DELETE FROM app_metadata WHERE key LIKE 'statistics_day:%' AND CAST(value AS INTEGER) <=
+                        (SELECT MIN(CAST(value AS INTEGER)) FROM app_metadata WHERE key LIKE 'statistics_cache_revision:%')
+                    """)
+                return StatisticsRebuildReport(timezone: timezone.identifier, revision: revision, rows: rows, rebuilt: true)
             }
         }
     }

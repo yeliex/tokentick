@@ -5,7 +5,7 @@
 本地日志提供逐条用量事实，按历史模型价格换算美元金额；API 日桶仅作内存参考差额，历史七天额度与当前实时额度分别处理。金额是公开 API 价格等值估算，不是订阅实际账单。
 
 - [需求](docs/requirements.md)：产品范围、功能、客户端约束和验收要求。
-- [技术方案](docs/technical-design.md)：表结构、采集去重、价格、API、额度、查询及迁移恢复。
+- [技术方案](docs/technical-design.md)：表结构、采集去重、价格、API、额度、查询及开发重建。
 - [图标资源](assets/icons/README.md)：当前定稿及资源维护。
 
 ## 本地开发
@@ -44,7 +44,7 @@ App 与 CLI 默认共用 `~/Library/Application Support/TokenTick/usage.sqlite`�
 | `usage --group total\|day\|thread\|project\|model --json` | 用量和金额汇总 |
 | `records` | 逐条明细及统计证据，返回 JSON |
 | `prices`／`sync-prices` | 查询／同步历史价格；独立同步价格后由 reprice 或 sync 更新金额 |
-| `reprice`／`rebuild` | 重算金额／重建统计缓存，支持持久断点 |
+| `reprice`／`rebuild` | 重算金额（支持断点）／事务重建统计缓存 |
 | `sync-api`／`api-usage` | 显式获取 API；api-usage 在同一进程计算内存参考差额 |
 | `current-limits` | 显式联网读取全部当前额度 |
 | `limits` | 查询主桶 codex 的七天历史窗口、最后使用率及本地用量 |

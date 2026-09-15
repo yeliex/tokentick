@@ -45,13 +45,10 @@ public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
     public let sourceLine: Int?
     public let fileName: String?
     public let lastKnownPath: String?
-    public let evidenceJSON: String
-
-    public var pricingIsFast: Bool {
-        if let isFast { return isFast }
-        let proof = (try? JSONSerialization.jsonObject(with: Data(evidenceJSON.utf8))) as? [String: Any]
-        return (proof?["pricingMode"] as? [String: Any])?["isFast"] as? Bool ?? false
-    }
+    public let reasoningEffort: String?
+    public let pricingTier: String?
+    public let pricingSource: String?
+    public var pricingIsFast: Bool { (pricingTier ?? tier) == "fast" }
 
     private enum CodingKeys: String, CodingKey {
         case id, accountID, threadID, title, projectName, turnID, responseID, sourceOrdinal, hour, minute
@@ -59,7 +56,7 @@ public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
         case tier, isLongContext, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens
         case reasoningTokens, totalTokens, inputPrice, outputPrice, cacheReadPrice, cacheWritePrice
         case inputAmountNanoUSD, outputAmountNanoUSD, cacheReadAmountNanoUSD, cacheWriteAmountNanoUSD, amountNanoUSD, knownAmountNanoUSD
-        case source, rolloutID, sourceLine, fileName, lastKnownPath, evidenceJSON
+        case source, rolloutID, sourceLine, fileName, lastKnownPath, reasoningEffort, pricingTier, pricingSource
     }
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
@@ -100,7 +97,9 @@ public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
         try values.encode(sourceLine, forKey: .sourceLine)
         try values.encode(fileName, forKey: .fileName)
         try values.encode(lastKnownPath, forKey: .lastKnownPath)
-        try values.encode(evidenceJSON, forKey: .evidenceJSON)
+        try values.encode(reasoningEffort, forKey: .reasoningEffort)
+        try values.encode(pricingTier, forKey: .pricingTier)
+        try values.encode(pricingSource, forKey: .pricingSource)
     }
 }
 
@@ -129,6 +128,6 @@ extension UsageRecord {
             cacheReadAmountNanoUSD: row["cache_read_amount"], cacheWriteAmountNanoUSD: row["cache_write_amount"],
             amountNanoUSD: row["amount"], knownAmountNanoUSD: row["known_amount"], source: row["source"],
             rolloutID: row["rollout_id"], sourceLine: row["source_line"], fileName: row["file_name"],
-            lastKnownPath: row["current_path"], evidenceJSON: row["evidence_json"])
+            lastKnownPath: row["current_path"], reasoningEffort: row["reasoning_effort"], pricingTier: row["pricing_tier"], pricingSource: row["pricing_source"])
     }
 }

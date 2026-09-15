@@ -76,14 +76,17 @@ final class ApplicationModel {
         syncTask = Task { [self] in
             defer { isSyncing = false; progress = nil; syncTask = nil; automatic?.finished() }
             do {
-                lastSync = try await UsageSynchronizer(store: store).synchronize(scope: scope, codexHome: home) { [weak self] progress in
+                lastSync = try await UsageSynchronizer(store: store).synchronize(scope: scope, codexHome: home, onProgress: { [weak self] progress in
                     Task { @MainActor in self?.progress = progress }
-                }
+                }, onCurrentLimits: { [weak self] snapshot in
+                    await MainActor.run {
+                        guard let self else { return }
+                        self.checkLoginEnvironment()
+                        self.limitSession.acceptAPI(snapshot, generation: limitGeneration,
+                                                    now: Date().timeIntervalSince1970)
+                    }
+                })
                 checkLoginEnvironment()
-                if scope == .all || scope == .api || scope == .remote {
-                    limitSession.acceptAPI(lastSync?.api?.currentLimits, generation: limitGeneration,
-                                           now: Date().timeIntervalSince1970)
-                }
                 if limitSession.acceptLog(lastSync?.scan?.currentLimits, generation: limitGeneration,
                                           now: Date().timeIntervalSince1970),
                    let log = lastSync?.scan?.currentLimits {
@@ -95,12 +98,24 @@ final class ApplicationModel {
             } catch is CancellationError { error = "同步已取消，已提交的数据保留。" }
             catch {
                 self.error = error.localizedDescription
-                if scope == .all || scope == .api || scope == .remote {
-                    limitSession.acceptAPI(nil, generation: limitGeneration, now: Date().timeIntervalSince1970)
-                }
             }
             await refresh()
         }
+    }
+
+    func refreshExpiredLimits() async {
+        checkLoginEnvironment()
+        guard let snapshot = currentLimits,
+              Date().timeIntervalSince1970 - snapshot.observedAt > 900 else { return }
+        // 已在进行的同步可能更新额度；等它完成后再判断，避免丢失激活请求或重复调用。
+        while isSyncing {
+            do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+        }
+        guard !Task.isCancelled else { return }
+        checkLoginEnvironment()
+        guard let snapshot = currentLimits,
+              Date().timeIntervalSince1970 - snapshot.observedAt > 900 else { return }
+        synchronize(.api)
     }
 
     func cancelSync() { automatic?.cancelled(); syncTask?.cancel() }

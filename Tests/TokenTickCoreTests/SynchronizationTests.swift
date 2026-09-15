@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import Synchronization
 @testable import TokenTickCore
 
 struct SynchronizationTests {
@@ -36,6 +37,44 @@ struct SynchronizationTests {
         #expect(report.statistics?.rebuilt == true)
         #expect(try store.usageSummaries(grouping: .total).first?.knownAmountNanoUSD == 180_000)
         #expect(try store.lastSynchronizationReport()?.scope == .all)
+    }
+
+    @Test func publishesCurrentLimitsBeforeScanningLocalUsage() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        let date = Date().formatted(.iso8601.year().month().day().dateSeparator(.dash))
+        _ = try store.savePrices(ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: date), date: date)
+        try writeLog(root: root, malformed: false)
+        let executable = root.appendingPathComponent("codex-fixture")
+        let script = """
+        #!/bin/sh
+        i=0
+        while IFS= read -r line; do
+          case "$line" in
+            *'"method":"initialized"'*) continue ;;
+          esac
+          i=$((i + 1))
+          case "$line" in
+            *'account/rateLimits/read'*) value='\(CodexAPITests.limits)' ;;
+            *'account/usage/read'*) value='\(CodexAPITests.daily)' ;;
+            *) value='{}' ;;
+          esac
+          printf '{"id":%s,"result":%s}\\n' "$i" "$value"
+        done
+        """
+        try script.write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        let published = Mutex(false)
+        let report = try await UsageSynchronizer(store: store).synchronize(codexHome: root,
+            codexExecutable: executable, onCurrentLimits: { snapshot in
+                #expect(snapshot?.accountID == "account-a")
+                #expect((try? store.tableCounts()["usage"]) == 0)
+                published.withLock { $0 = true }
+            })
+        #expect(published.withLock { $0 })
+        #expect(report.scan?.insertedRequests == 1)
+        #expect(report.api?.currentLimits?.accountID == "account-a")
     }
 
     private func writeLog(root: URL, malformed: Bool) throws {

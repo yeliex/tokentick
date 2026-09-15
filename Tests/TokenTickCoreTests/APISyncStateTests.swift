@@ -22,7 +22,7 @@ struct APISyncStateTests {
         #expect(try reopened.status().apiLastReport?.issue == failure.issue)
         #expect(try reopened.status().apiLastReport?.observedAt == failure.observedAt)
         #expect(try reopened.apiDailyUsage().isEmpty)
-        #expect(try reopened.tableCounts()["weekly_limit_observations"] == 1)
+        #expect(try reopened.tableCounts()["weekly_limit_cycles"] == 0)
         #expect(try reopened.usageSummaries().isEmpty)
     }
 
@@ -38,7 +38,7 @@ struct APISyncStateTests {
         #expect(account == "account-b")
         #expect(current.currentLimits?.windows.isEmpty == true)
         #expect(try store.status().apiLastReport?.currentLimits == nil)
-        #expect(try store.tableCounts()["weekly_limit_observations"] == 1)
+        #expect(try store.tableCounts()["weekly_limit_cycles"] == 0)
     }
 
     @Test func olderReportsCannotRegressNewerFailureAndSuccessCanRecover() throws {

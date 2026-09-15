@@ -47,11 +47,11 @@ extension UsageStore {
                 for price in prices {
                     let previous = try Self.modelPrice(db: db, model: price.model, date: date, tier: price.tier, useDefaults: false)
                     if let previous, price.samePricing(as: previous) { continue }
-                    let encoder = JSONEncoder()
-                    encoder.outputFormatting = [.sortedKeys]
                     var values: [String: (any DatabaseValueConvertible)?] = [
                         "model": price.model, "date": date, "tier": price.tier, "long_context_threshold": price.longContextThreshold,
-                        "source_json": String(decoding: try encoder.encode(price.source), as: UTF8.self)
+                        "context_rule": price.contextRule.rawValue, "source_url": price.source.url,
+                        "is_bundled": price.source.isBundled, "combination_rule": price.source.combinationRule,
+                        "combination_source": price.source.combinationSource
                     ]
                     for (prefix, rates) in [("", price.rates), ("long_", price.long)] {
                         values[prefix + "input_price"] = rates.input.map { NSDecimalNumber(decimal: $0).stringValue }
@@ -82,8 +82,10 @@ extension UsageStore {
     static func modelPrice(db: Database, model: String, date: String, tier: String = "standard", useDefaults: Bool = true) throws -> ModelPrice? {
         guard let row = try Row.fetchOne(db, sql: "SELECT * FROM prices WHERE model = ? AND tier = ? AND date = COALESCE((SELECT MAX(date) FROM prices WHERE model = ? AND tier = ? AND date <= ?), (SELECT MIN(date) FROM prices WHERE model = ? AND tier = ?))",
                                         arguments: [model, tier, model, tier, date, model, tier]) else { return useDefaults ? try BundledModelPrices.price(model: model, tier: tier) : nil }
-        let json: String = row["source_json"]
-        let source = try JSONDecoder().decode(PriceSource.self, from: Data(json.utf8))
+        guard let rule = ModelPrice.ContextRule(rawValue: row["context_rule"]) else { throw PriceError.invalidDocument }
+        let source = PriceSource(isBundled: row["is_bundled"], url: row["source_url"],
+                                 combinationRule: row["combination_rule"], combinationSource: row["combination_source"],
+                                 contextRule: rule)
         func rates(_ prefix: String) -> PriceRates {
             func decimal(_ column: String) -> Decimal? {
                 let text: String? = row[prefix + column]
