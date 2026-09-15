@@ -278,31 +278,35 @@ struct ModelUsageView: View {
         let total = items.reduce(0) { $0 + value($1) }
         return VStack(alignment: .leading, spacing: 5) {
             Text(title).fontWeight(.medium).foregroundStyle(.secondary).padding(.horizontal, 6).padding(.bottom, 3)
-            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                let selected = hovered == SliceID(ring: ring, name: item.name)
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Circle().fill(color(item, index: index, ring: ring)).frame(width: 6, height: 6)
-                        Text(ring == 2 ? effortTitle(item.name) : item.name).lineLimit(1).help(item.name)
-                        Spacer(minLength: 2)
-                        Text(total > 0 ? (value(item) / total).formatted(.percent.precision(.fractionLength(0...1))) : "—")
-                            .foregroundStyle(.secondary)
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        let selected = hovered == SliceID(ring: ring, name: item.name)
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                Circle().fill(color(item, index: index, ring: ring)).frame(width: 6, height: 6)
+                                Text(ring == 2 ? effortTitle(item.name) : item.name).lineLimit(1).help(item.name)
+                                Spacer(minLength: 2)
+                                Text(total > 0 ? (value(item) / total).formatted(.percent.precision(.fractionLength(0...1))) : "—")
+                                    .foregroundStyle(.secondary)
+                            }
+                            HStack(spacing: 5) {
+                                Text(UsageFormatting.money(item.amount))
+                                Text("·")
+                                Text(UsageFormatting.tokens(item.tokens) + " Tokens").help(UsageFormatting.exactTokens(item.tokens))
+                            }.foregroundStyle(.secondary).lineLimit(1).padding(.leading, 12)
+                        }.monospacedDigit().padding(6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(selected ? color(item, index: index, ring: ring).opacity(0.16) : .clear,
+                                        in: RoundedRectangle(cornerRadius: 6))
+                            .contentShape(Rectangle())
+                            .onHover { inside in
+                                if inside { hovered = SliceID(ring: ring, name: item.name) }
+                                else if selected { hovered = nil }
+                            }
                     }
-                    HStack(spacing: 5) {
-                        Text(UsageFormatting.money(item.amount))
-                        Text("·")
-                        Text(UsageFormatting.tokens(item.tokens) + " Tokens").help(UsageFormatting.exactTokens(item.tokens))
-                    }.foregroundStyle(.secondary).lineLimit(1).padding(.leading, 12)
-                }.monospacedDigit().padding(6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(selected ? color(item, index: index, ring: ring).opacity(0.16) : .clear,
-                                in: RoundedRectangle(cornerRadius: 6))
-                    .contentShape(Rectangle())
-                    .onHover { inside in
-                        if inside { hovered = SliceID(ring: ring, name: item.name) }
-                        else if selected { hovered = nil }
-                    }
-            }
+                }
+            }.frame(maxHeight: 240)
         }.font(.caption).frame(maxWidth: .infinity, alignment: .topLeading)
     }
 }
