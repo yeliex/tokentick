@@ -85,6 +85,7 @@ private struct GeneralSettingsView: View {
                 }
                 if let loginError { Text(loginError).foregroundStyle(.secondary).textSelection(.enabled) }
             }
+            CLISettingsSection()
             Section(String(localized: "Limit display")) {
                 Picker(String(localized: "Display"), selection: $limitsShowRemaining) {
                     Text(String(localized: "remaining")).tag(true)
@@ -149,5 +150,47 @@ private struct AboutSettingsView: View {
             .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct CLISettingsSection: View {
+    @State private var installationStatus: String?
+
+    var body: some View {
+        Section(String(localized: "Command line")) {
+            Button(String(localized: "Install CLI"), action: install)
+            if let installationStatus {
+                Text(installationStatus).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+        }
+    }
+
+    private func install() {
+        let manager = FileManager.default
+        let executable = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/tokentick")
+        guard manager.isExecutableFile(atPath: executable.path) else {
+            installationStatus = String(localized: "The bundled CLI is missing. Reinstall TokenTick.")
+            return
+        }
+        let directory = URL(fileURLWithPath: "/usr/local/bin", isDirectory: true)
+        let destination = directory.appendingPathComponent("tokentick")
+        let link = try? manager.destinationOfSymbolicLink(atPath: destination.path)
+        if let link,
+           URL(fileURLWithPath: link, relativeTo: directory).standardizedFileURL.path == executable.path {
+            installationStatus = String(localized: "Installed: \(destination.path)")
+            return
+        }
+        if link != nil || manager.fileExists(atPath: destination.path) {
+            installationStatus = String(localized: "Already exists: \(destination.path)")
+            return
+        }
+        do {
+            try manager.createDirectory(at: directory, withIntermediateDirectories: true)
+            // Exclusive creation protects existing entries even if another installer runs concurrently.
+            try manager.createSymbolicLink(at: destination, withDestinationURL: executable)
+            installationStatus = String(localized: "Installed: \(destination.path)")
+        } catch {
+            installationStatus = "\(destination.path): \(error.localizedDescription)"
+        }
     }
 }

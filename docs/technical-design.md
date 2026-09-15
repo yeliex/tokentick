@@ -287,11 +287,13 @@ For documentation or script changes, check relative links, shell syntax, and dis
 ./script/generate_appcast.sh <App-update.zip> <release-notes.md> .build/appcast
 ```
 
+The app target depends on the CLI target and embeds its signed executable at `Contents/MacOS/tokentick`. The CLI uses the app’s shared Core resource bundle when embedded; standalone distribution still requires its adjacent Core resource bundle. Settings creates `/usr/local/bin` if needed, installs an absolute symbolic link at `/usr/local/bin/tokentick`, and refuses to replace existing filesystem entries. Moving the app after installation requires removing the old link and installing it again.
+
 Packaging builds arm64 Release app/CLI, signs and verifies them, and generates a full distribution plus `TokenTick-<version>.zip` containing only the app, with SHA-256 files. The full distribution includes the CLI's Core resource bundle, dependency licenses, signature details, and `BUILD.txt` recording revision, dirty state, toolchain, and architecture.
 
 The packaging script extracts **`## Installation`** from the root README through the next level-two heading. Keep that section self-contained, preserve the extraction contract, and update the script if the heading changes.
 
-Sparkle handles app updates using the feed configured in `TokenTick/Resources/Info.plist`, with hourly checks enabled by default. The CLI is updated manually. A feed URL in source is not proof that a release has been published.
+Sparkle handles app updates using the feed configured in `TokenTick/Resources/Info.plist`, with hourly checks enabled by default. The app-linked CLI updates with Sparkle; independently copied CLI installations are updated manually. A feed URL in source is not proof that a release has been published.
 
 Pushing a `vMAJOR.MINOR.PATCH` tag triggers `.github/workflows/release.yml` on `macos-26`, creates notes and a signed appcast, and publishes the latest GitHub Release. The marketing version comes from the tag; `CFBundleVersion` comes from `GITHUB_RUN_NUMBER`. Keep build numbers increasing when changing the workflow.
 

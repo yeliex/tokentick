@@ -70,6 +70,7 @@ for EXECUTABLE in "$APP_EXECUTABLE" "$CLI_EXECUTABLE"; do
   [ "$(/usr/bin/lipo -archs "$EXECUTABLE")" = "arm64" ] || { echo "Artifacts must contain only arm64." >&2; exit 1; }
 done
 "$CLI_EXECUTABLE" --help >"$LOG_DIR/release-cli-help.log"
+"$PACKAGE_DIR/TokenTick.app/Contents/MacOS/tokentick" --help >"$LOG_DIR/release-embedded-cli-help.log"
 
 {
   echo "configuration=Release"

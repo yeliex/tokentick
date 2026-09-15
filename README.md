@@ -31,7 +31,16 @@ Update through **Check for Updates…** in the app menu or Settings → About.
 
 ### CLI
 
-The full distribution includes `bin/tokentick` and its required resource bundle. From the extracted directory:
+In Settings → General → Command line, click **Install CLI**. TokenTick creates a symbolic link at `/usr/local/bin/tokentick`. Existing files or other links are not overwritten; the app reports conflicts and permission failures without requesting administrator access.
+
+Keep TokenTick in Applications before installing the CLI. The linked CLI updates with the app. `/usr/local/bin` is on the default macOS shell PATH. If installation requires additional permissions, an administrator can create `/usr/local/bin` and install the link manually:
+
+```sh
+sudo mkdir -p /usr/local/bin
+sudo ln -s /Applications/TokenTick.app/Contents/MacOS/tokentick /usr/local/bin/tokentick
+```
+
+For an independent installation, the full distribution also includes `bin/tokentick` and its required resource bundle. From the extracted directory:
 
 ```sh
 mkdir -p "$HOME/.local/bin"
@@ -39,7 +48,7 @@ install -m 755 bin/tokentick "$HOME/.local/bin/tokentick"
 ditto bin/TokenTick_TokenTickCore.bundle "$HOME/.local/bin/TokenTick_TokenTickCore.bundle"
 ```
 
-Add `$HOME/.local/bin` to your PATH. The CLI runs independently of the app and is updated manually.
+Add `$HOME/.local/bin` to your PATH. This independent copy is updated manually and requires the resource bundle beside it.
 
 ## CLI
 

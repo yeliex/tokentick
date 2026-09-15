@@ -5,6 +5,24 @@
 	"objectVersion" = "56";
 	"archiveVersion" = "1";
 	"objects" = {
+        "C11000000000000000000001" = {
+            isa = PBXCopyFilesBuildPhase;
+            buildActionMask = 2147483647;
+            dstPath = "";
+            dstSubfolderSpec = 6;
+            files = ("C11000000000000000000002",);
+            name = "Embed CLI";
+            runOnlyForDeploymentPostprocessing = 0;
+        };
+        "C11000000000000000000002" = {
+            isa = PBXBuildFile;
+            fileRef = "43284760527F95A513C97435";
+            settings = { ATTRIBUTES = (CodeSignOnCopy,); };
+        };
+        "C11000000000000000000003" = {
+            isa = PBXTargetDependency;
+            target = "1F67E260C0CE078CC861FA98";
+        };
         "A0110CA10000000000000001" = {
             "isa" = "PBXFileReference";
             "path" = "TokenTick/Resources/Localizable.xcstrings";
@@ -227,8 +245,10 @@
 				"6DDCEDE6AEE6AB0576709A1A",
 				"EF9D4CEFD54446002341A6DA",
 				"3D4BAED624A3A343B660D01C",
+                "C11000000000000000000001",
 			);
 			"dependencies" = (
+                "C11000000000000000000003",
 			);
 			"name" = "TokenTick";
 			"buildRules" = (
@@ -351,7 +371,7 @@
 			"buildSettings" = {
 				"GENERATE_INFOPLIST_FILE" = "NO";
 				"CODE_SIGN_IDENTITY" = "-";
-				"MARKETING_VERSION" = "0.1.0";
+				"MARKETING_VERSION" = "0.1.1";
 				"ENABLE_HARDENED_RUNTIME" = "YES";
 				"ENABLE_APP_SANDBOX" = "NO";
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.yeliex.tokentick";
@@ -364,7 +384,7 @@
 					"@executable_path/../Frameworks",
 				);
 				"PRODUCT_NAME" = "TokenTick";
-				"CURRENT_PROJECT_VERSION" = "1";
+				"CURRENT_PROJECT_VERSION" = "2";
 			};
 		};
 		"3A2A88DEEFF3D1D23E496597" = {
@@ -576,7 +596,7 @@
 			"buildSettings" = {
 				"GENERATE_INFOPLIST_FILE" = "NO";
 				"CODE_SIGN_IDENTITY" = "-";
-				"MARKETING_VERSION" = "0.1.0";
+				"MARKETING_VERSION" = "0.1.1";
 				"ENABLE_HARDENED_RUNTIME" = "YES";
 				"ENABLE_APP_SANDBOX" = "NO";
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.yeliex.tokentick";
@@ -589,7 +609,7 @@
 					"@executable_path/../Frameworks",
 				);
 				"PRODUCT_NAME" = "TokenTick";
-				"CURRENT_PROJECT_VERSION" = "1";
+				"CURRENT_PROJECT_VERSION" = "2";
 			};
 		};
 		"ACF6D40ADDB95149ABFA3526" = {
