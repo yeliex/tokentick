@@ -7,7 +7,7 @@ A native macOS app and CLI for tracking **Codex usage limits, token usage, and e
 - Check recent activity from the menu bar.
 - Export detailed usage as JSON with the CLI.
 - Keep repeated scans and resource use down with incremental log collection, batched SQLite writes, and cached aggregates.
-- Account for Fast and long-context pricing, avoid double-counting cached input and reasoning output, and deduplicate inherited usage in forked tasks. Missing prices stay visibly unknown.
+- Account for Fast and long-context pricing, avoid double-counting cached input and reasoning output, and deduplicate inherited usage in forked tasks.
 
 Requires **macOS 26+ and Apple Silicon**. Supports English and Simplified Chinese through macOS language settings. Costs are USD estimates based on public API prices, not subscription charges.
 
