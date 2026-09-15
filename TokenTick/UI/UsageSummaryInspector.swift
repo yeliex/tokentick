@@ -1,7 +1,7 @@
 import SwiftUI
 import TokenTickCore
 
-// grouped Form 会合并相邻文本；每个统计字段保留独立的标签和值供读屏导航。
+// Grouped Form merges adjacent text; keep each field's label and value separate for screen readers.
 struct UsageDetailField: View {
     let title: String
     let value: String

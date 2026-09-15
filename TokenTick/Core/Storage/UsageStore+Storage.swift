@@ -8,7 +8,7 @@ public struct StorageSummary: Sendable {
 }
 
 extension UsageStore {
-    /// 仅统计文件长度，不读取历史请求或执行 WAL checkpoint；同步期间大小可继续变化。
+    /// Measure file lengths without reading usage or checkpointing WAL; sizes can change during sync.
     public func storageSummary() throws -> StorageSummary {
         let databaseBytes = try databaseURL.resourceValues(forKeys: [.fileSizeKey]).fileSize.map(Int64.init) ?? 0
         func sidecarBytes(_ suffix: String) throws -> Int64 {

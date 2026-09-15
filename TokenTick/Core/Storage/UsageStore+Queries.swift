@@ -6,7 +6,7 @@ extension UsageStore {
         try usageReport(UsageQuery(grouping: grouping, limit: limit)).rows
     }
 
-    /// 只返回分页统计。缓存与事实版本不一致时重建，不把历史请求全集交给调用者。
+    /// Return paginated summaries; rebuild stale caches without loading all historical records into the caller.
     public func usageReport(_ query: UsageQuery = UsageQuery()) throws -> UsageReport {
         try query.validate()
         let identifier = try query.timezone ?? statisticsTimezone()
@@ -14,7 +14,7 @@ extension UsageStore {
         if try query.filters.isEmpty && !pool.read({ try Self.statisticsAreCurrent($0, timezone: timezone.identifier) }) {
             do { _ = try rebuildStatistics(timezone: timezone, onlyIfNeeded: true) }
             catch FileWriteLock.LockError.busy {
-                // 扫描者持有跨进程锁时，直接查询已提交事实，界面不等待整次扫描结束。
+                // Read committed facts while the scanner holds the process lock instead of blocking the UI for the full scan.
             }
         }
         return try pool.read { try Self.readUsageReport(query, timezone: timezone, db: $0) }
@@ -22,7 +22,7 @@ extension UsageStore {
 
     static func readUsageReport(_ query: UsageQuery, timezone: TimeZone, db: Database, dateExpression: String? = nil) throws -> UsageReport {
         try Task.checkCancellation()
-        // 重建与读取之间另一个进程可能提交了用量；同一读快照内回退到事实聚合。
+        // Another process may write after rebuilding; fall back to fact aggregation within the same read snapshot.
         let current = try dateExpression == nil && query.filters.isEmpty && Self.statisticsAreCurrent(db, timezone: timezone.identifier)
         if !current { StatisticsSQL.prepare(db, timezone: timezone) }
         let factFilters = UsageFiltersSQL(query.filters)
@@ -72,7 +72,7 @@ extension UsageStore {
             LIMIT :limit OFFSET :offset
             """, arguments: arguments)
         try Task.checkCancellation()
-        // 未知日期只需要 tokens 总数，不再为它重做分项计价和所有日期的聚合。
+        // Unknown-date reporting needs only token totals, not component repricing or aggregation of every date.
         let unknownSQL = current ? """
             SELECT SUM(total_tokens) FROM statistics
             WHERE timezone = :timezone AND account_key = :account AND dimension = 'all' AND date = 'unknown'
@@ -108,7 +108,7 @@ public struct UsageFilterOptions: Sendable, Equatable {
 }
 
 extension UsageStore {
-    /// 筛选选项独立于当前筛选，避免选中一个值后无法切换到其他已有值。
+    /// Load options independently of selected values so a filter cannot hide alternative choices.
     public func usageFilterOptions(_ query: UsageQuery = UsageQuery()) throws -> UsageFilterOptions {
         try query.validate()
         let identifier = try query.timezone ?? statisticsTimezone()

@@ -4,9 +4,8 @@ import TokenTickCore
 import TokenTickUpdates
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
-    case general = "通用", data = "数据", about = "关于"
+    case general, data, about
     var id: Self { self }
-    // 保留原始值供偏好存储使用，展示名称随系统语言本地化。
     var title: String {
         switch self {
         case .general: String(localized: "General")

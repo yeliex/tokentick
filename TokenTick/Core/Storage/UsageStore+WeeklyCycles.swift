@@ -10,7 +10,7 @@ extension UsageStore {
     }
 
     static func acceptedWeeklyLimits(_ snapshots: [CurrentLimitSnapshot], db: Database) throws -> [CurrentLimitSnapshot] {
-        // 轮次归属由请求明细判断，fork 中继承的窗口不参与周期识别。
+        // Determine turn ownership from usage; exclude inherited fork windows from cycle detection.
         try snapshots.filter { snapshot in
             guard snapshot.historyExclusion == nil else { return false }
             if let turn = snapshot.turnID, snapshot.scopeKey.hasPrefix("thread:"),
@@ -36,7 +36,7 @@ extension UsageStore {
         let saved = try Int64.fetchOne(db, sql: "SELECT CAST(value AS INTEGER) FROM app_metadata WHERE key='weekly_cycles_revision'")
         guard force || saved != revision else { return }
         StatisticsSQL.prepare(db, timezone: .gmt)
-        // 一次计算轮次起点和全部周期，避免每个周期、每条请求重复查询轮次。
+        // Compute turn starts and all cycles together to avoid repeated per-cycle and per-record lookups.
         let rows = try Row.fetchAll(db, sql: """
             WITH turns AS MATERIALIZED (
                 SELECT turn_key,MIN(turn_started_at) AS started FROM usage

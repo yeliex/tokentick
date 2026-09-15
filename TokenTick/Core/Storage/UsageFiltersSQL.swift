@@ -1,6 +1,6 @@
 import GRDB
 
-/// 汇总与明细都在 SQLite 事实范围内筛选，不能对有限分页结果做二次统计。
+/// Filter summaries and records in SQLite; never aggregate a limited result page as the full dataset.
 struct UsageFiltersSQL {
     let predicate: String
     let arguments: StatementArguments

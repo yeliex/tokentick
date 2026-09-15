@@ -14,7 +14,7 @@ public struct RepriceReport: Codable, Sendable {
 }
 
 private struct RepriceCheckpoint: Codable {
-    // 计价算法或断点格式变化时递增，避免恢复时混合新旧计算结果。
+    // Increment when pricing or checkpoint formats change to prevent mixing results across versions.
     static let currentVersion = 4
     static let key = "reprice_checkpoint"
     let version: Int
@@ -47,7 +47,7 @@ extension UsageStore {
                 || String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'pricing_defaults_hash'") != BundledModelPrices.fingerprint()
         }
     }
-    /// 明确重算才覆盖已有价格与金额；相同依据的中断任务从已提交批次恢复，报告包含此前批次。
+    /// Only repricing replaces applied costs; resume matching interrupted work from committed batches and include prior progress.
     public func repriceUsage(fromDate: String? = nil) throws -> RepriceReport {
         try UsageQuery(fromDate: fromDate).validate()
         return try FileWriteLock(url: databaseURL.appendingPathExtension("write.lock")).withLock {
@@ -90,7 +90,7 @@ extension UsageStore {
                         checkpoint.report.overflow += outcome.overflow
                         for (reason, count) in outcome.unpricedReasons { checkpoint.report.unpricedReasons[reason, default: 0] += count }
                     }
-                    // 自身计价也会推进事实版本；与结果同事务保存，其他写入会使断点失效。
+                    // Repricing also advances fact revisions; save checkpoints with results so other writes invalidate them.
                     checkpoint.revision = try Self.statisticsRevision(db)
                     let json = String(decoding: try JSONEncoder().encode(checkpoint), as: UTF8.self)
                     try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",

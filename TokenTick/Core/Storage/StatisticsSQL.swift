@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 enum StatisticsSQL {
-    // 汇总和明细共用日期口径；只有 UTC 日日期的事实不能在其他时区猜测归属。
+    // Use the same date semantics for summaries and records; do not infer local dates from UTC date-only facts.
     static let dayExpression = """
         CASE WHEN u.occurred_at IS NOT NULL THEN COALESCE(tokentick_day(u.occurred_at), 'unknown')
              WHEN :timezone IN ('UTC', 'GMT') THEN COALESCE(u.usage_date, 'unknown')
@@ -42,11 +42,11 @@ enum StatisticsSQL {
 
     static var columns: String { "\(groupColumns), \(metricColumns)" }
 
-    /// 先在 SQLite 中合并同日、同任务、同模型的用量分项，再展开四个维度，避免放大全部明细。
+    /// Aggregate by day, task, and model in SQLite before expanding dimensions to avoid multiplying every record.
     static var aggregate: String { aggregate(predicate: "1") }
 
     static func aggregate(predicate: String, dateExpression: String? = nil, query: UsageQuery? = nil) -> String {
-        // 缓存重建需要所有维度；即时查询只展开所选维度和账号范围。
+        // Cache rebuilds need every dimension; direct queries expand only the requested dimension and account scope.
         let dimensions = query == nil
             ? "SELECT 'all' AS dimension UNION ALL SELECT 'thread' UNION ALL SELECT 'project' UNION ALL SELECT 'model'"
             : "SELECT :dimension AS dimension"

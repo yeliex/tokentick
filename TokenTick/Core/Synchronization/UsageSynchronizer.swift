@@ -22,7 +22,7 @@ public struct SynchronizationReport: Codable, Sendable {
     public var issues: [String] = []
 }
 
-/// App 和 CLI 共用的同步入口，各来源失败互不抹除已完成的采集。
+/// Shared app and CLI synchronization; a source failure does not discard other committed results.
 public struct UsageSynchronizer: Sendable {
     public let store: UsageStore
     public init(store: UsageStore) { self.store = store }
@@ -34,7 +34,7 @@ public struct UsageSynchronizer: Sendable {
                             onCurrentLimits: (@Sendable (CurrentLimitSnapshot?) async -> Void)? = nil) async throws -> SynchronizationReport {
         let task = Task.detached(priority: .utility) {
             var report = SynchronizationReport(scope: scope, startedAt: Date().timeIntervalSince1970)
-            // 当前额度先获取并立即发布，不等待日志扫描和统计完成。
+            // Fetch and publish current limits before log scanning and statistics finish.
             if scope == .all || scope == .api || scope == .remote {
                 onProgress?(SynchronizationProgress(stage: .api, scan: nil))
                 do {
@@ -74,7 +74,7 @@ public struct UsageSynchronizer: Sendable {
                 }
             }
             try Task.checkCancellation()
-            // 内置价格和已存历史也能重算，不依赖当天网络请求成功。
+            // Bundled and stored prices allow repricing even when today's network request fails.
             if scope != .api {
                 do {
                     if try store.needsRepricing() {

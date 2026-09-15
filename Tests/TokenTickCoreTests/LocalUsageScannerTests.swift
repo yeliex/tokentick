@@ -62,7 +62,7 @@ struct LocalUsageScannerTests {
         defer { fixture.clean() }
         let file = try fixture.write(fixture.header + fixture.turn + fixture.count(1))
         _ = try fixture.scan()
-        // 旧版本必须重扫以回填推理深度；已提交的请求仍按身份去重。
+        // A checkpoint version change requires rescanning; deduplicate already committed usage by identity.
         try fixture.store.pool.write { db in
             try db.execute(sql: "UPDATE scan_files SET parser_state_json = json_set(parser_state_json, '$.version', 6, '$.contextTurnID', 'turn-1')")
         }
@@ -112,7 +112,7 @@ struct LocalUsageScannerTests {
         #expect(rows.count == 1)
         #expect(try fixture.store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(DISTINCT turn_key) FROM usage") } == 1)
         #expect(try fixture.store.pool.read { try String.fetchOne($0, sql: "SELECT response_id FROM usage") } == "response-1")
-        // 原地重写触发从头重扫，旧别名也必须命中同一请求。
+        // An in-place rewrite triggers a rescan; previous aliases must still resolve to the same request.
         try Data((fixture.header + fixture.turn + fixture.count(1) + fixture.record(1)).utf8).write(to: file, options: .atomic)
         _ = try fixture.scan()
         #expect(try fixture.rows().count == 1)
@@ -168,7 +168,7 @@ struct LocalUsageScannerTests {
         defer { fixture.clean() }
         let file = try fixture.write(fixture.header + fixture.turn + fixture.count(1))
         let sibling = file.appendingPathExtension("zst")
-        // 即使旧压缩兄弟不可解码，只要普通文件存在，读取路径也应与 Codex 一致。
+        // Prefer the plain file as Codex does even when its compressed sibling cannot be decoded.
         try Data("not a zstandard stream".utf8).write(to: sibling)
         let first = try fixture.scan()
         #expect(first.discoveredFiles == 2 && first.scannedFiles == 1 && first.insertedRequests == 1)
@@ -192,7 +192,7 @@ struct LocalUsageScannerTests {
         let unchanged = try fixture.scan()
         #expect(unchanged.unchangedFiles == 1 && unchanged.scannedBytes == 0 && unchanged.scannedFiles == 0)
         try Data((text + fixture.count(2)).utf8).write(to: plain)
-        // 解压物化后的普通文件可以已经包含新用量，不能要求它与旧压缩兄弟全文相同。
+        // A materialized plain file may include new usage; it need not match its older compressed sibling.
         let materialized = try fixture.scan()
         #expect(materialized.issueCount == 0 && materialized.insertedRequests == 1)
         #expect(try fixture.total() == 240)

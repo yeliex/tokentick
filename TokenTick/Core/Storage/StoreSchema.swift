@@ -6,7 +6,7 @@ enum StoreSchema {
 
     static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
-        // 尚未发布：结构变化直接重建，再从源日志采集，不维护旧结构迁移。
+        // Pre-release: rebuild changed schemas from source logs without a historical migration chain.
         migrator.eraseDatabaseOnSchemaChange = true
         migrator.registerMigration("schema.3") { db in
             try db.execute(sql: """

@@ -13,7 +13,7 @@ struct PriceRates: Codable, Equatable, Sendable {
         case cacheWrite = "cache_write"
     }
 
-    /// 分项倍率独立计算；缺价和零分母不能靠其他分项补齐。
+    /// Derive each component independently; do not borrow rates when a price is missing or the denominator is zero.
     func applyingContextRatio(base: Self, long: Self) throws -> Self {
         func derive(_ rate: Decimal?, _ base: Decimal?, _ long: Decimal?) throws -> Decimal? {
             guard let rate, let base, base > 0, let long else { return nil }
@@ -49,7 +49,7 @@ struct ModelPrice: Codable, Equatable, Sendable {
 
     enum ContextRule: String, Codable { case uniform, requestInputGreaterThan, unsupported }
 
-    /// 价格和规则决定是否需要新快照，来源描述不参与比较。
+    /// Prices and rules determine snapshot changes; source descriptions do not.
     func samePricing(as other: Self) -> Bool {
         tier == other.tier && rates == other.rates && long == other.long
             && longContextThreshold == other.longContextThreshold && contextRule == other.contextRule

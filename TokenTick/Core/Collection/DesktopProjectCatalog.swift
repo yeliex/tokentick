@@ -1,6 +1,6 @@
 import Foundation
 
-/// 桌面端向 app-server 迁移项目归属期间，SQLite 中的 project_id 可能尚未回填。
+/// Codex desktop project assignments may precede project_id updates in its SQLite catalog.
 struct DesktopProjectCatalog: Decodable {
     let projects: [String: Project]
     let assignments: [String: Assignment]
@@ -53,7 +53,7 @@ struct DesktopProjectCatalog: Decodable {
         }
         if projectlessDirectories[threadID] != nil { return "Chat" }
         guard let hint = rootHints[threadID] ?? cwd else { return nil }
-        // Remote 日志可能含 Windows 路径，不能让本机 URL 把它解析成当前目录的相对路径。
+        // Remote Windows paths must not be resolved as relative paths on this Mac.
         guard hint.hasPrefix("/") else { return nil }
         let path = URL(fileURLWithPath: hint).standardizedFileURL.path
         var depth = -1
@@ -77,7 +77,7 @@ struct DesktopProjectCatalog: Decodable {
         return name
     }
 
-    /// 优先使用项目根目录提示，避免把 worktree 的临时目录当成项目名。
+    /// Prefer project-root hints over temporary worktree directory names.
     static func folderName(_ path: String?) -> String? {
         guard let path else { return nil }
         if path.range(of: #"^[A-Za-z]:[\\/]"#, options: .regularExpression) != nil || path.hasPrefix("\\\\") {

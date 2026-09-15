@@ -91,7 +91,7 @@ struct UsageStoreTests {
         let destination = try DatabaseQueue(path: restoredURL.path)
         try original.pool.backup(to: destination)
         try destination.close()
-        // 独立备份只需要主文件；恢复不能依赖原始进程残留的 WAL/SHM。
+        // A standalone database copy must not depend on WAL/SHM files left by the original process.
         for suffix in ["-wal", "-shm"] {
             let sidecar = URL(fileURLWithPath: restoredURL.path + suffix)
             if FileManager.default.fileExists(atPath: sidecar.path) { try FileManager.default.removeItem(at: sidecar) }

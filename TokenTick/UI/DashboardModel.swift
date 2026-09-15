@@ -3,9 +3,8 @@ import Observation
 import TokenTickCore
 
 enum UsagePeriod: String, CaseIterable, Identifiable {
-    case today = "当天", week = "7天", month = "30天", quarter = "90天", year = "1年", all = "所有", custom = "自定义"
+    case today, week, month, quarter, year, all, custom
     var id: Self { self }
-    // 保留原始值供偏好存储使用，展示名称随系统语言本地化。
     var title: String {
         switch self {
         case .today: String(localized: "Today")

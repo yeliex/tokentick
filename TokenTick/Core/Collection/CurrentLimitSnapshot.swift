@@ -55,7 +55,7 @@ public struct CurrentLimitSnapshot: Codable, Sendable {
            let count = resets["availableCount"] as? Int64, count >= 0 {
             result.availableResets = count
             if count > 0, let credits = resets["credits"] as? [[String: Any]] {
-                // 明细可能少于总次数；保留每次重置的到期时间，nil 表示接口明确返回永不过期。
+                // Details may be truncated; keep each expiry, with nil representing an explicitly non-expiring credit.
                 result.resetCreditExpirations = credits.filter { credit in
                     guard credit["status"] as? String == "available",
                           credit["resetType"] as? String == "codexRateLimits" else { return false }

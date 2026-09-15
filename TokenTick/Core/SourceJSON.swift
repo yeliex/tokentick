@@ -1,6 +1,6 @@
 import Foundation
 
-/// 保留统计来源的扩展字段，数字以十进制解码，避免经过 Double 丢失单价精度。
+/// Decode source numbers as Decimal to preserve price precision without a Double conversion.
 indirect enum SourceJSON: Codable, Equatable, Sendable {
     case object([String: SourceJSON]), array([SourceJSON]), number(Decimal), string(String), bool(Bool), null
 

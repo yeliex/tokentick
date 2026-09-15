@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-// App 与 CLI 共享同一锁文件；进程退出时由内核释放，不依赖手动清理状态。
+// The app and CLI share a lock file; the kernel releases the lock when a process exits.
 struct FileWriteLock {
     let url: URL
     enum LockError: Error { case busy }
@@ -16,7 +16,7 @@ struct FileWriteLock {
             if errno == EINTR { continue }
             guard errno == EWOULDBLOCK else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             if nonBlocking { throw LockError.busy }
-            // 另一个进程可能扫描数分钟；有限等待让取消能在获得写锁前生效。
+            // Use bounded waits so cancellation can interrupt a long-running writer before acquiring the lock.
             Thread.sleep(forTimeInterval: 0.05)
         }
         defer { flock(descriptor, LOCK_UN) }

@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 public enum OverviewPeriod: String, CaseIterable, Sendable, Identifiable {
-    case day = "当天", week = "7 天", month = "30 天", quarter = "90 天", year = "一年", all = "历史总和"
+    case day, week, month, quarter, year, all
     public var id: Self { self }
     public var days: Int? {
         switch self { case .day: 1; case .week: 7; case .month: 30; case .quarter: 90; case .year: 365; case .all: nil }
@@ -56,7 +56,7 @@ public struct OverviewReport: Sendable {
     public let unknownDateTokens: Int64
     public let hourly: Bool
 
-    /// 滚动查询的截止时间变化不代表显示数据变化。
+    /// A changing rolling endpoint does not necessarily change displayed content.
     public func hasSameContent(as other: Self) -> Bool {
         total == other.total && models == other.models && modes == other.modes && efforts == other.efforts && trend == other.trend
             && conversations == other.conversations && unknownDateTokens == other.unknownDateTokens
@@ -65,7 +65,7 @@ public struct OverviewReport: Sendable {
 }
 
 extension UsageStore {
-    /// 一个读快照内取得首页所有区块，避免同步写入使金额、图表与模型构成互相矛盾。
+    /// Read overview sections in one snapshot so concurrent syncs cannot produce inconsistent totals and charts.
     public func overviewReport(period: OverviewPeriod, now: Date, timezone identifier: String) throws -> OverviewReport {
         guard let timezone = TimeZone(identifier: identifier) else { throw UsageQueryError.invalidTimezone }
         let query = period.query(now: now, timezone: identifier)
@@ -90,14 +90,14 @@ extension UsageStore {
             }.sorted { $0.date < $1.date }
             let filters = UsageFiltersSQL(query.filters)
             let modeExpression = """
-                CASE WHEN u.is_long_context IS NULL THEN '未知'
+                CASE WHEN u.is_long_context IS NULL THEN 'unknown'
                     WHEN u.tier = 'fast' OR (u.tier IS NULL AND EXISTS (
                         SELECT 1 FROM app_metadata WHERE key = 'fast_trace:' || u.thread_id || ':' || u.turn_id
                     ))
-                        THEN CASE WHEN u.is_long_context = 1 THEN '快速＋长上下文' ELSE '快速' END
-                    WHEN u.is_long_context = 1 THEN '长上下文' ELSE '普通' END
+                        THEN CASE WHEN u.is_long_context = 1 THEN 'fast_long_context' ELSE 'fast' END
+                    WHEN u.is_long_context = 1 THEN 'long_context' ELSE 'standard' END
                 """
-            let effortExpression = "COALESCE(NULLIF(u.reasoning_effort, ''), '未知')"
+            let effortExpression = "COALESCE(NULLIF(u.reasoning_effort, ''), 'unknown')"
             func shares(_ expression: String) throws -> [OverviewUsageShare] {
                 try Task.checkCancellation()
                 return try Row.fetchAll(db, sql: """

@@ -125,7 +125,7 @@ struct UsagePricingTests {
     }
 
     static let document = #"""
-    {"openai":{"models":{"gpt-6-astra":{"id":"gpt-6-astra","name":"标题不参与价格比较",
+    {"openai":{"models":{"gpt-6-astra":{"id":"gpt-6-astra","name":"Display titles do not affect price comparison",
       "cost":{"input":10,"output":50,"cache_read":1,"cache_write":12.5,
         "tiers":[{"tier":{"type":"context","size":272000},"input":20,"output":75,"cache_read":2,"cache_write":25}]},
       "experimental":{"modes":{"fast":{"cost":{"input":20,"output":100,"cache_read":2,"cache_write":25},"provider":{"body":{"service_tier":"priority"}}}}}

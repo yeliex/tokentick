@@ -49,7 +49,7 @@ struct RolloutParser {
             guard let session = state.session,
                   settings.thread_id == nil || settings.thread_id?.lowercased() == session.id.lowercased(),
                   try !isInherited(event, session: session) else { return nil }
-            // 持久设置的更改不直接改变正在执行的轮次，等下一次开始事件绑定。
+            // Bind persistent setting changes at the next turn start, not to an active turn.
             state.settings = ParserSettings(model: settings.thread_settings.model,
                                             serviceTier: settings.thread_settings.service_tier)
             return nil
@@ -60,7 +60,7 @@ struct RolloutParser {
             state.turnStartedAt = event.timestamp
             state.serviceTier = state.settings?.serviceTier
             let model = state.settings?.model
-            // 前置压缩可能使用上一模型；两者不同时，直到本轮上下文出现前都不能任选一个。
+            // Pre-turn compaction may use the previous model; keep ambiguity until the current turn context arrives.
             let ambiguous = model != nil && (state.contextModel.map { $0 != model } ?? (session.forked_from_id != nil))
             state.model = ambiguous ? nil : model
             return nil
@@ -89,7 +89,7 @@ struct RolloutParser {
             }
             let usage = info.last_token_usage
             let evidence = try evidence(event, type: "token_count", cumulative: info.total_token_usage)
-            // 新旧用量流可能采用不同的任务累计基线。新格式之后的同轮次、同分项报告只计一次。
+            // Old and new streams may have different cumulative baselines; count matching same-turn component reports once.
             if state.recordTurnID == state.turnID && state.recordUsage == usage, let response = state.recordResponseID {
                 state.recordUsage = nil
                 return try makeUsage(responseID: response, legacy: info.total_token_usage, usage: usage,
@@ -97,7 +97,7 @@ struct RolloutParser {
             }
             state.recordUsage = nil
             guard previous != info.total_token_usage, usage.totalTokens > 0 else { return nil }
-            // Codex 会用全零分项发布 context-window 饱和占位；它不是一次真实请求。
+            // All-zero components can be a context-window saturation placeholder rather than a real request.
             guard usage.inputTokens > 0 || usage.outputTokens > 0 else { return nil }
             if let previous, info.total_token_usage.totalTokens < previous.totalTokens,
                info.total_token_usage != usage {
@@ -105,7 +105,7 @@ struct RolloutParser {
                 state.fallbackUsage = nil
                 return nil
             }
-            // 相同事实会随归档、fork 或 revert 被复制；路径、行号和 ordinal 都不能充当请求 ID。
+            // Archive, fork, and revert can copy usage; paths, line numbers, and ordinals are not request IDs.
             state.fallbackCumulative = info.total_token_usage
             state.fallbackUsage = usage
             state.fallbackTurnID = state.turnID
@@ -135,7 +135,7 @@ struct RolloutParser {
         let boundary = session.subagent_history_start_ordinal ?? session.forked_from_ordinal_exclusive
         if let boundary, let ordinal = event.ordinal { return ordinal < boundary }
         guard session.forked_from_id != nil else { return false }
-        // paginated history_base 引用外部前缀，本文件只保存后续事件。
+        // A paginated history_base references an external prefix; this file contains only subsequent events.
         if session.history_mode == "paginated", let base = session.history_base,
            let ordinal = event.ordinal, ordinal >= base.end_ordinal_exclusive { return false }
         if let created = session.timestamp.flatMap(DateParsing.parseTimestamp), let occurred = event.timestamp.flatMap(DateParsing.parseTimestamp) {

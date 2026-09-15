@@ -1,6 +1,6 @@
 import Foundation
 
-/// 只安排触发时间；扫描、价格和 API 仍走同一个同步入口。
+/// Schedule triggers only; scans, prices, and API calls use the shared synchronization entry point.
 public struct AutomaticSyncSchedule: Sendable {
     private var localDue: Date
     private var remoteDue: Date
@@ -18,7 +18,7 @@ public struct AutomaticSyncSchedule: Sendable {
     }
 
     public mutating func logsChanged(now: Date = Date()) {
-        // 连续写入不能无限延后扫描，首个事件确定本批合并时间。
+        // Anchor coalescing to the first event so continuous writes cannot postpone scans indefinitely.
         changedAt = min(changedAt ?? .distantFuture, now.addingTimeInterval(2))
     }
 

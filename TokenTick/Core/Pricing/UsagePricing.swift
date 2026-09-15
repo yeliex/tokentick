@@ -53,7 +53,7 @@ struct UsagePricing {
                       cacheReadAmount: read, cacheWriteAmount: write, amount: total)
     }
 
-    /// 美元／百万 tokens × tokens × 1000 = 纳美元；先进行十进制运算，再银行家舍入。
+    /// USD per million tokens × tokens × 1000 = nanoUSD; use Decimal arithmetic and banker's rounding.
     static func amount(tokens: Int64?, rate: Decimal?) throws -> Int64? {
         guard let tokens else { return nil }
         if tokens == 0 { return 0 }

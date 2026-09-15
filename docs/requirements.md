@@ -1,247 +1,141 @@
-# TokenTick 需求
+# Product requirements
 
-本文只记录当前确定的需求。表结构、采集和计价规则见 [技术方案](technical-design.md)，构建、运行和安装见 [README](../README.md)。
+This document defines TokenTick's product scope and behavior for users and maintainers. The [README](../README.md) covers installation and CLI examples; [architecture and maintenance](technical-design.md) explains the implementation.
 
-## 1. 定位与范围
+## Scope
 
-TokenTick 是专注于 Codex 的 macOS 原生用量统计工具，提供可追溯的 token 用量与美元金额估算。数据先行：完整保存统计需要的信息，视图基于数据逐步扩展。
+TokenTick helps Codex users understand local token consumption, estimated API-equivalent costs, and subscription-limit usage. It targets macOS 26 or later on Apple Silicon, with a native SwiftUI app and an independent CLI sharing Swift Core and SQLite.
 
-- 产品名为 TokenTick，仓库、本地项目目录及 CLI 名为 `tokentick`，默认分支为 `master`。
-- 仅支持 macOS 26.0+、Apple Silicon（arm64），不支持 Intel，不保留 Intel 兼容代码；按当前设备验收，不要求额外的 macOS 26 实机。
-- 使用 Swift 6、SwiftUI、SQLite；App 和 CLI 共用 Swift Core，通过不同 target 构建。
-- 只支持 Codex，不建设多 provider 框架、跨平台 CLI、自有云同步或独立常驻 daemon。
-- 金额是按模型公开价格换算的 API 等值金额，不是 ChatGPT 订阅实际账单。
-- 保存统计字段和必要来源证据，不保存对话正文、工具输出或凭据。
+The current app has three main pages: Overview, Usage details, and Plan usage, plus a menu-bar panel and a separate Settings window. Codex disk-space analysis is agreed future work, described below; it is not a current feature.
 
-## 2. 用量与归属
+The scope excludes other model providers, Intel support, a cross-platform CLI, a cloud synchronization service, and an independent background daemon. Amounts are estimates based on public model prices, not subscription charges.
 
-统计总览、每日、任务、项目和模型的 tokens、分项 tokens、已知金额及未定价用量。支持日期范围、统计时区、账号、任务、项目、模型、未知归属、搜索与排序，提供分页明细和来源证据。
+## Usage records and attribution
 
-- 用量按每条有效消耗保存，保留真实响应 ID、turn ID、原始事件序号、发生时间及 UTC 日期／小时／分钟。历史字段不可得时允许为空，不伪造标识。
-- fork 去重以 turn 为单位：多个任务包含同一 turn 时，仅保留来源创建时间最早的任务用量，副本不落入用量表。原始任务与 fork 各自新增的 turn 正常统计。
-- 同次消耗的新旧日志报告只统计一次；两个不同真实响应即使 tokens 相同，也不能合并。
-- 全局统计保留未知账号的本地用量；按账号筛选只包含明确匹配的记录，不用当前登录账号回填历史。
-- 模型未知时保留 `model = NULL`，模型维度显示“其他”，参与 token 汇总；无依据时不估算金额。
-- 任务元数据只缓存最新标题和项目名。项目优先采用 Codex 名称，缺失时使用项目根目录文件夹名；同名项目合并。
-- 明确 projectless 的任务归 `Chat`，中文名“无项目聊天”；仅缺少项目信息不能直接认定为 Chat。
-- 任务切换项目或项目改名后，全部历史使用最新映射。归属调整不复制用量，不修改原始 token 和时间。
+- Retain each valid usage event with its available response ID, turn ID, source ordinal, timestamp, UTC date/hour/minute, model, token components, applied prices, and source location.
+- Preserve real source identifiers. Missing historical IDs remain null; do not generate a response ID from a turn or ordinal.
+- Across tasks containing the same turn, retain only the source task created earliest. A fork's new turns count normally. Discovering the original later changes ownership transactionally without adding duplicate consumption.
+- Count old and new reports of the same consumption once. Equal token counts alone do not make two distinct responses duplicates.
+- Include unknown-account usage in global totals. Account filters include only matching evidence; the current login does not fill historical account gaps.
+- Keep unknown models in token totals and expose incomplete pricing. Missing values and zero are different.
+- Use the latest task title and project mapping. Project renames or reassignment update historical grouping without changing tokens or timestamps. Projects with the same resolved name share a group.
+- Resolve projects from Codex's saved projects and explicit task assignments. An arbitrary working-directory basename is not a project. Explicit projectless tasks use the `Chat` group; missing information alone is not proof of projectless status.
 
-## 3. 本地采集与性能
+## Collection and privacy
 
-本地日志是用量事实的主要来源，包含活动、归档、revert、fork、remote 同步落盘及压缩日志。
+Local activity, archived logs, reverted rollouts, forked histories, remote histories already saved locally, and compressed logs are collection inputs.
 
-- 每次操作读取进程当前 `CODEX_HOME`，未设置或为空时回退到 `~/.codex`；没有目录设置项或 `--codex-home` 参数。单次扫描固定其开始时的根目录。
-- 优先使用目录监听提示增量采集，配合启动、唤醒和定时核对；支持文件追加、移动、截断、替换、压缩和解压。
-- 只读 Codex 数据，不改变源日志内容或压缩状态。源文件消失不删除已保存的历史用量。
-- 流式读取，按批次入库；内存主要保存统计结果、当前分页、同步状态和有界解析缓冲，不加载历史明细全集。
-- 重复扫描、进程重启、App／CLI 同时运行不能重复计量或损坏数据库。半行和未提交批次不得提前推进游标。
-- App 运行期间自动同步，可取消当前同步或手动重试；退出后停止后台采集，不承诺补齐未观测到的最终额度百分比。
+Each operation reads the process's current `CODEX_HOME`, defaulting to `~/.codex` if empty or unset, and fixes that root for the operation. There is no app directory picker or `--codex-home` option.
 
-## 4. 模型价格与金额
+Collection is read-only against Codex files. Moving, compressing, reverting, or removing a source file does not refund previously recorded consumption. TokenTick stores statistical fields and required attribution, not conversation bodies, tool output, or credentials.
 
-价格从 models.dev 的 OpenAI 数据获取，代码中维护 JSON 默认价格，覆盖旧模型、缺少接口价格历史和离线场景。
+The scanner streams bounded data and commits batches. It must recover safely from append, partial lines, interruption, truncation, replacement, archive moves, and compression changes. A cursor advances only with its committed records. Rescans, restarts, and concurrent app/CLI activity must not duplicate usage or corrupt the database.
 
-价格表只保存单价、上下文阈值、计价规则与必要的来源字段，不保存 source_json 或原始 cost、experimental 报价数据。无法识别的上下文规则保持不支持，不按普通价格代算。
+The app synchronizes while running using filesystem notifications, startup/wake checks, and periodic reconciliation. Synchronization can be cancelled and retried; quitting stops collection. An unavailable source must not discard successful work from other sources.
 
-- 按模型、UTC 日期和服务 tier 保存价格变化；Fast 单独一行，每行包含基础价格、长上下文阈值及对应价格。
-- 每天成功获取一次；价格不变不新增日期记录。首份价格可用于更早历史，但不冒充该价格的真实生效日期。
-- 上游明确的 tier＋长上下文组合价格优先；缺失时按普通档位的各分项长上下文倍率推导，并保留估算依据。
-- rollout 缺 Fast 证据时，从额外 Codex 日志补证；仍找不到时按普通价格计算，观测字段保持未知。不因为缺 Fast 证据而默认未定价。
-- 已知 Fast 却缺少对应价格时不能改用普通价格。模型或必需价格缺失时，相关单价和金额为空；已知分项金额仍可展示。
-- 统一使用美元。用量表保存实际采用的各分项价格和金额，不另设请求金额表；金额计算与存储不得使用浮点累加。
-- 价格、默认配置或规则变化后可重算历史，并更新相关缓存；重算支持断点恢复。
+## Costs and prices
 
-## 5. API 参考用量
+Prices come from the OpenAI portion of models.dev, with a bundled JSON catalog for offline and historical coverage. A successful refresh is needed at most once per day; unchanged prices do not create another dated snapshot.
 
-当前每日 API 桶只提供日期和总 tokens，不能恢复每日模型或输入／输出分项，也不能据此计算金额。
+Prices are recorded by model, UTC date, and service tier. Each tier has base rates and, where supported, a long-context threshold and rates. Explicit combined tier/context prices take precedence. When those are absent, derive each component using that component's standard long/base ratio and retain the derivation basis. Unsupported context rules do not silently use base rates.
 
-- 账号摘要和每日桶只保留当前进程内存，不写入用量事实或历史日桶表。
-- API 总量减去本地已覆盖的同日 tokens，非负差额单独展示为未知模型参考用量；扣除范围包含 remote 落盘及未知模型记录，不能重复补量。
-- 负差额展示为零，同时保留原始差异；不减少本地已确认用量。
-- 账号覆盖或 API 日桶时区未完全确认时，明确标记为参考估计，不称为精确其他设备用量，不混入本地统计和金额。
-- 读取期间切换账号则放弃本次日桶；失败或无数据不能继续展示前一个账号的日桶。
+Use confirmed Fast evidence from rollouts or matching Codex trace records. If no tier evidence exists, price using the standard tier while preserving the unknown observation. A confirmed Fast request with no Fast price must not fall back to standard.
 
-## 6. 额度
+Input includes cached tokens; output includes reasoning. Avoid double charging either subset. Determine long-context pricing from an individual request's input, not cumulative turn input. Preserve missing rates and costs as null while exposing calculable components. Calculations use decimal arithmetic and integer nanoUSD, never floating-point accumulation.
 
-历史额度和实时额度分别处理。
+Price or rule changes can reprice history and invalidate derived statistics. Repricing is resumable; rebuilding the statistics cache is transactional.
 
-**历史额度**只统计主桶 `codex` 中时长为七天（10,080 分钟）的窗口，不按 primary／secondary 名称判断，不纳入五小时窗口及 Spark 等额外模型桶。目标是了解每个七天额度窗口的使用率，覆盖自然重置及可观测到的提前重置，不区分官方重置和重置卡。
+## Server reference usage
 
-稳定截止减七天得到推算起算时间。仅持久化已结束的周期，保存计划截止、结束边界、重置类型与最后已知使用比例；不保存逐次观察或完整 JSON。提前重置无需捕捉到归零事件，新窗口在原截止前出现即可作为提前重置依据；无明确事件时，边界为首次观察到新窗口的时间，不声称是准确操作时间。
+Server daily buckets provide dates and total tokens, not a reliable daily model or input/output breakdown. Keep account summaries and daily buckets in process memory.
 
-当前登录账号的完整实时额度快照只放内存。启动同步先请求 API，返回后立即展示当前额度，不等待日志扫描、计价或统计完成；API 失败仍继续日志同步。历史周期计算所需的最后窗口摘要随既有扫描游标保存，启动从游标恢复后处理新增日志，不再每次回读历史全文；升级补齐摘要时允许一次重扫。恢复及重复扫描不能重复写周期。继承和 fork 副本继续排除。
+The reference difference is the server total minus local coverage, including unknown-model records and remote logs already collected locally. Display a negative difference as zero additional tokens while preserving the raw difference. Do not add this reference to local usage, price it, or call it exact usage from other devices when account coverage and bucket timezone are uncertain.
 
-周期请求数、Tokens／金额在同步时从 usage 在周期范围内聚合并保存，按请求保存的 turn 开始时间归属；未知账号保持未知，金额不由百分比换算。
+Discard an observation if the account changes during the request. Failed or empty results must not leave a previous account's daily buckets visible.
 
-**实时额度**包含 API／日志能取得的 全部类型，仅保留内存快照和观测时间。当前账号缺少某类额度时，不能借用其他账号或过期快照。
+## Subscription limits
 
-总览中的当前额度窗口明确指 **Codex 当前登录账号** 的窗口。显示可取得的各类窗口、已用／剩余比例和重置时间。额度区以主桶 codex 为核心，扩展额度为次级内容，能取得就展示，不提供隐藏开关。可用重置次数放入主额度卡片底部，以普通文字展示，不使用图标或按钮外观；同一行列出接口返回的每次可用重置到期时间（重复时间保留，无到期限制显示永不过期），过长时横向滚动，缺失时不推算。credits 余额放入主额度卡片底部，缺失时不补零、不显示虚构余额。主额度不重复显示名称，不设信息图标；标题右侧显示接口确认的订阅套餐名称，倍率无依据时不补写。加载时只显示 loading，不显示说明文字或额外刷新按钮。主额度与扩展额度统一采用“剩余”或“已使用”口径，默认剩余，可在设置修改。主额度周窗口按设置中的 4／5／7 天均分额度刻度（默认 5 天），同时保留 50%、80% 刻度；5 小时窗口不显示均分刻度。菜单和总览均用绿色竖线标记按自然时间计算的当前应使用量，不附加说明文字；工作日选项只改变均分份数，不跳过周末。切换已使用／剩余口径时刻度和标记一并转换；同名额度按 limitID 合并到一张卡片，不同周期上下排列，不合并百分比。主额度进度下方同一行左侧显示结余／超前，右侧显示重置倒计时。扩展额度紧凑展示，例如“Codex Spark · 5 小时 · 已使用 0%”，右侧重置倒计时，下方进度；优先使用接口名称，不展示内部代号。扩展额度不展示预测。最近观测时间放入详情提示。未登录、账号未确认或观测缺失时显示对应状态；同一登录会话内观测过期时继续显示最近快照，不展示“额度已过期，请刷新”，主窗口打开或重新激活时静默请求一次接口；已有同步则等待后重新判断，避免重复请求，过期观测不参与预测；账号切换后清除前一个账号的快照和预测，丢弃旧账号进行中的请求结果，不以最新一条历史日志的账号代替当前登录账号。
+### Current account
 
-**用量预测**按当前账号、主额度类型和同一窗口内的有效额度百分比观测计算近期消耗速度，展示预计多久耗尽，以及预计提前重置多久耗尽或重置时剩余额度。窗口起止可确定时，另展示实际使用率相对均匀使用进度超前／剩余多少个百分点。预测不由 tokens 或美元反推额度，不跨账号、额度类型、重置或提前恢复边界混算。
+Current-limit cards belong to the confirmed Codex login. Keep all available limit types and observation timestamps in memory. Publish startup API results before waiting for log collection and pricing. Failure to obtain limits must not block local collection.
 
-预测所需的近期观测仅在进程内有界保留，不扩展历史额度的持久化范围。观测不足、过期、边界不明或速度无法可靠计算时不生成耗尽时间，主界面不显示“观测不足”等预测占位文案，原因保留在数据状态或详情提示；预测标为估计，不承诺未来用量。采样区间、有效性条件、计算公式和边界处理在技术方案中明确并验证。
+Fresh logs may advance API-confirmed windows within the same login session. Window changes, resets, or missing identity require API confirmation. Clear old snapshots and forecasts on login changes and reject late results from the previous session. A recent historical log cannot establish the currently signed-in account.
 
-## 7. 数据一致性与维护
+Show the main `codex` bucket prominently and other buckets as secondary cards. Windows with the same limit ID share a card, with separate percentages and periods. Use the API's plan name, credit balance, available reset count, and returned expiry details when present; do not infer missing balances, plan multipliers, or expiry dates. Reset credits are information, not an action to redeem them.
 
-- App 与 CLI 共用 SQLite、解析器、计价和查询语义；相同条件的结果一致。
-- 未上线阶段只维护一份当前建表定义，结构变化允许直接重建数据库并重扫日志，不保留历史迁移链。
-- 业务事实及汇总收敛为 usage、statistics、weekly_limit_cycles；任务映射、扫描游标、价格与少量维护元数据独立保留。
-- usage 保存请求、计价及去重所需的结构化字段，不保留 report／alternateReports 等完整证据 JSON；轮次信息放入 usage，不另设 turn_usage。
-- statistics 保存日级、单一维度的汇总；月／年累加日数据，交叉筛选直接聚合 usage，不预存维度组合。
-- 日常汇总仅重算受影响日期；全量重建在事务中完成，失败回滚，下次重新执行，不保存统计重建中间表或断点。
-- 扫描文件状态与解析断点允许保留 JSON；仅保存增量恢复和正确去重必需的信息，删除不参与业务处理的证据、重复上下文及可推导字段。
-- 原始日志是重建来源；请求去重、计价和统计一致性必须在新结构中继续成立。
-- 不提供迁移备份功能，不扫描或展示旧备份；不删除既有文件。
+The default display is remaining percentage, configurable to used percentage. Weekly tick divisions use 4, 5, or 7 equal parts (default 5), plus 50% and 80% used markers. Five-hour windows omit those equal divisions. The time marker reflects elapsed natural time; the setting does not skip weekends or change the window duration. All markers follow the selected used/remaining coordinate system.
 
-## 8. 客户端与分发
+Within the same login session, an expired observation may remain visible as the latest known snapshot while the app silently refreshes on window activation. Stale observations cannot support forecasts.
 
-整个 App 窗口按 **shadcn/ui Luma** 重新设计：圆润几何、柔和层次、宽松留白、克制的中性色与清晰的数字层级，参考 Shuttle 的 macOS 原生组织方式。参考 Surfing 的纯 SwiftUI `.containerBackground(.thinMaterial, for: .window)` 实现半透明窗口与系统背景模糊，文字和数据保持清晰；深浅色统一设计，尊重系统降低透明度设置。侧栏、工具栏、卡片、图表、表格、检查器及独立设置使用一致的视觉语言，不受现有页面布局约束。使用 SwiftUI 原生实现，不引入 WebView、React 或跨平台组件框架。视觉实现是本次目标的完成条件，不延后到后续迭代。参考：[Luma 官方说明](https://ui.shadcn.com/docs/changelog/2026-03-luma)。
+### Forecasts
 
-- 原生侧栏、工具栏、详情检查器及 Settings scene，支持深浅色、文本选择和系统键盘／辅助功能语义。
-- 主导航包含总览、用量明细、套餐用量、存储空间；设置使用独立 Settings scene，数据状态归入设置。所有页面按真实查询结果呈现，缺失数据不补假值。
-- token 显示使用十进制 K／M／B／T，最多两位小数、去尾零，舍入进位时升级单位；可查看精确整数。数据库与 CLI JSON 保留原始整数。
-- 菜单栏仅一个模板图标，菜单提供订阅与用量摘要、总览／用量明细／套餐用量入口及退出操作，不在系统菜单栏拼接用量文字。
-- 沿用已定稿的“用量环·分格”图标：浅色暖白琥珀、深色石墨薄荷。资源维护见 [图标说明](../assets/icons/README.md)。
-- App／CLI 使用 ad-hoc 签名和 ZIP 分发，不使用付费 Developer Program 或 Apple 公证。包内提供安装说明、签名／架构／源码信息、依赖许可证和校验文件。
+Compare observed usage with elapsed natural time in the current window. Label usage above that pace **Ahead** and usage at or below it **Allowance**, showing the absolute percentage-point difference. This comparison uses the current time and does not require forecast samples.
 
-### 窗口与快捷键
+Estimate exhaustion and remaining allowance at reset from recent percentage observations of the same account and window. Do not infer allowance from tokens or money, or combine observations across resets. Forecasts are estimates and require sufficient fresh observations and valid boundaries. Missing estimates do not need an explanatory placeholder in the main card; details can explain their state.
 
-App 使用单主窗口，不提供多窗口或多 Tab。启动显示主窗口与 Dock 图标；关闭最后一个普通窗口后隐藏 Dock 图标，进程继续运行，保留菜单栏入口。仍有其他普通窗口或最小化窗口时保持 Dock 可见。通过菜单入口重新打开主窗口时恢复 Dock 图标。
+### Historical windows
 
-⌘W 关闭当前窗口；⌘, 打开设置前先打开或复用主窗口，再显示独立设置窗口。菜单栏弹层也提供 ⌘,，触发后先收起菜单，再打开主窗口和设置；不恢复可见的设置菜单行。⌘Q 退出应用；主窗口 ⌘R 触发刷新，同步期间禁用。快捷键仅在 App 或其菜单栏弹层接收键盘事件时生效，不注册系统全局快捷键。
+Persist only completed seven-day windows of the main `codex` bucket, identified by a duration of 10,080 minutes, not by `primary` or `secondary` naming. Five-hour and additional-model windows are excluded from history.
 
-菜单栏图标中央显示主订阅额度整数，优先使用七天窗口，没有七天窗口时取主订阅首个窗口；跟随“剩余／已使用”设置。数字限制在 0～100 并四舍五入，不附加百分号，字距紧凑，图标保持原尺寸。悬停及无障碍名称显示所选周期、显示口径和完整百分比。缺少有效额度或所选窗口已到重置时间时，在下一次标签更新时回退原图标；不补造额度数字。
+A stable reset deadline provides the inferred start seven days earlier. A new window observed before the previous deadline establishes an early reset; use the first new-window observation as an approximate boundary when the exact event is unavailable. Do not distinguish a reset credit from another early reset without evidence. Idle zero-use deadline movement must not generate overlapping cycles.
 
-### 菜单栏摘要
+Store the last observed percentage, not a claimed final billed percentage. Persist local record counts, tokens, complete costs, and known cost components for each ended cycle during synchronization. Attribute usage using the turn start, falling back to its occurrence time when unavailable. Update aggregates after new logs, boundary corrections, or repricing. Resume historical detection from minimal scan checkpoints without persisting full current snapshots or individual observations.
 
-- 使用半透明面板，宽度 320 点、高度随内容自适应，不设置外层纵向滚动。底部入口采用紧凑行高，图标和文字对齐，整行悬停与按下高亮；仅保留总览、用量明细、套餐用量和退出，不提供设置、刷新或检查更新入口。
-- 顶部 Logo 跨两行，右侧第一行为 Codex／当前账号邮箱，第二行为同步状态／接口确认的套餐。账号信息未返回且同步仍在进行时，订阅与限额共用一个 loading，不展示未知邮箱或套餐占位。同步状态仅在顶部展示。
-- 复用总览的主订阅额度、可用重置次数、到期时间及 Credits，采用紧凑布局。菜单不展示扩展额度；主额度与下方重置次数之间不设分割线。
-- 展示今天、近 7／30／90 天的 Tokens 和预估费用。今天按统计时区当天零点至当前时间；其余沿用总览的滚动范围。用量是全局本地采集结果，不因顶部登录账号而自动过滤。
-- 近 30 天用 Tokens 柱形和金额折线同图展示。绘图区高 125 点，不显示图例、纵轴数字、常规参考线或底部说明；标题右侧展示两项各自的日桶峰值，底部仅显示起止日期。数字使用 K／M／B 等英文缩写。
-- Tokens 与已知金额分别显示同色日均虚线，日均按滚动范围实际时长折算天数计算，包含无用量时间。金额缺失不伪装为零，峰值不代表总额，两项峰值可能发生在不同日期。
-- hover 时高亮当天柱形，显示日期定位线及日期／Tokens／金额浮层；移开后隐藏，不新增底部说明行，不改变菜单高度。
+## App experience
 
-### 8.1 总览
+### Overview
 
-不提供账号、项目、任务、模型或自定义日期筛选。顶部为 Codex 当前登录账号的当前额度窗口与预测，不受下方周期 Tab 影响，并明确显示当前账号和观测时间。
+The six periods are Today, 7 days, 30 days, 90 days, 1 year, and Lifetime. Today starts at local calendar midnight; the other finite ranges roll back from now, with one year defined as 365 days. Lifetime includes all saved usage. All usage sections share the selected interval; the current-account limits remain independent.
 
-下方提供 **当天、7天、30天、90天、1年、所有** Tab，统一改变以下内容的统计范围：
+Show total tokens and known estimated costs together with input, output, reasoning, cache-read, and cache-write components. Use a combined token-bar/cost-line trend, with distinct units and hover values. Group one year by Monday-based weeks, Lifetime by months, and the other periods by days. Include zero-use buckets in averages; missing costs must not become zero.
 
-- 周期内总 tokens 和 API 等值金额，以及输入、输出、思考、缓存读取和缓存写入 tokens。界面仅使用“输入”“输出”“思考”“缓存读取”“缓存写入”等简洁名称，不显示“其中：”“含缓存”等前缀；包含关系在详情提示解释，计算不重复相加；缺失字段保持未知。金额仅汇总已知分项，预估费用不展示“尚未完整计价”等附加文案，计价完整性保留在悬停说明中。
-- Token 与金额合并为一张趋势组合图：柱形表示 Tokens、折线表示美元金额，左右轴明确区分单位，共用时间范围和悬停提示，支持同时查看对应时间的金额和 token 数量。一年按周（周一开始）、历史总和按月，其他周期按天聚合，汇总与周期摘要一致。柱形悬停高亮，使用协调的柱形、折线和饼图色板；增加平均线，分母包含所选范围内的零用量时间桶，费用平均仅汇总已知金额。
-- 模型使用统计：三层同心环，外环为模型、中环为使用模式、内环为推理深度，右侧三组列表水平排列（名称、金额、Tokens、当前指标占比），窄窗口时图放上方、三组列表继续并排。细环之间增大间距，中心留空；悬停扇区时放大并高亮对应数据，悬停列表也联动环图。不展示内环／外环等位置文案，各组未知始终排最后。三环统一切换金额或 Tokens，统一使用总览周期。使用模式按普通、快速、长上下文、快速＋长上下文互斥分组，避免重叠计数；长上下文沿用请求计价判定，快速模式沿用日志及请求追踪的计价模式。推理深度读取 turn_context 的 effort，重扫历史日志回填，缺失值显示“未知”，不按思考 token 数推断。金额环只使用已知金额，未定价情况不伪装为零金额。
-- 总量、费用与输入／输出／思考／缓存分类属于同一张用量卡片，避免分类孤立成独立模块。模型列表限制宽度并压缩行距，最近对话采用更紧凑的列表行。
-- 最近对话使用量列表：对话标题、标题下方项目名称、金额、token 数，按周期内最近消耗时间排序；金额和 tokens 只统计所选周期。点击可进入该任务的用量明细并保留时间范围。
+Three concentric rings break usage down by model, mutually exclusive mode (standard, Fast, long context, Fast plus long context), and recorded reasoning effort. They share the token/cost selector and period, and link hover states with their lists. Keep unknown categories last. Reasoning effort comes from the log's setting, not reasoning-token counts.
 
-周期消耗使用全局本地已确认用量，包含未知账号；与顶部仅属于当前登录账号的额度明确区分。API 参考差额不加入总览金额、tokens 或图表。当天按统计时区零点至当前时间、7／30／90 天及一年按滚动天数（年为 365 天）统计，历史总和覆盖全部已保存用量；时间标签跟随系统时区。不能确定发生日期的用量不伪造图表时间点，历史总和中单独提示其数量。
+Recent tasks show only consumption within the selected interval and are ordered by the latest usage in that interval. Opening a task carries the exact interval into Usage details.
 
-同步期间右上角显示当前阶段及可用的文件扫描进度，刷新按钮原位显示 loading 并禁用；完成后恢复刷新图标和上次同步时间。保持系统 toolbar item 样式和图标区域尺寸稳定。
+### Usage details
 
-总览在“模型使用”下方增加“存储空间”模块，显示 Codex 本地总占用、分类大小及占比、最近统计时间，并提供进入“存储空间”页面的入口。该模块使用当前进程的空间扫描结果，不受总览周期 Tab 影响；无用量记录时仍可展示空间统计。首次扫描期间仅该模块显示加载状态，不阻塞其他总览内容；统计不完整时显示对应状态，不能将未取得的大小显示为零。
+Keep daily/project/task grouping, dates, search, project, model, account when applicable, and sorting in a compact filter row. Project and model choices come from usage within the selected date scope. Custom dates use an apply/cancel popover; no duplicate date editor is needed.
 
-### 8.2 用量明细
+Show tokens, costs, and event counts above a paginated table. Selecting a day or project updates the visible filters and shows contributing tasks. A task opens a request sheet; summary details open a statistics sheet. Closing a sheet preserves grouping, filters, and pagination. Open details use a stable snapshot; older asynchronous queries cannot replace newer results.
 
-在同一页面通过 **每日、项目、任务** 分段控件切换聚合方式，与日期、搜索、项目、模型、多账号时的账号以及排序合为同一行；空间不足时横向滚动。项目和模型选项仅来自当前日期范围内有用量的数据，不展示未知项目／未知模型选项；切换范围后失效的选择恢复为全部。项目以 Codex 已保存的侧边栏项目及明确任务归属为准，不从任意工作目录推断项目名；明确聊天标记和聊天输出目录的任务合并为“聊天”。筛选使用紧凑控件与间距。不重复展示页面标题或时区说明。日期档位为当天、7天、30天、90天、1年、所有，日期范围文字放在下方汇总卡片右侧；选择“所有”也展示当前筛选结果实际覆盖的起止日期，取完整结果而非当前分页，无可确定日期时显示“—”。自定义日期始终从日期菜单的同一入口通过 popover 编辑，应用后生效、取消保持原范围，不追加日期输入框或第二个编辑按钮。
+### Plan usage
 
-筛选下方用一行显示 Tokens、预估费用和请求次数，表格不嵌套外层卡片。表格展示名称、Tokens、预估费用、请求次数和详情入口，分页显示当前页／总页数及当前筛选下的分组总数。按天点击更新日期选择器并显示当天任务；项目点击更新项目选择器并显示贡献任务。不展示返回上一层、额外筛选条或清除筛选入口，各条件直接通过筛选器调整。
+Show ended cycles in a list with the selected cycle's details alongside it. Date presets are 30 days, 90 days, 1 year, and Lifetime, plus custom dates. Show account selection only when multiple known accounts exist, while global results retain unknown-account usage.
 
-任务行打开请求明细弹窗，详情按钮打开统计详情弹窗；请求的归属、分项 Tokens、实际费率、金额及结构化来源信息可继续查看。关闭弹窗保留主列表的筛选、聚合及分页。总览带入的精确时间范围用于明细查询，不悄悄扩大为完整自然日。后台刷新不替换已打开的详情快照，异步旧查询不能覆盖新结果。
+The detail card combines percentage, progress, local tokens, estimated costs, and event counts. Its heading shows the start and actual end boundary including time; early-reset cycles additionally show the scheduled deadline. Keep these extra times out of the list. The current window belongs in Overview.
 
-### 8.3 套餐用量
+### Menu bar and windows
 
-展示主桶 codex 的七天历史额度，左侧周期列表、右侧选中周期详情。顶部仅保留日期及多账号时的账号筛选，不重复“每周额度记录”等标题或说明。时间档位为30天、90天、1年、所有，不展示当天和7天；自定义日期通过与用量明细相同的 popover 选择。
+Use one main window and a separate Settings scene, with native keyboard, selection, and accessibility behavior. Closing the last visible or minimized ordinary window hides the Dock icon but leaves the menu-bar process running; reopening restores it. Do not add multiple main windows, tabs, or global shortcuts.
 
-套餐用量的历史周期直接保存请求数、Token 数、完整费用和已知费用，查询时不重新聚合 usage。同步补入日志、修正周期边界或重新计价后更新周期统计。账号缺失保持未知，不归到当前登录账号；周期表不重复保存可由 account_id 推导的 scope_key。
+The menu-bar label uses a template icon with the rounded main-limit percentage, preferring the weekly window. Missing or reset-expired limits fall back to the plain icon when the label updates. Tooltips and accessibility text include the period and full percentage.
 
-历史页面只展示已结束的周期，当前额度留在总览。提前重置以首次新窗口观察时间作为结束边界，保留其近似语义；按日期筛选和分页不改变周期边界。
+The compact menu panel shares current main-limit data and shows Today/7/30/90-day usage plus a 30-day token/cost chart. Keep the chart's hover interaction, daily averages, and independent peaks. Its only page/action rows are Overview, Usage details, Plan usage, and Quit; ⌘, still opens Settings.
 
-周期详情合为一张卡片，包含已使用百分比、进度、Tokens、预估费用和请求次数。已确认提前重置仅在卡片内显示“提前重置”标签，不在卡片下重复显示事件或时间；周期详情标题下显示开始至实际结束边界的时间范围（含时分秒），提前重置在下一行显示原定重置时间；列表保持原有日期范围。不展示统计依据、峰值、额度观测次数、原始记录入口或“最后记录不代表……”等说明。内部保留证据和未知语义，不把最后一次使用比例冒充结算值。请求次数统计周期内本地用量明细数量，不能用额度观测次数代替。
+### Settings, language, and presentation
 
-两个页面仅在有多个已识别账号时显示账号筛选，选项为各账号和全部账号；未知归属仍参与全局统计，不单独提供未知账号选项，也不回填当前账号。多账号周期列表展示可取得的账号名称，缺失名称时使用可区分的账号标识。
+Settings has General, Data, and About sections for login items, limit display, synchronization and prices, update controls, and paths/database size. App usage follows system timezone changes and automatic synchronization is part of normal operation.
 
-### 8.4 设置与状态
+Use native SwiftUI surfaces, restrained colors, rounded geometry, translucent backgrounds, and consistent light/dark appearances. Keep product copy short and user-oriented; put technical caveats in relevant details or help. Preserve hover, selection, scrolling, and drill-down state when background results have not changed. Distinguish initial loading, empty results, errors, and cancellation.
 
-设置参考 Surfing，使用固定左侧边栏在通用、数据、关于之间切换，不提供侧边栏显隐按钮：
+English is the development and fallback language; Simplified Chinese is selected through macOS's native app-language mechanism. There is no in-app language selector. Display strings are localized separately from English internal identifiers. Use **Lifetime** for cumulative history.
 
-- 通用：开机启动和额度显示方式。开机启动读取系统登录项状态，需要系统批准时提供入口，失败时显示错误。
-- 数据：同步、模型价格和服务端统计；同步显示上次同步、请求数（用量记录数）、对话数（对话表计数）；进行中以“正在同步”为标签、右侧显示进度，不重复展示最近扫描。“刷新”执行与主窗口相同的全来源手动同步。服务端统计显示“最近请求”和订阅账号邮箱，不展示内部账号 ID；保留价格同步／重算和 API 刷新。
-- 关于：版本、Codex 目录、数据库路径与大小；路径后提供打开目录图标，数据库大小自动更新，不提供手动刷新操作。
-- 运行期间自动同步，统计时区跟随系统及其变化，不提供对应开关或选择器。
-- 不展示服务端日桶、统计缓存、迁移备份、单位、系统要求、分发与许可证信息；移除解释实现方式的描述。
+## Planned: Codex disk-space analysis
 
-主窗口不设底部状态栏。上次同步时间独立放在右上工具栏的刷新按钮之前，采用“上次同步 1 分钟前”等相对时间，不放入按钮或共享胶囊背景；刷新使用原生 ToolbarItem 默认图标按钮和边距，点击直接同步，同步期间禁用；不弹窗，不自绘圆形背景或使用 ZStack。同步进度、取消与问题详情在设置的数据中查看。页面文案面向使用者，不显示需求说明、实现方式或验收口径；均匀进度差直接显示“结余 3%”或“超前 3%”，不显示“较均匀进度”。必要的金额估算、未知数据和来源说明放在提示或详情中。
+This is agreed future scope and is not implemented in the current app. The current About section measures only TokenTick's database files.
 
-数据不变时不刷新内容 UI，不切换加载状态、不重建图表、不丢失悬停、选中行、滚动位置或下钻上下文。后台同步与内容更新分开：只有查询结果实际变化才更新对应内容，首次加载和主动改变查询条件才显示加载状态。同步时间、倒计时和过期状态只局部更新。
+- Scan the current `CODEX_HOME` after app startup in an independent background task. Keep results and scan state only in memory; do not create a database table, disk cache, or historical trend.
+- Add a storage summary below model usage in Overview and a dedicated Storage page in the main sidebar, outside Settings. Both share one result and scan state; navigation and usage-period changes do not rescan.
+- Classify conversation records, worktrees (including dependencies/builds), logs, plugins/skills, and other data. Categories are mutually exclusive and cover unknown files as well. Existing backups are ordinary files, not a backup-management feature.
+- Report allocated size as the primary number and logical size in details. Count compressed files as stored without decompressing. Do not follow symlinks outside the root; deduplicate hard links by identity with stable category ownership.
+- Exclude Codex.app, external projects, caches outside the root, and other devices. Show TokenTick database/WAL/SHM sizes separately.
+- Scan metadata only. Do not read conversation bodies or modify, compress, or delete source files. APFS shared blocks mean measured size is not guaranteed reclaimable space.
+- Provide manual rescan, cancellation, category drill-down, copyable paths, and Finder reveal. Allow one scan at a time and retain prior results during refresh. Distinguish missing root, empty directory, failure, cancellation, and partial results; display observation time.
+- Validate large directories, symlinks, hard links, permission failures, disappearing files, archive/compression changes, cancellation, and restart. The UI and token synchronization must remain responsive.
 
-### 8.5 存储空间
+## Quality requirements
 
-主窗口侧边栏增加独立的“存储空间”页面，不在设置中增加相关页面。总览模块与该页面共用同一份内存结果和扫描状态，切换页面不重复扫描。
+App and CLI results must agree for the same filters and timezone. Validate deduplication, exact cost math, null semantics, account isolation, reset boundaries, crash recovery, and agreement between facts and caches. Changes to UI behavior require native interaction checks, including window sizing, sheets, keyboard actions, loading/error states, and both appearances.
 
-**统计范围与口径**
-
-- 统计当前 `CODEX_HOME` 下的本地数据，未设置或为空时回退到 `~/.codex`，单次扫描固定根目录。按对话记录、工作树、日志、插件与技能、其他数据分类；实现前核对真实目录结构，未知目录和文件归入其他数据，各分类互斥且覆盖全部扫描范围。
-- 对话记录包含活动、归档和压缩记录；工作树包含其内部依赖及构建产物。根目录内的既有备份作为普通文件计入所属分类，不增加迁移备份管理功能。
-- 不统计 Codex.app、根目录外的系统缓存、外部项目目录或其他设备。TokenTick 数据库大小（含 WAL、SHM）单独展示，不加入 Codex 总量。
-- 主数字采用文件系统报告的已分配空间，文件逻辑大小可在详情查看；压缩文件按当前大小统计，不解压。不跟随目录内的符号链接扫描外部位置，硬链接按文件身份去重，跨分类时采用稳定的归属规则以保证分类之和等于总量。
-- APFS 克隆及共享块可能影响实际物理占用，不把统计大小称为删除后可释放空间。扫描期间允许文件持续变化，结果标记统计时间，不承诺原子快照。
-- 只读取文件元数据，不读取对话正文，不修改、压缩或删除源文件。读取失败或扫描期间文件消失时保留可用结果并标记统计不完整；根目录不存在、扫描失败与真实空目录分别展示，不将错误当作零占用。
-
-**生命周期与刷新**
-
-- 空间统计结果、明细及扫描状态仅保存在当前进程内存，不写数据库或磁盘缓存，不保存历史趋势。每次启动应用后自动后台扫描，无需先打开相关页面；退出后丢弃，下次启动重新扫描。
-- 空间扫描独立于用量同步，不等待数据库或用量扫描完成，不随每次 token 同步递归扫描目录；不阻塞窗口操作、当前额度展示和用量同步。
-- 页面支持手动重新统计及取消扫描，同一时间只运行一次空间扫描。重算期间保留本次运行中已有的结果，取消或失败不以未完成结果冒充完整结果；展示对应状态和结果时间。退出应用时停止扫描。
-
-**页面展示**
-
-- 顶部显示 Codex 本地总占用、统计根目录、最近统计时间及重新统计入口。
-- 分类列表显示名称、占用大小和占比，默认按占用降序；支持展开查看下一层目录或文件的大小，定位主要占用来源。
-- 路径可复制，目录或文件提供“在 Finder 中显示”入口。TokenTick 数据库大小独立展示。
-- 不提供日期或账号筛选，不关联 token 消耗，不提供清理和历史趋势功能。加载、取消、失败及不完整状态局部展示；重算和页面切换不丢失已有展开及滚动状态。
-
-## 9. 验收要求
-
-当前阶段用量明细与套餐用量按第 10 节重构及验收；总览保持已确认设计。第 10 节是当前目标对这两个页面的最新完成条件。
-
-| 类别 | 要求 |
-| --- | --- |
-| 采集 | 重扫、fork、revert、双格式、归档及压缩不重复计量；追加、中断、替换和半行恢复正确 |
-| 归属 | 最早 turn 来源唯一；项目切换更新历史汇总；全局与明确账号口径分开 |
-| 计价 | 基础、Fast、长上下文与组合价格正确；覆盖阈值前／上／后、缺价和历史默认值 |
-| API／额度 | API 参考差额不重复补量、不计金额；七天窗口不因零值滚动或截止抖动重复；历史与实时分离 |
-| 持久化 | 当前结构可重建；统计失败回滚；无冗余观察／轮次／重建中间表 |
-| 查询 | 明细、直接汇总与缓存一致；时区、日期边界、小时／分钟、分页及 NULL 语义明确 |
-| 界面 | 四个主页面及独立设置；总览无筛选，六个周期 Tab 联动摘要、趋势、模型与最近对话；模型使用下方展示存储空间模块，独立存储空间页面不放入设置；明细聚合、筛选、分页、下钻和返回一致；数据状态迁入设置 |
-| 存储空间 | 启动后后台扫描且无空间数据落库或磁盘缓存；总览与独立页面共享结果、不受日期筛选影响；分类之和等于总量，未知目录不遗漏，TokenTick 大小单列；新增、删除、归档和压缩后重算正确；验证符号链接、硬链接、大目录、权限错误、文件消失、取消与重启，扫描不阻塞界面及用量同步 |
-| 当前额度与预测 | 仅匹配 Codex 当前登录账号；切换账号丢弃旧快照及请求结果；预测不跨窗口，覆盖观测不足、过期、零速度、已耗尽、自然重置与提前恢复；计算口径有测试证据 |
-| 视觉与交互 | 全窗口符合 shadcn/ui Luma 圆润几何、柔和层次和宽松留白；半透明背景；无底部状态栏，工具栏显示同步时间；同名额度合并、文案简洁、无变化同步不闪动；当前设备检查深浅色、窗口缩放、表格与检查器、Tab、键盘及空／加载／错误状态；图表和列表使用真实数据，金额与 tokens 汇总一致 |
-| 运行 | 当前设备 App／CLI 构建运行、arm64 架构、签名及独立资源完整 |
-| 性能 | 记录相同日志集的首次／无变化／增量扫描、峰值内存和查询延迟；不承诺未测量指标 |
-
-Luma 视觉、半透明窗口和上述交互要求属于当前目标的完成门槛。完整 VoiceOver 遍历和其他系统版本的额外实机验收不作为当前完成门槛。
-
-
-### 日志额度优先与 API 兜底
-
-当前登录环境内，API 先确认账号和窗口；之后新日志中周期、重置时间（允许 60 秒偏差）一致且用量不倒退的额度可以更新对应窗口。日志必须晚于当前观测、距现在不超过 5 分钟，排除继承和 fork 回放；登录环境变化立即失效。日志一般没有账号 ID，窗口匹配仅作为本次登录会话中的归属推断，不写回历史账号。新窗口、重置变化及无 API 基准时由 API 补齐。日志未提供的扩展窗口、套餐、可用重置和余额继续保留；预测仅采样实际更新的窗口。
-
-完整主额度日志更新后，将下次 API 同步延后至日志观测时间的 5 分钟后，且距上次 API 同步开始最多 30 分钟，以更新套餐、重置次数、余额和服务端日用量。仅扩展额度更新不推迟 API。没有新的有效日志时保持每 5 分钟 API 同步；启动、手动刷新和登录变化仍主动同步。日志更新沿用文件监听合并 2 秒、扫描最短间隔 10 秒的调度，不增加网络请求。
-
-
-主额度中 5 小时窗口不显示均分刻度，周窗口按 4／5／7 天设置均分，并保留 50%、80% 刻度。两种窗口均在边界有效时显示当前应使用量的绿色竖线。主额度及扩展额度距重置小于 24 小时时显示“今天／明天 HH:mm 重置”，更远仍显示倒计时。可用重置在主额度卡片内同一行列出接口返回的所有有效到期时间，不再只展示最近一个；credits 同样置于主额度卡片底部。
-
-主额度同时有多个周期时采用紧凑布局：周期名称居左、百分比居右，下面是进度和结余／重置时间，窗口间距 18pt；只有一个周期时保留大数字布局。
-
-侧边栏导航及设置支持整行点击；数据库连接就绪后立即更新加载状态。总览空用量状态仅显示水平居中的图标和标题。金额使用 $ 符号，不再重复显示 US$ 或额外 USD 标注。
-
-
-## 10. 当前阶段：用量明细与套餐用量重构验收
-
-本阶段以第 8.2、8.3 节为最终交互要求，替代旧的侧栏检查器、页面逐层下钻、统计依据面板以及顶部大汇总卡设计。保持总览已确认的功能和视觉要求，仍需完成第 9 节的整体验收。
-
-1. 在真实数据下验证每日／项目更新对应筛选并进入任务、任务打开请求明细弹窗、关闭回到原列表；金额与 Tokens、请求次数符合相同筛选范围。
-2. 验证固定时间档位、自定义日期应用／取消、搜索、项目／模型／多账号选择、排序和总页数；空／加载／错误状态可区分并提供适当恢复操作。
-3. 验证多个历史周周期切换、实时快照不落库、游标保留周期恢复摘要且未结束窗口不出现在历史列表、提前重置结束边界，以及合并卡片内容；不将本地消耗和费用混称为订阅扣费。
-4. 主窗口最小宽度下主要操作可达，弹窗完整滚动，Escape 和关闭按钮有效。反复切换页面和打开关闭详情不应触发分栏约束循环或闪退。
-5. 更新技术方案及实际验收证据；相关 Core 测试、App 与 CLI 构建通过。记录未完成或受设备状态阻碍的验收，不用构建成功代替实机验证。
+Performance claims require measured workloads, with first, unchanged, and incremental scan results, memory use, and query latency where relevant. A successful build is not evidence of UI correctness or live API behavior. Record unresolved verification limits in the delivery summary rather than retaining a growing archive of implementation reports in product documentation.

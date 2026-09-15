@@ -39,7 +39,7 @@ extension UsageStore {
             }
             apiMemory.withLock { memory in
                 guard observedAt.timeIntervalSince1970 >= memory.observedAt else { return }
-                // 账号切换或接口无日桶时清除旧参考值，不能把上一个账号的量带过去。
+                // Clear reference buckets on account changes or missing API data to prevent account leakage.
                 memory = APIMemory(observedAt: observedAt.timeIntervalSince1970, accountID: account, daily: daily)
             }
             return report
@@ -64,7 +64,7 @@ extension UsageStore {
     private static func saveAPIReport(_ report: APISyncReport, db: Database) throws {
         let previous = try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'api_last_report'")
             .map { try JSONDecoder().decode(APISyncReport.self, from: Data($0.utf8)) }
-        // 独立来源状态跨本地同步保留；较早完成的观测不能覆盖更新的失败或账号。
+        // Keep source status across local syncs; older observations must not overwrite newer failures or accounts.
         if let previousDate = previous?.observedAt, let date = report.observedAt, previousDate > date { return }
         let json = String(decoding: try JSONEncoder().encode(report), as: UTF8.self)
         try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES ('api_last_report', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -78,7 +78,7 @@ extension UsageStore {
         guard !buckets.isEmpty else { return [] }
         return try pool.read { db in
             try buckets.map { bucket in
-                // API 没有声明日桶时区，UTC 对齐仅供参考；未知账号的本地量单独披露。
+                // API bucket timezone is unspecified; UTC alignment is a reference with unknown-account coverage reported separately.
                 let row = try Row.fetchOne(db, sql: """
                     SELECT COALESCE(SUM(total_tokens),0) AS covered,
                         COALESCE(SUM(CASE WHEN account_id IS NULL THEN total_tokens ELSE 0 END),0) AS unknown

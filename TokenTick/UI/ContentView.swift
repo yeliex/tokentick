@@ -2,9 +2,8 @@ import TokenTickCore
 import SwiftUI
 
 enum AppPage: String, CaseIterable, Identifiable {
-    case overview = "总览", usage = "用量明细", limits = "套餐用量"
+    case overview, usage, limits
     var id: Self { self }
-    // 保留原始值供偏好存储使用，展示名称随系统语言本地化。
     var title: String {
         switch self {
         case .overview: String(localized: "Overview")

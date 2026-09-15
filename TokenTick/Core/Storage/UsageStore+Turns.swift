@@ -6,7 +6,7 @@ extension UsageStore {
         var errorDescription: String? { String(localized: "The usage event has conflicting identity or components. Records and the scan cursor were not advanced.", bundle: .module) }
     }
 
-    /// 请求保留轮次归属与累计分项，混合日志格式按响应或完整累计值去重。
+    /// Keep turn ownership and cumulative components; deduplicate mixed formats by response or full cumulative values.
     static func collectTurns(_ usages: [CollectedUsage], session: RolloutEvent.Session?, db: Database) throws
         -> (inserted: Int, upgraded: Int, duplicates: Int) {
         var inserted = 0, upgraded = 0, duplicates = 0
@@ -21,7 +21,7 @@ extension UsageStore {
                 guard let created, let old: Double = owner["source_created_at"], created < old else {
                     duplicates += 1; continue
                 }
-                // 原始任务晚到时替换 fork 副本，不能同时计入两份历史。
+                // Replace a fork copy when its original task arrives later; never count both histories.
                 try db.execute(sql: "DELETE FROM usage WHERE turn_key=?", arguments: [key])
             }
             let tier = CodexServiceTier.normalized(usage.evidence.serviceTier)

@@ -24,7 +24,7 @@ public final class UpdateController: ObservableObject {
     }
 
     public func setAutomaticallyChecksForUpdates(_ enabled: Bool) {
-        // 使用 Sparkle 自己持久化的偏好，避免重启时覆盖用户选择。
+        // Use Sparkle's persisted preference to avoid overwriting the user's choice on restart.
         controller.updater.automaticallyChecksForUpdates = enabled
     }
 }

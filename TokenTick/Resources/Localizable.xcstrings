@@ -232,7 +232,7 @@
         }
       }
     },
-    "Ahead of pace": {
+    "Ahead": {
       "extractionState": "manual",
       "localizations": {
         "zh-Hans": {
@@ -364,7 +364,7 @@
         }
       }
     },
-    "Below pace": {
+    "Allowance": {
       "extractionState": "manual",
       "localizations": {
         "zh-Hans": {
@@ -2278,7 +2278,7 @@
         }
       }
     },
-    "Single window · Ahead of pace, runs out early": {
+    "Single window · Ahead, runs out early": {
       "extractionState": "manual",
       "localizations": {
         "zh-Hans": {
@@ -2289,7 +2289,7 @@
         }
       }
     },
-    "Single window · Below pace, remaining at reset": {
+    "Single window · Allowance at reset": {
       "extractionState": "manual",
       "localizations": {
         "zh-Hans": {

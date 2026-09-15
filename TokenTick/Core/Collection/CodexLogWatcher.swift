@@ -2,7 +2,7 @@ import CoreServices
 import Foundation
 import Darwin
 
-/// FSEvents 只提示重新核对；不把事件队列当成完整文件清单，也不读取日志正文。
+/// Treat FSEvents as reconciliation hints, not a complete file inventory; do not read log bodies here.
 public final class CodexLogWatcher {
     private let stream: FSEventStreamRef
     private let queue = DispatchQueue(label: "com.yeliex.tokentick.logs", qos: .utility)
@@ -12,7 +12,7 @@ public final class CodexLogWatcher {
         let changed: @Sendable () -> Void
         init(root: String, changed: @escaping @Sendable () -> Void) { self.root = root; self.changed = changed }
         func relevant(_ path: String) -> Bool {
-            // SQLite 只读连接也会更新共享内存锁；监听它会让扫描不断触发自身。
+            // Read-only SQLite connections still update shared-memory locks; watching them would trigger scans recursively.
             if (path.hasPrefix(root + "/state_") || path.hasPrefix(root + "/logs_")), path.hasSuffix(".sqlite-shm") { return false }
             return path == root || path.hasPrefix(root + "/sessions") || path.hasPrefix(root + "/archived_sessions")
                 || path == root + "/.codex-global-state.json" || path.hasPrefix(root + "/state_") || path.hasPrefix(root + "/logs_")
@@ -21,7 +21,7 @@ public final class CodexLogWatcher {
     }
 
     public init(codexHome: URL, onChange: @escaping @Sendable () -> Void) throws {
-        // Foundation 可能把 /private/var 重新缩写为 /var；事件路径使用 realpath，必须采用同一表示。
+        // Match the realpath representation used by events; Foundation may shorten /private/var to /var.
         guard let physicalPath = realpath(codexHome.path, nil) else { throw WatchError.unavailable }
         let root = String(cString: physicalPath)
         free(physicalPath)

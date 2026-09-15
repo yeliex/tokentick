@@ -21,8 +21,8 @@ struct OverviewReportTests {
                 """)
         }
         let report = try store.overviewReport(period: .all, now: Date(), timezone: "UTC")
-        #expect(report.modes.first { $0.name == "快速" }?.tokens == 400)
-        #expect(report.modes.first { $0.name == "普通" }?.tokens == 600)
+        #expect(report.modes.first { $0.name == "fast" }?.tokens == 400)
+        #expect(report.modes.first { $0.name == "standard" }?.tokens == 600)
     }
 
     @Test func nestedSharesPartitionRequestsAndRespectPeriodAndKnownAmounts() throws {
@@ -44,12 +44,12 @@ struct OverviewReportTests {
                 """, arguments: [now.timeIntervalSince1970 - 1, now.timeIntervalSince1970 - 86401, now.timeIntervalSince1970 - 1])
         }
         let report = try store.overviewReport(period: .day, now: now, timezone: "UTC")
-        #expect(Set(report.modes.map(\.name)) == ["普通", "快速", "长上下文", "快速＋长上下文", "未知"])
+        #expect(Set(report.modes.map(\.name)) == ["standard", "fast", "long_context", "fast_long_context", "unknown"])
         #expect(report.modes.reduce(0) { $0 + $1.tokens } == report.total?.totalTokens)
         #expect(report.efforts.reduce(0) { $0 + $1.tokens } == 450)
         #expect(report.modes.reduce(0) { $0 + ($1.amount ?? 0) } == report.total?.knownAmountNanoUSD)
         #expect(report.efforts.first { $0.name == "high" }?.tokens == 400)
-        #expect(report.efforts.first { $0.name == "未知" }?.amount == nil)
+        #expect(report.efforts.first { $0.name == "unknown" }?.amount == nil)
     }
 
     @Test func historyDateRangeUsesAllMatchingDaysBeforePagination() throws {

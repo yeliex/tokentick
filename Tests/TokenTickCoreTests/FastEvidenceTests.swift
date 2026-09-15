@@ -39,7 +39,7 @@ struct FastEvidenceTests {
         #expect(try store.status().factsRevision == revision)
         let values = try store.pool.read { try String.fetchAll($0, sql: "SELECT value FROM app_metadata UNION ALL SELECT pricing_source FROM usage") }
         #expect(!values.contains(where: { $0.contains("private-user-body") }))
-        // 同路径清空后 row ID 被复用，必须通过锚点变化重新核对。
+        // Detect anchor changes when a truncated file reuses row IDs at the same path.
         try trace.write { db in
             try db.execute(sql: "DELETE FROM logs; INSERT INTO logs VALUES (1,101,?,?)", arguments: [Self.thread, body.replacingOccurrences(of: Self.turn, with: "00000000-0000-0000-0000-000000000003")])
         }

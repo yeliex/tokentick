@@ -109,7 +109,7 @@ struct CurrentLimitsView: View {
     }
     private func limitWindow(_ window: CurrentLimitWindow, now: Date, compact: Bool, previewForecast: LimitForecast? = nil) -> some View {
         let forecast = previewForecast ?? app.limitSession.forecasts.forecast(for: window, now: now.timeIntervalSince1970)
-        // 进度差与绿色时间标记共用口径，不依赖耗尽预测的历史采样。
+        // Use the same pacing basis as the green time marker, independent of forecast samples.
         let progressDifference = window.expectedUsedPercent(now: now.timeIntervalSince1970).map { window.usedPercent - $0 }
         let expired = window.resetsAt.map { Double($0) <= now.timeIntervalSince1970 } ?? false
         return VStack(alignment: .leading, spacing: compact ? 8 : 12) {
@@ -142,7 +142,7 @@ struct CurrentLimitsView: View {
                 if progressDifference != nil || prediction(forecast, window: window, now: now) != nil {
                     HStack(alignment: .firstTextBaseline) {
                         if let difference = progressDifference {
-                            Text("\(difference > 0 ? String(localized: "Ahead of pace") : String(localized: "Below pace")) \(abs(difference).formatted(.number.precision(.fractionLength(0...1))))%")
+                            Text("\(difference > 0 ? String(localized: "Ahead") : String(localized: "Allowance")) \(abs(difference).formatted(.number.precision(.fractionLength(0...1))))%")
                         }
                         Spacer(minLength: 8)
                         if let text = prediction(forecast, window: window, now: now) {
@@ -256,8 +256,8 @@ extension CurrentLimitsView {
                 Text(String(localized: "Fixed sample data using the actual limit components. Your account is unaffected. Hover over predictions to see how early limits run out."))
                     .font(.callout).foregroundStyle(.secondary)
                 previewCard(String(localized: "Single window · No pace or prediction"), scenarios: [.init(used: 29, rate: nil)])
-                previewCard(String(localized: "Single window · Below pace, remaining at reset"), scenarios: [.init(used: 29, rate: 0.6)])
-                previewCard(String(localized: "Single window · Ahead of pace, runs out early"), scenarios: [.init(used: 85, rate: 1)])
+                previewCard(String(localized: "Single window · Allowance at reset"), scenarios: [.init(used: 29, rate: 0.6)])
+                previewCard(String(localized: "Single window · Ahead, runs out early"), scenarios: [.init(used: 85, rate: 1)])
                 previewCard(String(localized: "Multiple windows · Different usage rates"), scenarios: [
                     .init(minutes: 300, remaining: 7200, used: 58, rate: 30),
                     .init(used: 29, rate: 0.6)
@@ -307,7 +307,7 @@ extension CurrentLimitsView {
                          "durationMinutes": scenario.minutes,
                          "resetsAt": Int64(now.timeIntervalSince1970 + scenario.remaining)]]
         ]
-        // 固定预览数据必须能解码；失败时直接暴露样例错误。
+        // Preview fixtures must decode; surface malformed fixtures immediately.
         return try! JSONDecoder().decode(CurrentLimitSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
     }
 

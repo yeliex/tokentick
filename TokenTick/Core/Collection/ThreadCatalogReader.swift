@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// 只读取 Codex 自己的最新映射；不采集 preview、正文、权限设置或认证数据。
+/// Read current Codex mappings only, excluding previews, bodies, permissions, and authentication data.
 struct ThreadCatalogReader {
     func refresh(codexHome: URL, store: UsageStore) throws -> Int? {
         let files = try FileManager.default.contentsOfDirectory(at: codexHome, includingPropertiesForKeys: nil)

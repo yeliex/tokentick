@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-/// 固定的小型价格目录；不加载请求历史，不把内置核验日冒充历史生效日。
+/// Keep a small fixed catalog; its verification date is not a historical effective date.
 enum BundledModelPrices {
     static let data: Result<Data, any Error> = Result {
         guard let url = Bundle.module.url(forResource: "openai-default-prices", withExtension: "json") else {

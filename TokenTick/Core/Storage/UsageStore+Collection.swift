@@ -3,7 +3,7 @@ import GRDB
 
 extension UsageStore {
     func restoreWeeklyWindows() throws {
-        // 先恢复所有游标，保证新窗口出现在另一个文件时也能结束旧周期。
+        // Restore all cursors first so a new window in another file can close a previous cycle.
         let windows = try pool.read { db in
             let completed = try Row.fetchAll(db, sql: "SELECT account_id,scheduled_reset_at FROM weekly_limit_cycles")
             let states = try String.fetchAll(db, sql: "SELECT parser_state_json FROM scan_files WHERE parser_state_json IS NOT NULL")
@@ -63,7 +63,7 @@ extension UsageStore {
                     updated.consume(snapshot)
                     checkpoint.consume(snapshot)
                 }
-                // 每个账号只保留本文件最后的窗口；已结束周期与游标在同一事务落库。
+                // Retain this file's last window per account; commit ended cycles and the cursor together.
                 savedState.weeklyWindows = checkpoint.windows.filter { window in
                     !checkpoint.windows.contains { $0.account == window.account && $0.last > window.last }
                 }
@@ -73,7 +73,7 @@ extension UsageStore {
                     try db.execute(sql: "DELETE FROM app_metadata WHERE key='weekly_cycles_revision'")
                 }
                 let threadID = identity.threadID.uuidString.lowercased()
-                // 名称由最新 Codex thread 缓存更新，不从路径猜出一个无法核验的项目名。
+                // Resolve names from current Codex task metadata rather than guessing projects from paths.
                 try db.execute(sql: "INSERT INTO threads(thread_id) VALUES (?) ON CONFLICT DO NOTHING", arguments: [threadID])
                 try db.execute(sql: """
                     INSERT INTO scan_files(rollout_id, thread_id, file_name, current_path, scanned_line, scanned_offset,

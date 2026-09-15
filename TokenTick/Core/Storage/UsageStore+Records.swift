@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 extension UsageStore {
-    /// 只读取当前页的统计字段与证据。标题、项目和文件位置取最新缓存，不复制到用量事实中。
+    /// Read only the current page's statistical evidence; resolve titles, projects, and paths from current metadata.
     public func usageRecords(_ query: UsageQuery = UsageQuery(), scope: UsageRecordScope = .all) throws -> UsageRecordPage {
         try query.validate()
         if case .day(let date?) = scope { try UsageQuery(fromDate: date).validate() }

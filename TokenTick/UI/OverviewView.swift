@@ -5,7 +5,7 @@ struct OverviewView: View {
     @Environment(ApplicationModel.self) private var app
     var openConversation: (UsageQuery) -> Void
     @SceneStorage("overview.period") private var storedPeriod = OverviewPeriod.week.rawValue
-    private var period: OverviewPeriod { OverviewPeriod(rawValue: storedPeriod) ?? (storedPeriod == "1 天" ? .day : .week) }
+    private var period: OverviewPeriod { OverviewPeriod(rawValue: storedPeriod) ?? .week }
     @State private var loadedPeriod: OverviewPeriod?
     @State private var report: OverviewReport?
     @State private var loading = false

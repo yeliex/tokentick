@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-/// 通过已安装 Codex 的 stdio 协议读取统计，让 Codex 自己管理认证。
+/// Read statistics through the installed Codex stdio protocol and let Codex manage authentication.
 public struct CodexAPIClient: Sendable {
     private let executable: URL
     private let codexHome: URL
@@ -31,9 +31,9 @@ public struct CodexAPIClient: Sendable {
                     daily = try session.request("account/usage/read")
                 }
                 catch let error as CodexAPIError { issue = error.localizedDescription }
-                // 邮箱只用于展示，读取失败不阻断额度和用量同步。
+                // Email is display-only; failure to fetch it must not block limit or usage synchronization.
                 let account: CodexAccountResponse? = try? session.request("account/read", params: ["refreshToken": false])
-                // 日桶响应没有账号字段；夹在两个自带账号的观测之间，拒绝登录切换。
+                // Bracket accountless daily buckets with account-bearing observations to detect login changes.
                 let after: CodexRateLimits = try session.request("account/rateLimits/read")
                 if before.accountId != after.accountId {
                     daily = nil
@@ -68,7 +68,7 @@ enum CodexAPIError: Error, LocalizedError {
     }
 }
 
-/// 仅在一个后台任务内使用；无长期 daemon，也不读取或复制 auth.json。
+/// Use within one background task; no persistent daemon and no reading or copying auth.json.
 final class CodexAPISession {
     private let process = Process()
     private let input = Pipe()
@@ -108,7 +108,7 @@ final class CodexAPISession {
         try? output.fileHandleForReading.close()
         if process.isRunning {
             process.terminate()
-            // 不允许失去响应的子进程拖住 App 退出或取消同步。
+            // An unresponsive child process must not block app exit or synchronization cancellation.
             let deadline = ProcessInfo.processInfo.systemUptime + 0.2
             while process.isRunning && ProcessInfo.processInfo.systemUptime < deadline { usleep(10_000) }
             if process.isRunning { kill(process.processIdentifier, SIGKILL) }
@@ -139,7 +139,7 @@ final class CodexAPISession {
             let ready = poll(&descriptor, 1, 100)
             if ready < 0 { if errno == EINTR { continue }; throw CodexAPIError.processExited }
             guard ready > 0 else { continue }
-            // NSFileHandle 会继续等待填满长度；管道必须单次 read，才能遵守 RPC 超时。
+            // NSFileHandle waits to fill the buffer; use a single pipe read to respect RPC timeouts.
             var bytes = [UInt8](repeating: 0, count: 65_536)
             let count = Darwin.read(descriptor.fd, &bytes, bytes.count)
             if count < 0 && errno == EINTR { continue }

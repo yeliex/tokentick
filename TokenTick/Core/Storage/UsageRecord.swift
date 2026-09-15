@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// nil 代表该维度的未知归属，不等同于不筛选。
+/// nil selects unknown attribution for the dimension; it does not mean unfiltered.
 public enum UsageRecordScope: Sendable, Equatable {
     case all, thread(String?), project(String?), model(String?), day(String?)
 }

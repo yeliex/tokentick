@@ -2,7 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- ad-hoc 签名没有 Team ID，需要允许载入 Sparkle 动态框架。 -->
+    <!-- Ad-hoc signing has no Team ID; allow loading the Sparkle dynamic framework. -->
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
 </dict>

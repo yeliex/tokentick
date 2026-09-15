@@ -50,7 +50,7 @@ extension UsageStore {
                 if onlyIfNeeded, let cached {
                     let changed = try String.fetchAll(db, sql: "SELECT substr(key,16) FROM app_metadata WHERE key LIKE 'statistics_day:%' AND CAST(value AS INTEGER)>?",
                         arguments: [cached])
-                    // UTC 变更日覆盖相邻本地日期，兼容时区偏移和夏令时，不扩大显示查询范围。
+                    // Include adjacent local dates when invalidating UTC days for timezone/DST shifts, without widening queries.
                     var days: Set<String> = changed.isEmpty ? [] : ["unknown"]
                     for day in changed {
                         days.insert(day)

@@ -69,7 +69,7 @@ struct TokenTickApp: App {
         return String(localized: "TokenTick · \(window.durationMinutes == 10_080 ? String(localized: "7 days") : String(localized: "Subscription")) · \(percent.formatted(.number.precision(.fractionLength(0...1))))% \(showRemaining ? String(localized: "remaining") : String(localized: "used"))")
     }
 
-    // 标签直接使用稳定的图片实例，避免菜单栏宿主反复失效和重新布局。
+    // Use stable image instances to avoid repeated menu-bar host invalidation and layout.
     private static let quotaImages: [NSImage] = (0...100).map { value in
         let number = String(value)
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { bounds in
@@ -96,7 +96,7 @@ struct MainWindowSettingsButton: View {
 
     var body: some View {
         Button(String(localized: "Settings…")) {
-            // 在切换激活窗口前收起菜单；应用命令与弹层内快捷键均经过这里。
+            // Dismiss the menu before changing the active window for both app commands and panel shortcuts.
             let sourceWindow = NSApp.keyWindow
             dismiss()
             if let sourceWindow, !sourceWindow.canBecomeMain { sourceWindow.orderOut(nil) }
@@ -123,14 +123,14 @@ final class TokenTickAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG
-        // 外观验收只覆盖当前进程，不改写用户或系统偏好。
+        // Limit appearance overrides to this process without changing user or system preferences.
         switch ProcessInfo.processInfo.environment["TOKENTICK_APPEARANCE"] {
         case "light": NSApp.appearance = NSAppearance(named: .aqua)
         case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
         default: break
         }
         #endif
-        // 启动时显示主窗口；关闭最后一个普通窗口后转为菜单栏应用。
+        // Show the main window at launch; keep the menu-bar app running after the last ordinary window closes.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }

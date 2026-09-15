@@ -80,7 +80,7 @@ struct MenuUsageView: View {
         let tokenMaximum = max(1, report.trend.map { Double($0.summary.totalTokens) }.max() ?? 0)
         let moneyMaximum = max(0.01, report.trend.compactMap { $0.summary.knownAmountNanoUSD.map { Double($0) / 1_000_000_000 } }.max() ?? 0)
         let hasMoney = report.trend.contains { $0.summary.knownAmountNanoUSD != nil }
-        // 滚动范围包含首尾两个不完整日期，日均按实际时长计算，包含无用量的时间。
+        // Rolling ranges include partial boundary days; average over elapsed time, including idle periods.
         let days = max(1, end.timeIntervalSince(start) / 86400)
         let tokenMean = report.trend.reduce(0) { $0 + Double($1.summary.totalTokens) } / days
         let moneyMean = report.trend.reduce(0) { $0 + Double($1.summary.knownAmountNanoUSD ?? 0) / 1_000_000_000 } / days
@@ -117,7 +117,7 @@ struct MenuUsageView: View {
                     .accessibilityLabel(point.date.formatted(.dateTime.month().day()))
                     .accessibilityValue(UsageFormatting.exactTokens(point.summary.totalTokens) + " Tokens")
                 if let amount = point.summary.knownAmountNanoUSD {
-                    // 缺失金额处断开折线，避免把未知值呈现成连续趋势。
+                    // Break the line at missing amounts so unknown values do not imply a continuous trend.
                     let segment = report.trend.prefix { $0.date < point.date }.filter { $0.summary.knownAmountNanoUSD == nil }.count
                     LineMark(x: .value(String(localized: "Date"), point.date, unit: .day),
                              y: .value(String(localized: "Cost"), Double(amount) / 1_000_000_000 / moneyMaximum * tokenMaximum),

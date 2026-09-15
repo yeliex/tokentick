@@ -135,7 +135,7 @@ struct OverviewChartsView: View {
             }
         }.usageSurface().environment(\.timeZone, calendar.timeZone).environment(\.calendar, calendar)
     }
-    // 缺失金额打断折线，避免跨过未知值产生连续用量的错觉。
+    // Break the line at missing amounts rather than interpolating across unknown values.
     private func moneySegment(at date: Date) -> Int {
         points.prefix { $0.date < date }.filter { $0.summary.knownAmountNanoUSD == nil }.count
     }
@@ -168,10 +168,10 @@ struct ModelUsageView: View {
     private let radii: [CGFloat] = [101, 73, 45]
     private var modelShares: [OverviewUsageShare] {
         (models.filter { $0.group != nil } + models.filter { $0.group == nil })
-            .map { OverviewUsageShare(name: $0.group ?? "未知", tokens: $0.totalTokens, amount: $0.knownAmountNanoUSD) }
+            .map { OverviewUsageShare(name: $0.group ?? "unknown", tokens: $0.totalTokens, amount: $0.knownAmountNanoUSD) }
     }
-    private var modeShares: [OverviewUsageShare] { modes.filter { $0.name != "未知" } + modes.filter { $0.name == "未知" } }
-    private var effortShares: [OverviewUsageShare] { efforts.filter { $0.name != "未知" } + efforts.filter { $0.name == "未知" } }
+    private var modeShares: [OverviewUsageShare] { modes.filter { $0.name != "unknown" } + modes.filter { $0.name == "unknown" } }
+    private var effortShares: [OverviewUsageShare] { efforts.filter { $0.name != "unknown" } + efforts.filter { $0.name == "unknown" } }
     private let colors: [Color] = [
         Color(red: 0.43, green: 0.60, blue: 0.66), Color(red: 0.55, green: 0.53, blue: 0.74),
         Color(red: 0.80, green: 0.65, blue: 0.42), Color(red: 0.58, green: 0.70, blue: 0.57),
@@ -180,17 +180,17 @@ struct ModelUsageView: View {
     ]
     private func value(_ item: OverviewUsageShare) -> Double { Double(money ? item.amount ?? 0 : item.tokens) }
     private func color(_ item: OverviewUsageShare, index: Int, ring: Int) -> Color {
-        item.name == "未知" ? .secondary.opacity(0.45) : colors[(index + ring * 2) % colors.count]
+        item.name == "unknown" ? .secondary.opacity(0.45) : colors[(index + ring * 2) % colors.count]
     }
     private func shareTitle(_ name: String, ring: Int) -> String {
-        if name == "未知" { return String(localized: "Unknown") }
+        if name == "unknown" { return String(localized: "Unknown") }
         if ring == 2 { return effortTitle(name) }
         guard ring == 1 else { return name }
         return switch name {
-        case "快速": String(localized: "Fast")
-        case "普通": String(localized: "Standard")
-        case "快速＋长上下文": String(localized: "Fast + long context")
-        case "长上下文": String(localized: "Long context")
+        case "fast": String(localized: "Fast")
+        case "standard": String(localized: "Standard")
+        case "fast_long_context": String(localized: "Fast + long context")
+        case "long_context": String(localized: "Long context")
         default: name
         }
     }

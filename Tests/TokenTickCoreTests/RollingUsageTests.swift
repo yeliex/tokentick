@@ -21,7 +21,7 @@ struct RollingUsageTests {
                 UPDATE usage SET input_amount = total_tokens * 2 WHERE rollout_id != 'date-only';
                 """, arguments: [start - 1, start, start + 86399, start + 86400])
         }
-        // 即使日缓存已存在，滚动边界也不能包含首尾自然日的额外用量。
+        // Existing daily caches must not widen rolling bounds to include extra boundary-day usage.
         _ = try store.rebuildStatistics(timezone: "UTC")
         for zone in ["UTC", "Asia/Shanghai", "America/Los_Angeles"] {
             var query = UsageQuery(grouping: .total, timezone: zone)

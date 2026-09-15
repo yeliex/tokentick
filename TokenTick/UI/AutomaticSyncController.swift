@@ -89,7 +89,7 @@ final class AutomaticSyncController {
     private func arm() {
         timer?.cancel(); timer = nil
         guard home != nil, !suspended, let app, !app.isSyncing else { return }
-        // 只检查进程当前环境和监听状态，不按这个频率扫描目录。
+        // Check process environment and watcher state only; do not scan directories at this frequency.
         let delay = min(30, max(0.01, schedule.nextCheck.timeIntervalSinceNow))
         timer = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }

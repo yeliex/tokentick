@@ -1,6 +1,6 @@
 import Foundation
 
-/// 登录环境变化时立即失效；异步结果必须携带请求开始时的代次，防止切回同一账号后接收旧结果。
+/// Invalidate on login changes; tag async results with their starting generation even when switching back to the same account.
 public struct CurrentLimitSession: Sendable {
     public private(set) var generation = 0
     public private(set) var snapshot: CurrentLimitSnapshot?
@@ -34,7 +34,7 @@ public struct CurrentLimitSession: Sendable {
         return true
     }
 
-    /// 日志没有账号身份；仅在本次登录环境内，用 API 已确认的窗口边界推断归属，不写回历史账号。
+    /// Infer accountless log ownership only within the API-confirmed login session; never backfill historical accounts.
     @discardableResult
     public mutating func acceptLog(_ value: CurrentLimitSnapshot?, generation: Int, now: Double) -> Bool {
         guard generation == self.generation, let value, value.source == "local",
@@ -44,7 +44,7 @@ public struct CurrentLimitSession: Sendable {
               now - value.observedAt <= 300,
               value.accountID == nil || value.accountID == current.accountID,
               !value.windows.isEmpty else { return false }
-        // 未确认的新窗口、提前重置或周期变化交给 API；避免跨账号或旧日志覆盖当前额度。
+        // Leave new windows, early resets, and duration changes to the API to avoid accepting stale or cross-account logs.
         guard value.windows.allSatisfy({ window in
             guard let previous = current.windows.first(where: { $0.id == window.id }),
                   let duration = window.durationMinutes, duration > 0,
@@ -69,7 +69,7 @@ public struct CurrentLimitSession: Sendable {
         merged.line = value.line
         merged.turnID = value.turnID
         snapshot = merged
-        // 仅采样本次日志实际更新的窗口，不能把保留的扩展额度当作新观测。
+        // Sample only windows actually updated by this log, not retained additional limits.
         let observation = CurrentLimitSnapshot(accountID: current.accountID, observedAt: value.observedAt,
             source: "local", scopeKey: current.scopeKey, windows: value.windows, sourceJSON: value.sourceJSON)
         forecasts.record(observation, now: now)

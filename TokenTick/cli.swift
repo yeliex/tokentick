@@ -15,12 +15,12 @@ struct TokenTickCommand {
                 let report = try LocalUsageScanner(store: store).scan(codexHome: options.codexHome)
                 if options.json { try printJSON(report) }
                 else {
-                    print("发现 \(report.discoveredFiles) 个文件；扫描 \(report.scannedFiles)，未变化 \(report.unchangedFiles)。")
-                    print("新增 \(report.insertedRequests) 条用量事件，补齐标识／归属 \(report.upgradedRequests)，重复 \(report.duplicateRequests)，继承事件 \(report.inheritedEvents)。")
+                    print("Discovered \(report.discoveredFiles) files; scanned \(report.scannedFiles), unchanged \(report.unchangedFiles).")
+                    print("Inserted \(report.insertedRequests) usage events; updated identities/attribution \(report.upgradedRequests), duplicates \(report.duplicateRequests), inherited events \(report.inheritedEvents).")
                     for issue in report.issues {
-                        print("\(issue.fileName)\(issue.line.map { ":\($0)" } ?? "")：\(issue.message)")
+                        print("\(issue.fileName)\(issue.line.map { ":\($0)" } ?? ""): \(issue.message)")
                     }
-                    if report.issueCount > 0 { print("共 \(report.issueCount) 个问题，最多显示 100 个。") }
+                    if report.issueCount > 0 { print("\(report.issueCount) issues in total; showing at most 100.") }
                 }
                 if report.issueCount > 0 { exit(1) }
             case "sync":
@@ -34,13 +34,13 @@ struct TokenTickCommand {
                     grouping: options.grouping, timezone: options.timezone, fromDate: options.fromDate,
                     throughDate: options.throughDate, account: options.account, limit: options.limit, offset: options.offset, filters: options.filters, sort: options.sort))
                 if options.json { try printJSON(report) }
-                else if report.rows.isEmpty { print("所选范围暂无用量。") }
+                else if report.rows.isEmpty { print("No usage in the selected range.") }
                 else {
-                    print("时区：\(report.timezone)；日期无法确定的 tokens：\(report.unknownDateTokens)")
-                    print("维度\t记录数\tTokens\t已知 USD\t未定价 Tokens")
+                    print("Timezone: \(report.timezone); tokens with unknown dates: \(report.unknownDateTokens)")
+                    print("Group\tRecords\tTokens\tKnown USD\tUnpriced tokens")
                     for item in report.rows {
-                        let amount = item.knownAmountNanoUSD.map { NSDecimalNumber(decimal: Decimal($0) / Decimal(1_000_000_000)).stringValue } ?? "未知"
-                        print("\(item.group ?? (options.grouping == .total ? "总计" : "未知"))\t\(item.records)\t\(item.totalTokens)\t\(amount)\t\(item.unpricedTokens)")
+                        let amount = item.knownAmountNanoUSD.map { NSDecimalNumber(decimal: Decimal($0) / Decimal(1_000_000_000)).stringValue } ?? "Unknown"
+                        print("\(item.group ?? (options.grouping == .total ? "Total" : "Unknown"))\t\(item.records)\t\(item.totalTokens)\t\(amount)\t\(item.unpricedTokens)")
                     }
                 }
             case "records":
@@ -75,7 +75,7 @@ struct TokenTickCommand {
                 try printJSON(APIUsageOutput(rows: store.apiDailyUsage(limit: options.limit)))
                 if report.issue != nil { exit(1) }
             case "status": try printJSON(UsageStore(databaseURL: options.database).status())
-            default: throw CommandError.invalid("不支持的命令。")
+            default: throw CommandError.invalid("Unsupported command.")
             }
         } catch {
             FileHandle.standardError.write(Data("\(error.localizedDescription)\n".utf8))
@@ -110,7 +110,7 @@ struct TokenTickCommand {
     private enum CommandError: LocalizedError {
         case invalid(String)
         var errorDescription: String? {
-            switch self { case .invalid(let message): "\(message) 使用 tokentick --help 查看帮助。" }
+            switch self { case .invalid(let message): "\(message) Run tokentick --help for usage." }
         }
     }
 
@@ -137,7 +137,7 @@ struct TokenTickCommand {
             if ["--help", "-h"].contains(command) { command = "help" }
             if command == "--version" { command = "version" }
             guard ["help", "version", "scan", "sync", "usage", "status", "prices", "sync-prices", "reprice", "sync-api", "current-limits", "limits", "api-usage", "rebuild", "records"].contains(command) else {
-                throw CommandError.invalid("不支持的命令：\(command)。")
+                throw CommandError.invalid("Unsupported command: \(command).")
             }
             var index = 1
             while index < arguments.count {
@@ -145,7 +145,7 @@ struct TokenTickCommand {
                 index += 1
                 if option == "--json" { json = true; continue }
                 if option == "--unknown-account", ["usage", "records", "limits"].contains(command) {
-                    guard account == .all else { throw CommandError.invalid("账号筛选参数不能重复。") }
+                    guard account == .all else { throw CommandError.invalid("Account filters cannot be repeated.") }
                     account = .unknown
                     continue
                 }
@@ -158,7 +158,7 @@ struct TokenTickCommand {
                     }
                     continue
                 }
-                guard index < arguments.count else { throw CommandError.invalid("\(option) 缺少参数。") }
+                guard index < arguments.count else { throw CommandError.invalid("Missing value for \(option).") }
                 let value = arguments[index]
                 index += 1
                 switch option {
@@ -166,7 +166,7 @@ struct TokenTickCommand {
                 case "--codex-bin" where ["sync-api", "current-limits", "sync", "api-usage"].contains(command):
                     codexExecutable = URL(fileURLWithPath: (value as NSString).expandingTildeInPath)
                 case "--scope" where command == "sync":
-                    guard let scope = SynchronizationScope(rawValue: value) else { throw CommandError.invalid("同步范围为 all、local、prices、api 或 remote。") }
+                    guard let scope = SynchronizationScope(rawValue: value) else { throw CommandError.invalid("Sync scope must be all, local, prices, api, or remote.") }
                     self.scope = scope
                 case let flag where ["usage", "records"].contains(command) && ["--thread", "--project", "--model", "--day"].contains(flag):
                     switch option {
@@ -177,27 +177,27 @@ struct TokenTickCommand {
                     }
                 case "--search" where ["usage", "records"].contains(command): filters.search = value
                 case "--sort" where ["usage", "records"].contains(command):
-                    guard let order = UsageSort(rawValue: value) else { throw CommandError.invalid("排序为 automatic、tokens、amount 或 name。") }
+                    guard let order = UsageSort(rawValue: value) else { throw CommandError.invalid("Sort order must be automatic, tokens, amount, or name.") }
                     sort = order
                 case "--limit-id" where command == "limits": limitID = value
                 case "--group" where command == "usage":
-                    guard let group = UsageGrouping(rawValue: value) else { throw CommandError.invalid("无效的统计维度。") }
+                    guard let group = UsageGrouping(rawValue: value) else { throw CommandError.invalid("Invalid grouping.") }
                     grouping = group
                 case "--timezone" where ["usage", "records", "rebuild", "limits"].contains(command):
-                    guard TimeZone(identifier: value) != nil else { throw CommandError.invalid("无效的 IANA 时区。") }
+                    guard TimeZone(identifier: value) != nil else { throw CommandError.invalid("Invalid IANA timezone.") }
                     timezone = value
                 case "--from" where ["usage", "records", "limits"].contains(command): fromDate = value
                 case "--through" where ["usage", "records", "limits"].contains(command): throughDate = value
                 case "--account" where ["usage", "records", "limits"].contains(command):
-                    guard account == .all, !value.isEmpty else { throw CommandError.invalid("账号筛选参数不能重复或为空。") }
+                    guard account == .all, !value.isEmpty else { throw CommandError.invalid("Account filters cannot be repeated or empty.") }
                     account = .account(value)
                 case "--offset" where ["usage", "records", "limits"].contains(command):
-                    guard let count = Int(value), count >= 0 else { throw CommandError.invalid("offset 不能为负数。") }
+                    guard let count = Int(value), count >= 0 else { throw CommandError.invalid("offset cannot be negative.") }
                     offset = count
                 case "--limit" where ["usage", "records", "prices", "limits", "api-usage"].contains(command):
-                    guard let count = Int(value), (1...10_000).contains(count) else { throw CommandError.invalid("limit 必须为 1–10000。") }
+                    guard let count = Int(value), (1...10_000).contains(count) else { throw CommandError.invalid("limit must be 1–10000.") }
                     limit = count
-                default: throw CommandError.invalid("不支持的参数：\(option)。")
+                default: throw CommandError.invalid("Unsupported option: \(option).")
                 }
             }
         }
@@ -210,47 +210,49 @@ struct TokenTickCommand {
             case .model: key = \.model
             default: key = \.day
             }
-            guard filters[keyPath: key] == .all else { throw CommandError.invalid("同一维度的筛选不能重复。") }
+            guard filters[keyPath: key] == .all else { throw CommandError.invalid("Filters for the same dimension cannot be repeated.") }
             filters[keyPath: key] = value
         }
     }
 
     private static let help = """
-    TokenTick — Codex 用量与成本统计
+    TokenTick — Codex usage and cost tracking
 
-    用法：tokentick <命令> [参数]
+    Usage: tokentick <command> [options]
 
-      scan       增量采集 sessions 与 archived_sessions（含 .jsonl.zst）
-      sync       采集、价格、API 与统计缓存；--scope all|local|prices|api|remote
-      usage      查询用量；--group total|day|thread|project|model，--limit 100
-      records    分页查看用量明细与证据（JSON）
-      rebuild    从事实表重建统计缓存；--timezone Asia/Shanghai
-      prices     查看历史价格快照（JSON），--limit 100
-      sync-prices 从 models.dev 同步当天价格（每天成功一次）
-      reprice    按用量日期的历史价格重算分项金额
-      sync-api   通过 Codex app-server 刷新内存日桶并保存周额度观测
-      api-usage  联网读取服务端每日总量与未知模型参考差额（不落库）
-      limits     查看历史周额度重置，百分比为重置前最后观测值
-      current-limits 从接口读取所有实时额度（JSON）
-      status     输出来源状态、统计时区、事实／缓存版本与表记录数
-      --version  显示版本
-      --help     显示帮助
+      scan          Collect sessions and archived_sessions incrementally (including .jsonl.zst)
+      sync          Sync sources and statistics; --scope all|local|prices|api|remote
+      usage         Query usage; --group total|day|thread|project|model, --limit 100
+      records       Read paginated usage events and source evidence (JSON)
+      rebuild       Rebuild statistics; --timezone Asia/Shanghai
+      prices        Read historical prices (JSON), --limit 100
+      sync-prices   Fetch models.dev prices (one successful refresh per day)
+      reprice       Recalculate costs using prices for each usage date
+      sync-api      Refresh API data and update completed weekly cycles
+      api-usage     Fetch daily totals and in-memory reference differences
+      limits        Read completed weekly windows and their last observed percentages
+      current-limits Fetch all current limits (JSON)
+      status        Read source status, timezone, fact/cache revisions, and row counts
+      --version     Show version
+      --help        Show help
 
-    通用参数：--database <SQLite 路径>，--json
-    Codex 目录每次从 CODEX_HOME 读取，未设置时为 ~/.codex。
-    sync-api／current-limits／sync 参数：--codex-bin <Codex 可执行文件路径>
-    usage／records 参数：--from YYYY-MM-DD --through YYYY-MM-DD（含首尾日期）
-                --timezone <IANA 时区> --offset 0 --account <账号 ID> 或 --unknown-account
-    usage／records 组合筛选：--thread <ID> --project <名称> --model <模型> --day YYYY-MM-DD
-                --search <任务标题或 ID> --sort automatic|tokens|amount|name
-    未知归属：--unknown-thread／--unknown-project／--unknown-model／--unknown-date
-    不同维度取交集，同一维度不能重复；排序后分页。
-    limits 参数：--from YYYY-MM-DD --through YYYY-MM-DD --timezone <IANA 时区>
-                --account <账号 ID> 或 --unknown-account，--limit-id <额度桶>
-                --limit 100 --offset 0
-    额度日期按检测到的周额度重置筛选，不从百分比推算 token／金额。
-    scan 存在解析问题时返回 1；参数错误返回 2。
-    无数据库价格时使用内置默认价；缺 Fast 证据按普通费率，未知模型或费率保留 NULL。
-    金额单位为 nanoUSD（1 USD = 10^9 nanoUSD）。
+    Common options: --database <SQLite path>, --json
+    Codex directory: current CODEX_HOME, falling back to ~/.codex.
+    sync-api/current-limits/sync/api-usage: --codex-bin <Codex executable path>
+    usage/records: --from YYYY-MM-DD --through YYYY-MM-DD (inclusive)
+                  --timezone <IANA timezone> --offset 0
+                  --account <account ID> or --unknown-account
+    Combined filters: --thread <ID> --project <name> --model <model> --day YYYY-MM-DD
+                  --search <task title or ID> --sort automatic|tokens|amount|name
+    Unknown values: --unknown-thread/--unknown-project/--unknown-model/--unknown-date
+    Filters intersect. Each dimension can be specified once. Sorting precedes pagination.
+    limits: --from YYYY-MM-DD --through YYYY-MM-DD --timezone <IANA timezone>
+            --account <account ID> or --unknown-account, --limit-id <limit bucket>
+            --limit 100 --offset 0
+    Limit dates filter observed weekly resets; percentages do not determine tokens or costs.
+    scan exits with 1 on parsing issues; invalid arguments exit with 2.
+    Bundled prices cover missing database prices. Unobserved tiers use standard rates;
+    unknown models or required rates remain null. Known Fast never falls back to standard.
+    Costs are API-equivalent estimates in nanoUSD (1 USD = 10^9 nanoUSD).
     """
 }

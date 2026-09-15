@@ -32,7 +32,7 @@ struct PriceStoreTests {
             try store.savePrices(ModelsDevPrices.decode(Data(json.utf8), date: date), date: date)
         }
         #expect(try save("2026-09-09").insertedSnapshots == 2)
-        #expect(try save("2026-09-10", json: UsagePricingTests.document.replacingOccurrences(of: "标题不参与价格比较", with: "新标题")).insertedSnapshots == 0)
+        #expect(try save("2026-09-10", json: UsagePricingTests.document.replacingOccurrences(of: "Display titles do not affect price comparison", with: "新标题")).insertedSnapshots == 0)
         let changed = UsagePricingTests.document.replacingOccurrences(of: #""input":10,"output""#, with: #""input":12,"output""#)
         #expect(try save("2026-09-11", json: changed).insertedSnapshots == 2)
         #expect(try save("2026-09-11").alreadySynced)

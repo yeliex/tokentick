@@ -15,7 +15,7 @@ public struct UsageFilters: Sendable, Equatable, Hashable {
     public var model: UsageValueFilter = .all
     public var day: UsageValueFilter = .all
     public var search = ""
-    /// 精确滚动范围采用左闭右开边界；不将只有日期的历史记录猜测到某个时刻。
+    /// Use half-open rolling intervals; do not invent timestamps for date-only historical records.
     public var occurredFrom: Double?
     public var occurredBefore: Double?
     public init() {}
@@ -65,7 +65,7 @@ public struct UsageQuery: Sendable, Hashable {
         self.sort = sort
     }
 
-    /// 从已展示的分组继续下钻，保留其他维度与日期条件。
+    /// Drill into the displayed group while preserving other dimensions and date filters.
     public func focused(on grouping: UsageGrouping, value: String?) -> Self {
         var query = self
         switch grouping {
@@ -98,7 +98,7 @@ public struct UsageQuery: Sendable, Hashable {
     }
 }
 
-public struct UsageReport: Codable, Sendable {
+public struct UsageReport: Encodable, Sendable {
     public let timezone: String
     public let grouping: UsageGrouping
     public let fromDate: String?
@@ -112,19 +112,6 @@ public struct UsageReport: Codable, Sendable {
     public var amountUnit: String { "nanoUSD" }
 
     enum CodingKeys: String, CodingKey { case timezone, grouping, fromDate, throughDate, unknownDateTokens, rows, hasMore, totalGroups, amountUnit, dataFromDate, dataThroughDate }
-    public init(from decoder: any Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
-        timezone = try values.decode(String.self, forKey: .timezone)
-        grouping = try values.decode(UsageGrouping.self, forKey: .grouping)
-        fromDate = try values.decodeIfPresent(String.self, forKey: .fromDate)
-        throughDate = try values.decodeIfPresent(String.self, forKey: .throughDate)
-        unknownDateTokens = try values.decode(Int64.self, forKey: .unknownDateTokens)
-        rows = try values.decode([UsageSummary].self, forKey: .rows)
-        hasMore = try values.decodeIfPresent(Bool.self, forKey: .hasMore) ?? false
-        dataFromDate = try values.decodeIfPresent(String.self, forKey: .dataFromDate)
-        dataThroughDate = try values.decodeIfPresent(String.self, forKey: .dataThroughDate)
-        totalGroups = try values.decodeIfPresent(Int.self, forKey: .totalGroups) ?? rows.count
-    }
     init(timezone: String, grouping: UsageGrouping, fromDate: String?, throughDate: String?, unknownDateTokens: Int64, rows: [UsageSummary], hasMore: Bool = false, totalGroups: Int? = nil, dataFromDate: String? = nil, dataThroughDate: String? = nil) {
         self.timezone = timezone
         self.grouping = grouping

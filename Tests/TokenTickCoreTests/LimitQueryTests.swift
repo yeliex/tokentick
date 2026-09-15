@@ -74,7 +74,7 @@ struct LimitQueryTests {
         let handle = try FileHandle(forWritingTo: separateFile ? secondFile : file)
         try handle.seekToEnd()
         try handle.write(contentsOf: Data(event(now-50, reset: Int64(now)+550000, percent: 3, count: 2).utf8))
-        // 跨过提交批次，再次提交空额度批次也必须保留窗口状态。
+        // Preserve window state across commits, including a subsequent batch with no limit observations.
         try handle.write(contentsOf: Data(String(repeating: "{\"type\":\"other\"}\n", count: 520).utf8))
         try handle.close()
         #expect(try LocalUsageScanner(store: reopened).scan(codexHome: root).insertedRequests == 1)
@@ -131,7 +131,7 @@ struct LimitQueryTests {
         let updated = try #require(store.weeklyLimitHistory().rows.first)
         #expect(updated.totalTokens == 35 && updated.requestCount == 3)
         #expect(updated.amountNanoUSD == 175 && updated.knownAmountNanoUSD == 175)
-        // 页面读取不再依赖明细；重启也直接得到已保存的结果。
+        // History queries read persisted cycle totals directly, including after restart.
         try store.pool.write { try $0.execute(sql: "DROP TABLE usage") }
         let reopened = try UsageStore(databaseURL: store.databaseURL)
         #expect(try reopened.weeklyLimitHistory().rows == [updated])

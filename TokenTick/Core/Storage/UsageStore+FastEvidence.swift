@@ -9,7 +9,7 @@ extension UsageStore {
         }
     }
 
-    /// 调用者持有扫描写锁；补证、对应金额和来源游标必须同一事务提交。
+    /// The caller holds the scan write lock; commit evidence, prices, and source cursors in one transaction.
     func commitFastEvidence(_ batch: [CodexFastEvidence], cursor: CodexFastEvidence.Cursor, key: String) throws {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
         try pool.write { target in

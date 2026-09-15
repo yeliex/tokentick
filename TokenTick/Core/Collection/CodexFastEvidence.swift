@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 import GRDB
 
-/// 只缓存统计所需的 Fast 证据；不复制 trace 中的请求正文。
+/// Cache only Fast evidence needed for statistics, not request bodies from traces.
 struct CodexFastEvidence: Codable {
     let threadID: String
     let turnID: String
@@ -28,7 +28,7 @@ struct CodexFastEvidence: Codable {
         } else if let marker = body.range(of: "Submission sub=Submission {") {
             let prefix = String(body[..<marker.lowerBound])
             let submission = String(body[marker.upperBound...])
-            // ThreadSettings 更新的 Submission ID 不是 turn ID；只接受真正提交轮次的操作。
+            // A ThreadSettings submission ID is not a turn ID; accept only actual turn submissions.
             guard submission.range(of: #"^\s*id: "[^"]+", op: (TurnInput|UserInput) \{"#, options: .regularExpression) != nil else { return nil }
             let pattern = #"service_tier:\s*Some\(Some\("(?:priority|fast)"\)\)"#
             guard let match = submission.range(of: pattern, options: .regularExpression),
@@ -66,7 +66,7 @@ struct CodexFastEvidence: Codable {
         let anchor: String?
     }
 
-    /// 调用者持有目标数据库的写锁。trace 用只读连接，证据与游标同事务提交。
+    /// The caller holds the destination write lock; read traces through a read-only connection and commit evidence with cursors.
     static func collect(codexHome: URL, store: UsageStore) throws {
         let urls = try FileManager.default.contentsOfDirectory(at: codexHome, includingPropertiesForKeys: nil)
             .filter { $0.lastPathComponent.hasPrefix("logs_") && $0.pathExtension == "sqlite" }.sorted { $0.path < $1.path }

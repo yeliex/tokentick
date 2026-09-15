@@ -22,8 +22,8 @@ public final class UsageStore: Sendable {
         let migrator = StoreSchema.migrator
         var configuration = Configuration()
         configuration.busyMode = .timeout(5)
-        // 当前结构的数据库可直接加入 WAL 读者，不等待扫描者持有的整文件锁。
-        // 旧开发结构在写锁内重建，不能与扫描并发清空。
+        // Readers can join a current-schema WAL database without waiting for the scanner's file lock.
+        // Rebuild a changed development schema under the write lock to avoid clearing it during a scan.
         if FileManager.default.fileExists(atPath: databaseURL.path) {
             let existing = try DatabaseQueue(path: databaseURL.path, configuration: configuration)
             let ready = try existing.read { db in

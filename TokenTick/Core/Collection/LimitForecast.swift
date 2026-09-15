@@ -15,7 +15,7 @@ public struct LimitForecast: Sendable, Equatable {
     public let progressDifference: Double?
 }
 
-/// 只保存已确认账号的近期连续观测，不把历史日志回放当作实时消耗速度。
+/// Keep recent consecutive observations for a confirmed account; historical replay is not live consumption.
 public struct LimitForecastHistory: Sendable {
     private struct Sample: Sendable {
         let time: Double
@@ -66,7 +66,7 @@ public struct LimitForecastHistory: Sendable {
                sample.time - last.time <= Self.freshness, sample.percent >= last.percent {
                 existing.samples.removeAll { sample.time - $0.time > Self.horizon }
                 existing.samples.append(sample)
-                // 高频同步也不能使进程内历史无限增长。
+                // Bound in-memory history even during frequent synchronization.
                 existing.samples = Array(existing.samples.suffix(360))
                 series[window.id] = existing
             } else {
@@ -90,7 +90,7 @@ public struct LimitForecastHistory: Sendable {
         guard now >= last.time, now - last.time <= Self.freshness else {
             return result(.stale, observedAt: last.time, count: series.samples.count, span: span)
         }
-        // 进度以实际观测时刻比较，不把未观测的时间误称为真实使用进度。
+        // Compare pacing at the observation time, not across unobserved elapsed time.
         let elapsed = max(0, last.time - (Double(reset) - Double(duration) * 60))
         let progress = last.percent - min(100, elapsed / (Double(duration) * 60) * 100)
         if last.percent >= 100 {

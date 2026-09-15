@@ -1,7 +1,7 @@
 import Foundation
 import libzstd
 
-/// 只保留固定大小的读缓冲和当前行；压缩文件的游标以解压后的字节数计。
+/// Keep a fixed read buffer and the current line; compressed cursors count decompressed bytes.
 final class RolloutLineReader {
     enum ReadError: Error, LocalizedError {
         case lineTooLarge, invalidCompression(String), truncatedCompression
@@ -39,7 +39,7 @@ final class RolloutLineReader {
                 ZSTD_freeDStream(decoder)
                 throw ReadError.invalidCompression(String(cString: ZSTD_getErrorName(result)))
             }
-            // 日志没有理由声明数 GiB 的压缩窗口；限制解码器的内存上界。
+            // Bound decoder memory instead of accepting multi-GiB compression windows from logs.
             let limit = ZSTD_DCtx_setParameter(decoder, ZSTD_d_windowLogMax, 27)
             guard ZSTD_isError(limit) == 0 else {
                 ZSTD_freeDStream(decoder)
@@ -57,7 +57,7 @@ final class RolloutLineReader {
         try? handle.close()
     }
 
-    /// 活跃 JSONL 的未完成末行留到下次读取，不推进已提交游标。
+    /// Leave incomplete trailing JSONL lines for the next read without advancing the committed cursor.
     func nextLine() throws -> Data? {
         var line = Data()
         var lineBytes = 0
@@ -88,7 +88,7 @@ final class RolloutLineReader {
         }
     }
 
-    // 仅在顶层标准 envelope 前缀能明确识别时跳过正文；未知布局仍走有界 JSON 解码。
+    // Skip bodies only for recognized top-level envelopes; decode unfamiliar layouts with bounded JSON parsing.
     private static let ignoredEnvelope = try? NSRegularExpression(pattern:
         #"^\s*\{\s*"timestamp"\s*:\s*"[^"\\]*"\s*,\s*(?:"ordinal"\s*:\s*\d+\s*,\s*)?"type"\s*:\s*"(?:response_item|compacted|world_state|retained_context|inter_agent_communication|inter_agent_communication_metadata|security_risk_score|realtime_item)"\s*,\s*"payload"\s*:"#)
     private static let ignoredEvent = try? NSRegularExpression(pattern:

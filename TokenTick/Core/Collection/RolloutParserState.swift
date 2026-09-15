@@ -1,7 +1,7 @@
 import Foundation
 
 struct RolloutParserState: Codable {
-    // 解析状态可丢弃重建；版本变化只触发重扫，不改写事实。
+    // Parser checkpoints are rebuildable; version changes trigger rescanning without rewriting source facts.
     static let currentVersion = 9
     var version = currentVersion
     var weeklyWindows: [WeeklyCycleCalculator.Window]?

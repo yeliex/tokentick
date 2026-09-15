@@ -62,7 +62,7 @@ extension UsageStore {
                     let columns = values.keys.sorted()
                     let arguments = StatementArguments(columns.map { values[$0] ?? nil })
                     let updates = columns.filter { !["model", "date", "tier"].contains($0) }.map { "\($0)=excluded.\($0)" }.joined(separator: ",")
-                    // 迁移当天允许用新规则刷新同日行，不创建没有定义的日内版本。
+                    // New rules may replace a same-day price row; intraday versions are not modeled.
                     try db.execute(sql: "INSERT INTO prices (\(columns.joined(separator: ","))) VALUES (\(columns.map { _ in "?" }.joined(separator: ","))) ON CONFLICT(model,date,tier) DO UPDATE SET \(updates)",
                                    arguments: arguments)
                     inserted += 1

@@ -1,17 +1,24 @@
-# TokenTick 图标资源
+# TokenTick icon assets
 
-定稿采用「起始色收敛」版本：浅色为暖白琥珀，深色为石墨薄荷。直接打开 [预览页](index.html) 可查看效果。
+The app uses a segmented usage ring: warm white and amber in light mode, graphite and mint in dark mode. Open the [preview](index.html) to inspect the artwork.
 
-## 应用图标
+## App icon
 
-`default/` 内的 `app-light` 和 `app-dark` 各提供 SVG 源文件、1024 × 1024 PNG 与 macOS ICNS。`mark-light.svg`、`mark-dark.svg` 为无底板的彩色标记。
+`default/` contains SVG sources, 1024 × 1024 PNGs, and macOS ICNS files for `app-light` and `app-dark`. `mark-light.svg` and `mark-dark.svg` contain the colored mark without a background.
 
-渐变从左上到右下，中间色位于 52%。Light：`#F8F1E5 → #F1E6D4 → #D8C7A8`；Dark：`#40564E → #2D4039 → #15231F`。
+The background gradient runs from top left to bottom right with its middle stop at 52%:
 
-App 使用 `TokenTick/Resources/TokenTick.icon`，其 Assets 中的明暗 PNG 与这里的定稿逐字节相同。原生图层按 `1024 / 928` 缩放以补偿原图透明边距，系统负责外框与外观。更新图片后也需同步内容区图片及 `.icon/Assets`，并复核原图一致性、导出效果和包内明暗外观引用。
+- Light: `#F8F1E5 → #F1E6D4 → #D8C7A8`
+- Dark: `#40564E → #2D4039 → #15231F`
 
-## 菜单栏
+The app uses [TokenTick.icon](../../TokenTick/Resources/TokenTick.icon). Its light and dark PNG assets match the approved PNG sources here. The native layer scale is `1024 / 928` to compensate for transparent padding; the system supplies the outer shape and appearance selection.
 
-`menubar/template.svg` 为单色矢量源文件；`template-18.png`、`template-18@2x.png` 分别为 18pt 的 1x、2x 透明底模板。
+When changing artwork, update the source assets, in-app brand images, and `.icon/Assets` together. Verify PNG consistency, exported appearance, and the light/dark references in the built app.
 
-接入时将 NSImage 标记为 `isTemplate = true`，由系统着色，无需单独的白色资源。应用内容的品牌图已接入 Asset Catalog 的明暗外观，菜单栏已按模板资源接入；系统图标由 Icon Composer 编译明暗资源，跟随系统外观，不在运行时主动替换 Dock 图标。
+## Menu bar
+
+`menubar/template.svg` is the monochrome vector source. `template-18.png` and `template-18@2x.png` are transparent 1x and 2x templates at 18 pt.
+
+Mark the image as `isTemplate = true` so macOS controls its color. The app can overlay a current-limit number using cached template images. A separate white template is unnecessary.
+
+In-app branding uses Asset Catalog appearance variants. Icon Composer compiles the system icon's light and dark assets; the app does not replace the Dock icon at runtime.

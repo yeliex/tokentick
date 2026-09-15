@@ -35,7 +35,7 @@ struct AutomaticSyncTests {
         schedule.recovered(now: start.addingTimeInterval(90))
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(90)) == .local)
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(300)) == .remote)
-        // 睡眠期间漏过多个周期，恢复只合并为一次，不重放所有错过的计时器。
+        // Coalesce missed sleep intervals into one recovery check rather than replaying every timer.
         schedule.recovered(now: start.addingTimeInterval(10_000))
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(10_000)) == .all)
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(10_000)) == nil)
@@ -109,8 +109,8 @@ struct AutomaticSyncTests {
         }
         do {
             try await waiter.value
-            Issue.record("取消的写者不应执行受保护操作。")
-        } catch is CancellationError {} catch { Issue.record("取消返回了错误类型：\(error)") }
+            Issue.record("A cancelled writer must not execute the protected operation.")
+        } catch is CancellationError {} catch { Issue.record("Cancellation returned an unexpected error: \(error)") }
     }
 
     @Test func nativeFileEventsNoticeAppendArchiveAndNewDirectories() async throws {
@@ -143,7 +143,7 @@ struct AutomaticSyncTests {
         let count = Mutex(0)
         let watcher = try CodexLogWatcher(codexHome: root) { count.withLock { $0 += 1 } }
         defer { withExtendedLifetime(watcher) {} }
-        // 先排空建目录和文件时可能合并到根目录的事件，再观察现有文件的更新。
+        // Drain creation events coalesced at the root before observing updates to existing files.
         try await Task.sleep(for: .seconds(2))
         for (index, file) in files.enumerated() {
             count.withLock { $0 = 0 }
@@ -151,13 +151,13 @@ struct AutomaticSyncTests {
             try handle.seekToEnd(); try handle.write(contentsOf: Data("update".utf8)); try handle.close()
             if index == 0 {
                 try await Task.sleep(for: .seconds(2))
-                #expect(count.withLock { $0 } == 0, "共享内存变化不能让只读扫描触发自身。")
+                #expect(count.withLock { $0 } == 0, "Shared-memory changes must not cause read-only scans to trigger themselves.")
             } else {
                 let deadline = ContinuousClock.now.advanced(by: .seconds(8))
                 while count.withLock({ $0 }) == 0, ContinuousClock.now < deadline {
                     try await Task.sleep(for: .milliseconds(100))
                 }
-                #expect(count.withLock { $0 } > 0, "主库及 WAL 变化仍须通知任务映射更新。")
+                #expect(count.withLock { $0 } > 0, "Database and WAL changes must still trigger task mapping updates.")
             }
         }
     }
@@ -170,6 +170,6 @@ struct AutomaticSyncTests {
             group.cancelAll()
             return result
         }
-        #expect(received, "FSEvents 应通知新增、追加或归档，超时不能当成成功。")
+        #expect(received, "FSEvents must report creation, append, or archive events; a timeout is not success.")
     }
 }

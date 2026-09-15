@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [ "$#" -ne 3 ]; then
-  echo "用法：$0 App更新ZIP 发布说明.md 新输出目录" >&2
+  echo "Usage: $0 App-update.zip release-notes.md new-output-directory" >&2
   exit 2
 fi
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,13 +12,13 @@ OUTPUT="$3"
 NAME="$(basename "$ARCHIVE" .zip)"
 VERSION="${NAME#TokenTick-}"
 [[ "$NAME" = "TokenTick-$VERSION" && "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-  echo "更新包名必须是 TokenTick-MAJOR.MINOR.PATCH.zip。" >&2; exit 2;
+  echo "Update archives must be named TokenTick-MAJOR.MINOR.PATCH.zip." >&2; exit 2;
 }
 test -s "$ARCHIVE"
 test -s "$NOTES"
 GENERATOR="$PROJECT_ROOT/.build/ReleaseDerivedData/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast"
 test -x "$GENERATOR"
-# 独立目录避免把包含 CLI 的分发包误当作另一个更新版本。
+# Use a separate directory so the full CLI distribution is not treated as another app update.
 mkdir "$OUTPUT"
 cp "$ARCHIVE" "$OUTPUT/$NAME.zip"
 cp "$NOTES" "$OUTPUT/$NAME.md"
@@ -31,4 +31,4 @@ else
 fi
 grep -q 'sparkle:edSignature=' "$OUTPUT/appcast.xml"
 grep -q '<description sparkle:format="markdown">' "$OUTPUT/appcast.xml"
-echo "已生成签名更新源：$OUTPUT/appcast.xml"
+echo "Signed appcast generated: $OUTPUT/appcast.xml"

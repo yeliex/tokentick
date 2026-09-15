@@ -66,8 +66,8 @@ public struct LocalUsageScanner: Sendable {
             var lastProgress = ContinuousClock.now
             for (index, copies) in ordered.enumerated() {
                 try Task.checkCancellation()
-                // Codex 在表示转换时允许同目录短暂并存，并优先使用普通文件。
-                // 压缩兄弟文件不是另一份历史，不为它重复解压和比较全文。
+                // Codex prefers the plain file when both representations briefly coexist in a directory.
+                // The compressed sibling is not another history; avoid decompressing it just to compare full contents.
                 let plainPaths = Set(copies.filter { !$0.1.isCompressed }.map { $0.0.path })
                 let sorted = copies.filter { url, identity in
                     !identity.isCompressed || !plainPaths.contains(url.deletingPathExtension().path)
@@ -98,7 +98,7 @@ public struct LocalUsageScanner: Sendable {
     }
 
     private func discoverRollouts(codexHome: URL, report output: inout ScanReport) throws -> [[(URL, RolloutIdentity)]] {
-        // 目录枚举持有错误回调，不能让回调捕获调用方的 inout 参数。
+        // Directory enumeration retains its error callback, which cannot capture the caller's inout parameter.
         var report = output
         defer { output = report }
         var candidates: [UUID: [(URL, RolloutIdentity)]] = [:]

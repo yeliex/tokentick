@@ -107,7 +107,7 @@ final class ApplicationModel {
         checkLoginEnvironment()
         guard let snapshot = currentLimits,
               Date().timeIntervalSince1970 - snapshot.observedAt > 900 else { return }
-        // 已在进行的同步可能更新额度；等它完成后再判断，避免丢失激活请求或重复调用。
+        // Wait for an active sync before checking freshness to avoid lost activation requests or duplicate calls.
         while isSyncing {
             do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
         }
@@ -129,7 +129,7 @@ final class ApplicationModel {
 
     @discardableResult private func checkLoginEnvironment() -> Bool {
         let home = LocalUsageScanner.defaultCodexHome
-        // 仅检查认证文件元数据，不读取、复制或保存凭据内容。
+        // Inspect authentication file metadata only; never read, copy, or persist credentials.
         let attributes = try? FileManager.default.attributesOfItem(atPath: home.appendingPathComponent("auth.json").path)
         let stamp = LoginStamp(home: home.path, modified: attributes?[.modificationDate] as? Date,
                               size: attributes?[.size] as? UInt64, inode: attributes?[.systemFileNumber] as? UInt64)
@@ -161,7 +161,7 @@ final class ApplicationModel {
                 if try store.statisticsTimezone() != zone.identifier {
                     try store.setStatisticsTimezone(zone.identifier)
                 }
-                // 用量查询会按需修复统计缓存，状态页仍需在修复后读取就绪状态。
+                // Usage queries can repair the cache; reload status after that repair completes.
                 let date = Date().formatted(Date.ISO8601FormatStyle(timeZone: zone).year().month().day().dateSeparator(.dash))
                 _ = try store.usageReport(UsageQuery(grouping: .total, fromDate: date, throughDate: date))
                 let status = try store.status()

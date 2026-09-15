@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-/// 仅在内存合并窗口，不保存逐次观察；不同文件的事件可以乱序到达。
+/// Merge windows in memory without storing individual observations; files may arrive out of order.
 struct WeeklyCycleCalculator: Sendable {
     struct Window: Codable, Sendable {
         var account: String?

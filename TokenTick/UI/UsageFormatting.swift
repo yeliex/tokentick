@@ -36,7 +36,6 @@ struct TokenText: View {
 
 extension OverviewPeriod {
 
-    // 保留原始值供偏好存储使用，展示名称随系统语言本地化。
     var title: String {
         switch self {
         case .day: String(localized: "Today")
