@@ -41,7 +41,7 @@ struct MenuUsageView: View {
             guard let store = app.store else { return }
             let current = request
             do {
-                let result = try await Task.detached(priority: .utility) {
+                let worker = Task.detached(priority: .utility) {
                     var totals: [OverviewPeriod: UsageSummary] = [:]
                     for period in [OverviewPeriod.day, .week, .quarter] {
                         let query = period.query(now: current.now, timezone: current.timezone)
@@ -50,9 +50,12 @@ struct MenuUsageView: View {
                     let month = try store.overviewReport(period: .month, now: current.now, timezone: current.timezone)
                     totals[.month] = month.total
                     return (totals, month)
-                }.value
+                }
+                let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                 guard !Task.isCancelled else { return }
-                totals = result.0; month = result.1; error = nil
+                if totals != result.0 { totals = result.0 }
+                month = result.1
+                error = nil
             } catch {
                 guard !Task.isCancelled else { return }
                 self.error = error.localizedDescription

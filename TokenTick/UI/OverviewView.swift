@@ -109,9 +109,10 @@ struct OverviewView: View {
             let current = request
             loading = report == nil || loadedPeriod != current.period; error = nil
             do {
-                let result = try await Task.detached(priority: .userInitiated) {
+                let worker = Task.detached(priority: .userInitiated) {
                     try store.overviewReport(period: current.period, now: current.now, timezone: current.timezone)
-                }.value
+                }
+                let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                 guard !Task.isCancelled else { return }
                 if report?.hasSameContent(as: result) != true || loadedPeriod != current.period { report = result }
                 loadedPeriod = current.period

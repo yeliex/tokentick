@@ -45,7 +45,14 @@ enum StatisticsSQL {
     /// 先在 SQLite 中合并同日、同任务、同模型的用量分项，再展开四个维度，避免放大全部明细。
     static var aggregate: String { aggregate(predicate: "1") }
 
-    static func aggregate(predicate: String, dateExpression: String? = nil) -> String { """
+    static func aggregate(predicate: String, dateExpression: String? = nil, query: UsageQuery? = nil) -> String {
+        // 缓存重建需要所有维度；即时查询只展开所选维度和账号范围。
+        let dimensions = query == nil
+            ? "SELECT 'all' AS dimension UNION ALL SELECT 'thread' UNION ALL SELECT 'project' UNION ALL SELECT 'model'"
+            : "SELECT :dimension AS dimension"
+        let scopes = query.map { $0.account == .all ? "SELECT 0 AS scope" : "SELECT 1 AS scope" }
+            ?? "SELECT 0 AS scope UNION ALL SELECT 1"
+        return """
         WITH facts AS (
             SELECT \(dateExpression ?? dayExpression) AS day,
                 u.account_id, u.thread_id, t.project_name, u.model, u.total_tokens,
@@ -77,8 +84,8 @@ enum StatisticsSQL {
             SUM(reasoning_tokens), SUM(input_amount), SUM(output_amount), SUM(cache_read_amount), SUM(cache_write_amount),
             SUM(complete_amount), SUM(unpriced_tokens), SUM(unattributed_tokens), SUM(record_count), SUM(known_amount), SUM(unpriced_records)
         FROM compact
-        CROSS JOIN (SELECT 0 AS scope UNION ALL SELECT 1)
-        CROSS JOIN (SELECT 'all' AS dimension UNION ALL SELECT 'thread' UNION ALL SELECT 'project' UNION ALL SELECT 'model')
+        CROSS JOIN (\(scopes))
+        CROSS JOIN (\(dimensions))
         GROUP BY account_key, day, dimension, dimension_value
         """
     }

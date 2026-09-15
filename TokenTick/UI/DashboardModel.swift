@@ -39,29 +39,22 @@ final class DashboardModel {
     var total: UsageSummary?
     var dataFromDate: String?
     var dataThroughDate: String?
-    var days: [UsageSummary] = []
-    var models: [UsageSummary] = []
-    var projects: [UsageSummary] = []
     var loadedQuery: UsageQuery?
-    var loadedSection: NavigationSection?
     var hasMore = false
     var totalGroups = 0
-    var loading = false
     var error: String?
-    var unknownDateTokens: Int64 = 0
     private var generation = 0
 
-    func load(store: UsageStore, section: NavigationSection, query: UsageQuery) async {
+    func load(store: UsageStore, query: UsageQuery) async {
         generation += 1
         let request = generation
-        loading = loadedQuery != query || loadedSection != section
         error = nil
         do {
             let worker = Task.detached(priority: .userInitiated) {
                 try Task.checkCancellation()
                 let report = try store.usageReport(query)
                 try Task.checkCancellation()
-                let names = section == .threads ? try store.threadInfo(ids: report.rows.compactMap(\.group)) : [:]
+                let names = query.grouping == .thread ? try store.threadInfo(ids: report.rows.compactMap(\.group)) : [:]
                 let rows = report.rows.map { UsageDisplayRow(summary: $0, thread: $0.group.flatMap { names[$0] }, grouping: query.grouping) }
                 var totalQuery = query
                 totalQuery.grouping = .total
@@ -69,38 +62,23 @@ final class DashboardModel {
                 try Task.checkCancellation()
                 let totalReport = try store.usageReport(totalQuery)
                 let total = totalReport.rows.first
-                var chartQuery = totalQuery
-                chartQuery.grouping = .day
-                chartQuery.limit = 10_000
-                chartQuery.sort = .automatic
-                let days = section == .overview ? try store.usageReport(chartQuery).rows : []
-                chartQuery.grouping = .model
-                chartQuery.sort = query.sort
-                let models = section == .overview || section == .data ? try store.usageReport(chartQuery).rows : []
-                chartQuery.grouping = .project
-                chartQuery.limit = 8
-                let projects = section == .overview ? try store.usageReport(chartQuery).rows : []
-                return (rows, total, days, models, projects, report.unknownDateTokens,
-                        report.hasMore, report.totalGroups, totalReport.dataFromDate, totalReport.dataThroughDate)
+                return (rows, total, report.hasMore, report.totalGroups,
+                        totalReport.dataFromDate, totalReport.dataThroughDate)
             }
             let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
             guard request == generation, !Task.isCancelled else { return }
             if rows != result.0 { rows = result.0 }
             if total != result.1 { total = result.1 }
-            if days != result.2 { days = result.2 }
-            if models != result.3 { models = result.3 }
-            if projects != result.4 { projects = result.4 }
-            dataFromDate = result.8; dataThroughDate = result.9
-            loadedQuery = query; loadedSection = section
-            unknownDateTokens = result.5; hasMore = result.6; totalGroups = result.7
+            hasMore = result.2; totalGroups = result.3
+            dataFromDate = result.4; dataThroughDate = result.5
+            loadedQuery = query
         } catch {
             if request == generation && !Task.isCancelled {
                 self.error = error.localizedDescription
-                loadedQuery = query; loadedSection = section
+                loadedQuery = query
                 dataFromDate = nil; dataThroughDate = nil
-                rows = []; total = nil; days = []; models = []; projects = []; hasMore = false; totalGroups = 0
+                rows = []; total = nil; hasMore = false; totalGroups = 0
             }
         }
-        if request == generation { loading = false }
     }
 }

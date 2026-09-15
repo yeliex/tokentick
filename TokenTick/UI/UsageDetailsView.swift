@@ -4,7 +4,7 @@ import Observation
 
 @MainActor @Observable
 final class UsageDetailsState {
-    var section = NavigationSection.daily
+    var grouping = UsageGrouping.day
     var period = UsagePeriod.month
     var dashboard = DashboardModel()
     var page = 0
@@ -38,12 +38,12 @@ struct UsageDetailsView: View {
     @Environment(ApplicationModel.self) private var app
     @Binding var initialQuery: UsageQuery?
     @Bindable var state: UsageDetailsState
-    private struct Request: Hashable { let section: NavigationSection; let query: UsageQuery; let refresh: Int; let retry: Int }
+    private struct Request: Hashable { let query: UsageQuery; let refresh: Int; let retry: Int }
     private var timezone: TimeZone { TimeZone(identifier: app.status?.timezone ?? "UTC") ?? .gmt }
     private var query: UsageQuery {
         let style = Date.ISO8601FormatStyle(timeZone: timezone).year().month().day().dateSeparator(.dash)
         let dates = state.period == .custom ? (state.customFrom.formatted(style), state.customThrough.formatted(style)) : state.period.dates(timezone: timezone)
-        return UsageQuery(grouping: state.section == .threads ? .thread : state.section == .projects ? .project : .day,
+        return UsageQuery(grouping: state.grouping,
             timezone: timezone.identifier, fromDate: dates.0, throughDate: dates.1, account: state.account,
             limit: 100, offset: state.page * 100, filters: state.filters, sort: state.sort)
     }
@@ -52,10 +52,10 @@ struct UsageDetailsView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     ScrollView(.horizontal) {
                         HStack(spacing: 6) {
-                            Picker("聚合方式", selection: $state.section) {
-                                Text("每日").tag(NavigationSection.daily)
-                                Text("项目").tag(NavigationSection.projects)
-                                Text("任务").tag(NavigationSection.threads)
+                            Picker("聚合方式", selection: $state.grouping) {
+                                Text("每日").tag(UsageGrouping.day)
+                                Text("项目").tag(UsageGrouping.project)
+                                Text("任务").tag(UsageGrouping.thread)
                             }.pickerStyle(.segmented).labelsHidden().fixedSize(horizontal: true, vertical: true)
                             UsageDateFilter(period: periodSelection, from: $state.customFrom, through: $state.customThrough,
                                             periods: [.today, .week, .month, .quarter, .year, .all], timezone: timezone)
@@ -92,10 +92,10 @@ struct UsageDetailsView: View {
                     ContentUnavailableView {
                         Label("查询失败", systemImage: "exclamationmark.triangle")
                     } description: { Text(error) } actions: { Button("重试") { state.retry += 1 } }
-                } else if state.dashboard.loadedQuery != query || state.dashboard.loadedSection != state.section {
+                } else if state.dashboard.loadedQuery != query {
                     ProgressView("正在查询用量").frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    UsageTableView(rows: state.dashboard.rows, isThread: state.section == .threads,
+                    UsageTableView(rows: state.dashboard.rows, isThread: state.grouping == .thread,
                                    hasMore: state.dashboard.hasMore, totalGroups: state.dashboard.totalGroups, selection: $state.selectedRow, page: $state.page, openRow: openRow, showDetails: { row in
                                        state.detail = .summary(UsageSummaryDestination(row: row,
                                            query: query.focused(on: query.grouping, value: row.summary.group)))
@@ -134,12 +134,12 @@ struct UsageDetailsView: View {
                 self.initialQuery = nil
             }
         }
-        .task(id: Request(section: state.section, query: query, refresh: app.usageRefreshID, retry: state.retry)) {
+        .task(id: Request(query: query, refresh: app.usageRefreshID, retry: state.retry)) {
             do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
             guard let store = app.store else { return }
-            await state.dashboard.load(store: store, section: state.section, query: query)
+            await state.dashboard.load(store: store, query: query)
         }
-        .task(id: Request(section: .daily, query: optionsQuery, refresh: app.usageRefreshID, retry: state.retry)) {
+        .task(id: Request(query: optionsQuery, refresh: app.usageRefreshID, retry: state.retry)) {
             guard let store = app.store else { return }
             do {
                 let scope = optionsQuery
@@ -165,7 +165,7 @@ struct UsageDetailsView: View {
     private func openRow(_ row: UsageDisplayRow) {
         let focused = query.focused(on: query.grouping, value: row.summary.group)
         state.selectedRow = nil
-        if state.section == .threads || (state.section == .daily && row.summary.group == nil) {
+        if state.grouping == .thread || (state.grouping == .day && row.summary.group == nil) {
             state.detail = .records(UsageRecordDestination(title: row.title, query: focused))
         } else {
             var next = focused
@@ -208,7 +208,7 @@ struct UsageDetailsView: View {
             request.filters.day = .all
             request.filters.occurredFrom = nil; request.filters.occurredBefore = nil
         }
-        state.section = request.grouping == .thread ? .threads : request.grouping == .project ? .projects : .daily
+        state.grouping = request.grouping == .thread ? .thread : request.grouping == .project ? .project : .day
         state.filters = request.filters; state.account = request.account; state.sort = request.sort; state.page = request.offset / 100
         state.selectedRow = nil
         var restored = request; restored.offset = 0

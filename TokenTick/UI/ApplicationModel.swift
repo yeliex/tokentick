@@ -13,7 +13,6 @@ final class ApplicationModel {
     var progress: SynchronizationProgress?
     var status: StoreStatus?
     var lastSync: SynchronizationReport?
-    var today: UsageSummary?
     var limitSession = CurrentLimitSession()
     var currentLimits: CurrentLimitSnapshot? { limitSession.snapshot }
     @ObservationIgnored private var timezoneMonitor: Task<Void, Never>?
@@ -162,15 +161,15 @@ final class ApplicationModel {
                 if try store.statisticsTimezone() != zone.identifier {
                     try store.setStatisticsTimezone(zone.identifier)
                 }
+                // 用量查询会按需修复统计缓存，状态页仍需在修复后读取就绪状态。
                 let date = Date().formatted(Date.ISO8601FormatStyle(timeZone: zone).year().month().day().dateSeparator(.dash))
-                let today = try store.usageReport(UsageQuery(grouping: .total, fromDate: date, throughDate: date)).rows.first
+                _ = try store.usageReport(UsageQuery(grouping: .total, fromDate: date, throughDate: date))
                 let status = try store.status()
-                return (status, try store.lastSynchronizationReport(), today)
+                return (status, try store.lastSynchronizationReport())
             }.value
             if status?.factsRevision != result.0.factsRevision || status?.timezone != result.0.timezone { usageRefreshID += 1 }
             status = result.0
             lastSync = result.1
-            if today != result.2 { today = result.2 }
             refreshID += 1
         } catch { self.error = error.localizedDescription }
     }

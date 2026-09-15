@@ -99,7 +99,8 @@ extension UsageStore {
                 """
             let effortExpression = "COALESCE(NULLIF(u.reasoning_effort, ''), '未知')"
             func shares(_ expression: String) throws -> [OverviewUsageShare] {
-                try Row.fetchAll(db, sql: """
+                try Task.checkCancellation()
+                return try Row.fetchAll(db, sql: """
                     SELECT \(expression) AS name, SUM(u.total_tokens) AS tokens,
                         SUM(tokentick_known_amount(u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount)) AS amount
                     FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id

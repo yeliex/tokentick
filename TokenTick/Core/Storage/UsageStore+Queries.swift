@@ -21,11 +21,12 @@ extension UsageStore {
     }
 
     static func readUsageReport(_ query: UsageQuery, timezone: TimeZone, db: Database, dateExpression: String? = nil) throws -> UsageReport {
+        try Task.checkCancellation()
         // 重建与读取之间另一个进程可能提交了用量；同一读快照内回退到事实聚合。
         let current = try dateExpression == nil && query.filters.isEmpty && Self.statisticsAreCurrent(db, timezone: timezone.identifier)
         if !current { StatisticsSQL.prepare(db, timezone: timezone) }
         let factFilters = UsageFiltersSQL(query.filters)
-        let source = current ? "" : "WITH statistics(\(StatisticsSQL.columns)) AS (\(StatisticsSQL.aggregate(predicate: factFilters.predicate, dateExpression: dateExpression))) "
+        let source = current ? "" : "WITH statistics(\(StatisticsSQL.columns)) AS (\(StatisticsSQL.aggregate(predicate: factFilters.predicate, dateExpression: dateExpression, query: query))) "
         let dimension = [.total, .day].contains(query.grouping) ? "all" : query.grouping.rawValue
         let group = switch query.grouping {
         case .total: "NULL"
@@ -70,10 +71,20 @@ extension UsageStore {
             ORDER BY \(order)
             LIMIT :limit OFFSET :offset
             """, arguments: arguments)
-        let unknown = try Int64.fetchOne(db, sql: """
-            \(source)SELECT SUM(total_tokens) FROM statistics
+        try Task.checkCancellation()
+        // 未知日期只需要 tokens 总数，不再为它重做分项计价和所有日期的聚合。
+        let unknownSQL = current ? """
+            SELECT SUM(total_tokens) FROM statistics
             WHERE timezone = :timezone AND account_key = :account AND dimension = 'all' AND date = 'unknown'
-            """, arguments: ["timezone": timezone.identifier, "account": query.account.key] + factFilters.arguments) ?? 0
+            """ : """
+            SELECT SUM(u.total_tokens) FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id
+            WHERE (u.source = 'local' OR u.thread_id IS NOT NULL) AND (\(factFilters.predicate))
+                AND (\(dateExpression ?? StatisticsSQL.dayExpression)) = 'unknown'
+                AND (:account = 'all' OR CASE WHEN u.account_id IS NULL THEN 'unknown'
+                     ELSE 'value:' || u.account_id END = :account)
+            """
+        let unknown = try Int64.fetchOne(db, sql: unknownSQL,
+            arguments: ["timezone": timezone.identifier, "account": query.account.key] + factFilters.arguments) ?? 0
         var totalGroups: Int = rows.first?["total_groups"] ?? 0
         if rows.isEmpty && query.offset > 0 {
             var countArguments: StatementArguments = ["timezone": timezone.identifier, "account": query.account.key, "dimension": dimension]
