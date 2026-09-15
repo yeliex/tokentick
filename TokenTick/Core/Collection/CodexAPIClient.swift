@@ -31,6 +31,8 @@ public struct CodexAPIClient: Sendable {
                     daily = try session.request("account/usage/read")
                 }
                 catch let error as CodexAPIError { issue = error.localizedDescription }
+                // 邮箱只用于展示，读取失败不阻断额度和用量同步。
+                let account: CodexAccountResponse? = try? session.request("account/read", params: ["refreshToken": false])
                 // 日桶响应没有账号字段；夹在两个自带账号的观测之间，拒绝登录切换。
                 let after: CodexRateLimits = try session.request("account/rateLimits/read")
                 if before.accountId != after.accountId {
@@ -39,7 +41,8 @@ public struct CodexAPIClient: Sendable {
                 }
                 try Task.checkCancellation()
                 return try store.saveAPIObservation(limits: after, daily: daily, observedAt: Date(), issue: issue,
-                                                    limitsSourceJSON: session.lastResponseJSON)
+                                                    limitsSourceJSON: session.lastResponseJSON,
+                                                    accountEmail: account?.subscriptionEmail(before: before, after: after))
             } catch {
                 try Task.checkCancellation()
                 try store.saveAPIFailure(error.localizedDescription)

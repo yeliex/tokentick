@@ -47,6 +47,22 @@ struct CodexRateLimits: Codable, Sendable {
     }
 }
 
+struct CodexAccountResponse: Decodable, Sendable {
+    let account: Account?
+    struct Account: Decodable, Sendable {
+        let type: String
+        let email: String?
+    }
+
+    func subscriptionEmail(before: CodexRateLimits, after: CodexRateLimits) -> String? {
+        guard let id = before.accountId, !id.isEmpty, id == after.accountId,
+              account?.type == "chatgpt",
+              let email = account?.email?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !email.isEmpty else { return nil }
+        return email
+    }
+}
+
 public struct APISyncReport: Codable, Sendable {
     public let accountID: String?
     public let observedAt: Double?
@@ -56,11 +72,13 @@ public struct APISyncReport: Codable, Sendable {
     public let skippedWindows: Int
     public let reconciliation: String
     public let issue: String?
+    public var accountEmail: String? = nil
     public var currentLimits: CurrentLimitSnapshot? = nil
 
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(accountID, forKey: .accountID)
+        try values.encode(accountEmail, forKey: .accountEmail)
         try values.encode(observedAt, forKey: .observedAt)
         try values.encode(accountAvailable, forKey: .accountAvailable)
         try values.encode(dailyBucketCount, forKey: .dailyBucketCount)

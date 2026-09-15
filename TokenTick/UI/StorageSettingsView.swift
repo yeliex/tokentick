@@ -6,49 +6,64 @@ struct StorageSettingsView: View {
     @Environment(ApplicationModel.self) private var app
     @State private var storage: StorageSummary?
     @State private var storageError: String?
-    @State private var storageRefresh = 0
     var body: some View {
-        Form {
-            Section("存储") {
-                if let url = app.store?.databaseURL {
-                    Text(url.path).font(.caption).textSelection(.enabled)
-                    Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-                }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("本地存储", systemImage: "internaldrive")
+                    .font(.headline)
+                Spacer()
                 if let storage {
-                    LabeledContent("数据库及运行文件", value: ByteCountFormatter.string(fromByteCount: storage.liveBytes, countStyle: .file))
-                    Text("主库 \(storage.databaseBytes.formatted()) 字节 · WAL \(storage.walBytes.formatted()) 字节 · 共享内存 \(storage.sharedMemoryBytes.formatted()) 字节")
-                        .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                    LabeledContent("迁移备份", value: "\(storage.backupCount) 份 · \(ByteCountFormatter.string(fromByteCount: storage.backupBytes, countStyle: .file))")
-                    Text("显示文件长度，写入期间可能变化；查询不会压缩数据库或清理备份。")
-                        .font(.caption).foregroundStyle(.secondary)
+                    Text(ByteCountFormatter.string(fromByteCount: storage.liveBytes, countStyle: .file))
+                        .font(.callout).monospacedDigit().foregroundStyle(.secondary)
+                        .accessibilityLabel("数据库大小")
+                        .accessibilityValue(ByteCountFormatter.string(fromByteCount: storage.liveBytes, countStyle: .file))
                 }
-                if let storageError { Text(storageError).font(.caption).textSelection(.enabled) }
-                Button("刷新存储信息") { storageRefresh += 1 }
             }
-            if let storage, storage.backupCount > 0 {
-                Section("最近迁移备份") {
-                    Text("最近 \(storage.recentBackups.count) 份。这些是旧版保留的备份；新迁移不再自动备份。")
-                        .font(.caption).foregroundStyle(.secondary)
-                    ForEach(storage.recentBackups) { backup in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(backup.url.lastPathComponent).font(.caption).textSelection(.enabled)
-                            HStack {
-                                Text("\(UsageFormatting.timestamp(backup.modifiedAt?.timeIntervalSince1970)) · \(ByteCountFormatter.string(fromByteCount: backup.bytes, countStyle: .file))")
-                                    .font(.caption).foregroundStyle(.secondary)
-                                Spacer()
-                                Button("显示") { NSWorkspace.shared.activateFileViewerSelecting([backup.url]) }
-                                    .help(backup.url.path)
-                            }
-                        }
+            Divider()
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Codex 目录").font(.subheadline).fontWeight(.medium)
+                HStack(alignment: .top, spacing: 12) {
+                    Text(LocalUsageScanner.defaultCodexHome.path)
+                        .font(.callout).foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button {
+                        NSWorkspace.shared.open(LocalUsageScanner.defaultCodexHome)
+                    } label: {
+                        Image(systemName: "folder").frame(width: 20, height: 20)
                     }
-                    Button("打开全部备份") { NSWorkspace.shared.open(storage.backupDirectory) }
+                    .buttonStyle(.borderless)
+                    .help("打开 Codex 目录")
+                    .accessibilityLabel("打开 Codex 目录")
                 }
             }
+            if let url = app.store?.databaseURL {
+                Divider()
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("数据库").font(.subheadline).fontWeight(.medium)
+                    HStack(alignment: .top, spacing: 12) {
+                        Text(url.path)
+                            .font(.callout).foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button {
+                            NSWorkspace.shared.activateFileViewerSelecting([url])
+                        } label: {
+                            Image(systemName: "folder").frame(width: 20, height: 20)
+                        }
+                        .buttonStyle(.borderless)
+                        .help("打开数据库所在目录")
+                        .accessibilityLabel("打开数据库所在目录")
+                    }
+                }
+            }
+            if let storageError { Text(storageError).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
         }
-        .formStyle(.grouped)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .usageSurface()
         .task { await app.start() }
-        .task(id: "\(app.refreshID):\(storageRefresh)") {
+        .task(id: app.refreshID) {
             guard let store = app.store else { return }
             do {
                 let result = try await Task.detached(priority: .utility) { try store.storageSummary() }.value

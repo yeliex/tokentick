@@ -3,6 +3,26 @@ import Testing
 @testable import TokenTickCore
 
 struct APISyncStateTests {
+    @Test func subscriptionEmailRequiresStableAccountAndSurvivesReportStorage() throws {
+        let account = try JSONDecoder().decode(CodexAccountResponse.self,
+            from: Data(#"{"account":{"type":"chatgpt","email":"member@example.com"}}"#.utf8))
+        let limits = try JSONDecoder().decode(CodexRateLimits.self, from: Data(CodexAPITests.limits.utf8))
+        let switched = try JSONDecoder().decode(CodexRateLimits.self,
+            from: Data(#"{"accountId":"another","rateLimits":{}}"#.utf8))
+        #expect(account.subscriptionEmail(before: limits, after: switched) == nil)
+        let email = account.subscriptionEmail(before: limits, after: limits)
+        #expect(email == "member@example.com")
+        let apiKey = try JSONDecoder().decode(CodexAccountResponse.self, from: Data(#"{"account":{"type":"apiKey"}}"#.utf8))
+        #expect(apiKey.subscriptionEmail(before: limits, after: limits) == nil)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        _ = try store.saveAPIObservation(limits: limits, daily: nil, observedAt: Date(timeIntervalSince1970: 100), accountEmail: email)
+        #expect(try store.status().apiLastReport?.accountEmail == email)
+        try store.saveAPIFailure("unavailable", observedAt: Date(timeIntervalSince1970: 200))
+        #expect(try store.status().apiLastReport?.accountEmail == nil)
+    }
+
     @Test func failureStateSurvivesRestartWhileDailyUsageStaysInMemory() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -58,7 +78,7 @@ struct APISyncStateTests {
     @Test func legacyReportsDecodeWithoutInventingAnAccountOrTimestamp() throws {
         let json = #"{"accountAvailable":true,"dailyBucketCount":2,"savedWindows":2,"skippedWindows":0,"reconciliation":"unverified_account_and_daily_semantics","issue":null}"#
         let report = try JSONDecoder().decode(APISyncReport.self, from: Data(json.utf8))
-        #expect(report.accountID == nil && report.observedAt == nil)
+        #expect(report.accountID == nil && report.observedAt == nil && report.accountEmail == nil)
         let encoded = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(report)) as? [String: Any])
         #expect(encoded["accountID"] is NSNull && encoded["observedAt"] is NSNull)
     }

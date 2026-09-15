@@ -3,7 +3,7 @@ import GRDB
 
 extension UsageStore {
     func saveAPIObservation(limits: CodexRateLimits, daily: CodexDailyUsage?, observedAt: Date,
-                            issue: String? = nil, limitsSourceJSON: String? = nil) throws -> APISyncReport {
+                            issue: String? = nil, limitsSourceJSON: String? = nil, accountEmail: String? = nil) throws -> APISyncReport {
         try daily?.validate()
         guard observedAt.timeIntervalSince1970.isFinite else { throw CodexAPIError.invalidStatistics }
         let encoder = JSONEncoder()
@@ -28,6 +28,7 @@ extension UsageStore {
                                            dailyBucketCount: daily?.dailyUsageBuckets?.count,
                                            savedWindows: saved, skippedWindows: skipped,
                                            reconciliation: "in_memory_reference_difference", issue: issue)
+                report.accountEmail = accountEmail
                 report.currentLimits = snapshot
                 try Self.saveAPIReport(report, db: db)
                 return report

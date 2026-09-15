@@ -42,7 +42,6 @@ final class DashboardModel {
     var days: [UsageSummary] = []
     var models: [UsageSummary] = []
     var projects: [UsageSummary] = []
-    var apiDays: [APIDailyBucket] = []
     var loadedQuery: UsageQuery?
     var loadedSection: NavigationSection?
     var hasMore = false
@@ -82,7 +81,7 @@ final class DashboardModel {
                 chartQuery.limit = 8
                 let projects = section == .overview ? try store.usageReport(chartQuery).rows : []
                 return (rows, total, days, models, projects, report.unknownDateTokens,
-                        section == .data ? try store.apiDailyUsage(limit: 30) : [], report.hasMore, report.totalGroups, totalReport.dataFromDate, totalReport.dataThroughDate)
+                        report.hasMore, report.totalGroups, totalReport.dataFromDate, totalReport.dataThroughDate)
             }
             let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
             guard request == generation, !Task.isCancelled else { return }
@@ -91,9 +90,9 @@ final class DashboardModel {
             if days != result.2 { days = result.2 }
             if models != result.3 { models = result.3 }
             if projects != result.4 { projects = result.4 }
-            dataFromDate = result.9; dataThroughDate = result.10
+            dataFromDate = result.8; dataThroughDate = result.9
             loadedQuery = query; loadedSection = section
-            unknownDateTokens = result.5; apiDays = result.6; hasMore = result.7; totalGroups = result.8
+            unknownDateTokens = result.5; hasMore = result.6; totalGroups = result.7
         } catch {
             if request == generation && !Task.isCancelled {
                 self.error = error.localizedDescription

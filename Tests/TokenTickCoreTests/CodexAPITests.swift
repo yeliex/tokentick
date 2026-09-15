@@ -100,9 +100,10 @@ struct CodexAPITests {
           case "$line" in
             *'account/rateLimits/read'*)
               case "$i" in
-                4) value='\(Self.limits.replacingOccurrences(of: "account-a", with: mode == "switched" ? "account-b" : "account-a"))' ;;
+                5) value='\(Self.limits.replacingOccurrences(of: "account-a", with: mode == "switched" ? "account-b" : "account-a"))' ;;
                 *) value='\(Self.limits)' ;;
               esac ;;
+            *'account/read'*) value='{"account":{"type":"chatgpt","email":"member@example.com"}}' ;;
             *'account/usage/read'*) value='\(Self.daily)' ;;
             *) value='{}' ;;
           esac
@@ -119,6 +120,7 @@ struct CodexAPITests {
         let report = try await CodexAPIClient.synchronize(store: store, executable: executable, codexHome: root)
         #expect((report.issue == nil) == (mode == "success"))
         #expect(report.issue?.contains("secret-must-not-leak") != true)
+        #expect(report.accountEmail == (mode == "switched" ? nil : "member@example.com"))
         #expect(report.dailyBucketCount == (mode == "success" ? 2 : nil))
         #expect(try store.apiDailyUsage().count == (mode == "success" ? 2 : 0))
         #expect(report.currentLimits?.accountID == (mode == "switched" ? "account-b" : "account-a"))

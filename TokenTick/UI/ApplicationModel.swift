@@ -15,19 +15,13 @@ final class ApplicationModel {
     var today: UsageSummary?
     var limitSession = CurrentLimitSession()
     var currentLimits: CurrentLimitSnapshot? { limitSession.snapshot }
+    @ObservationIgnored private var timezoneMonitor: Task<Void, Never>?
     @ObservationIgnored private var loginMonitor: Task<Void, Never>?
     @ObservationIgnored private var loginStamp: LoginStamp?
     var error: String?
     var refreshID = 0
     var usageRefreshID = 0
-    var settingsSection = "通用"
     var automaticSyncIssue: String?
-    var automaticSyncEnabled = UserDefaults.standard.object(forKey: "automaticSyncEnabled") as? Bool ?? true {
-        didSet {
-            UserDefaults.standard.set(automaticSyncEnabled, forKey: "automaticSyncEnabled")
-            configureAutomaticSync()
-        }
-    }
 
     var progressText: String {
         guard let progress else { return "准备同步…" }
@@ -53,13 +47,19 @@ final class ApplicationModel {
             await refresh()
             checkLoginEnvironment()
             monitorLoginEnvironment()
+            timezoneMonitor = Task { [weak self] in
+                for await _ in NotificationCenter.default.notifications(named: NSNotification.Name.NSSystemTimeZoneDidChange) {
+                    guard let self else { return }
+                    await self.refresh()
+                }
+            }
             configureAutomaticSync()
         } catch { self.error = error.localizedDescription; started = false }
     }
 
     private func configureAutomaticSync() {
         automatic?.stop(); automatic = nil; automaticSyncIssue = nil
-        guard store != nil, automaticSyncEnabled, ProcessInfo.processInfo.environment["TOKENTICK_AUTOSYNC"] != "0" else { return }
+        guard store != nil, ProcessInfo.processInfo.environment["TOKENTICK_AUTOSYNC"] != "0" else { return }
         let controller = AutomaticSyncController(app: self)
         automatic = controller
         controller.start()
@@ -145,7 +145,7 @@ final class ApplicationModel {
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(2)) } catch { return }
                 guard let self else { return }
-                if self.checkLoginEnvironment(), self.automaticSyncEnabled,
+                if self.checkLoginEnvironment(),
                    ProcessInfo.processInfo.environment["TOKENTICK_AUTOSYNC"] != "0", !self.isSyncing {
                     self.synchronize(.api)
                 }
@@ -157,7 +157,10 @@ final class ApplicationModel {
         guard let store else { return }
         do {
             let result = try await Task.detached(priority: .utility) {
-                let zone = TimeZone(identifier: try store.statisticsTimezone()) ?? .gmt
+                let zone = TimeZone.autoupdatingCurrent
+                if try store.statisticsTimezone() != zone.identifier {
+                    try store.setStatisticsTimezone(zone.identifier)
+                }
                 let date = Date().formatted(Date.ISO8601FormatStyle(timeZone: zone).year().month().day().dateSeparator(.dash))
                 let today = try store.usageReport(UsageQuery(grouping: .total, fromDate: date, throughDate: date)).rows.first
                 let status = try store.status()
@@ -171,21 +174,4 @@ final class ApplicationModel {
         } catch { self.error = error.localizedDescription }
     }
 
-    func changeTimezone(_ identifier: String) async {
-        guard let store else { return }
-        do {
-            try await Task.detached(priority: .utility) { try store.setStatisticsTimezone(identifier) }.value
-            await refresh()
-        } catch { self.error = error.localizedDescription }
-    }
-
-    func rebuild() async {
-        guard let store, !isSyncing else { return }
-        isSyncing = true
-        progress = SynchronizationProgress(stage: .statistics, scan: nil)
-        defer { isSyncing = false; progress = nil; automatic?.finished() }
-        do { _ = try await Task.detached(priority: .utility) { try store.rebuildStatistics() }.value }
-        catch { self.error = error.localizedDescription }
-        await refresh()
-    }
 }

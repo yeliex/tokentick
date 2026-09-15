@@ -30,7 +30,7 @@ App 脚本还支持 `--debug`、`--logs`、`--telemetry`。产物位于 `.build/
 
 每次操作读取进程当前 `CODEX_HOME`，空值默认 `~/.codex`；没有目录设置项或 `--codex-home`。其他 shell 的 export 不会自动改变已运行 App 的环境。
 
-App 与 CLI 默认共用 `~/Library/Application Support/TokenTick/usage.sqlite`。开发验证用 CLI `--database <路径>` 或 App 环境变量 `TOKENTICK_DATABASE` 指定隔离数据库；`TOKENTICK_AUTOSYNC=0` 关闭本次启动自动同步，不改变持久设置。Debug 可用 `TOKENTICK_APPEARANCE=light|dark` 验证外观，Release 不包含此入口。
+App 与 CLI 默认共用 `~/Library/Application Support/TokenTick/usage.sqlite`。开发验证用 CLI `--database <路径>` 或 App 环境变量 `TOKENTICK_DATABASE` 指定隔离数据库；`TOKENTICK_AUTOSYNC=0` 关闭本次启动自动同步，用于开发验证。Debug 可用 `TOKENTICK_APPEARANCE=light|dark` 验证外观，Release 不包含此入口。
 
 ## CLI
 
@@ -102,6 +102,6 @@ ditto bin/TokenTick_TokenTickCore.bundle "$HOME/.local/bin/TokenTick_TokenTickCo
 
 ### 数据与完整性
 
-App／CLI 默认共用 `~/Library/Application Support/TokenTick/usage.sqlite`，从进程 `CODEX_HOME`（默认 `~/.codex`）只读采集。App 默认运行期间自动同步，可在设置中关闭。卸载 App／CLI 不删除统计数据库及旧备份。
+App／CLI 默认共用 `~/Library/Application Support/TokenTick/usage.sqlite`，从进程 `CODEX_HOME`（默认 `~/.codex`）只读采集。App 运行期间自动同步，统计时区跟随系统；可在设置中开启开机启动。卸载 App／CLI 不删除统计数据库。
 
 在 ZIP 和校验文件所在目录执行 `shasum -a 256 -c <文件名>.sha256` 核对完整性。`BUILD.txt` 记录源码和构建状态，`Licenses` 包含 GRDB 和 Zstandard 许可证。金额为公开模型价格估算；API 每日参考差额不参与金额或本地用量统计。
