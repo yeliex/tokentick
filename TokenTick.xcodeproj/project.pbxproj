@@ -20,7 +20,7 @@
             isa = PBXCopyFilesBuildPhase;
             buildActionMask = 2147483647;
             dstPath = "$(CONTENTS_FOLDER_PATH)/Helpers";
-            dstSubfolderSpec = 1;
+            dstSubfolderSpec = 16;
             files = ("C11000000000000000000002",);
             name = "Embed CLI";
             runOnlyForDeploymentPostprocessing = 0;

@@ -54,3 +54,9 @@ jobs:
           gh release create "$VERSION" "$RELEASE_DIRECTORY"/*.zip "$RELEASE_DIRECTORY"/*.sha256 \
             .build/appcast/appcast.xml --verify-tag --latest \
             --title "TokenTick ${VERSION#v}" --notes-file .build/release-notes.md
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-build-logs
+          path: .build/logs/

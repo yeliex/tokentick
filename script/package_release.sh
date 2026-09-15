@@ -25,6 +25,7 @@ for SCHEME in TokenTick tokentick; do
     echo "$SCHEME Release build succeeded."
   else
     awk '/error:|BUILD FAILED|failed:/ && count++ < 30 { print substr($0, 1, 1000) }' "$BUILD_LOG" >&2
+    tail -n 60 "$BUILD_LOG" >&2
     echo "Full build log: $BUILD_LOG" >&2
     exit 1
   fi
