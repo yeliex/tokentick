@@ -38,11 +38,11 @@ App 与 CLI 默认共用 `~/Library/Application Support/TokenTick/usage.sqlite`�
 
 | 命令 | 功能 |
 | --- | --- |
-| `sync --scope all` | 日志、价格、所需重算、API 和缓存的共享同步流程 |
+| `sync --scope all` | API、日志、价格、所需重算和缓存的共享同步流程 |
 | `sync --scope local\|prices\|api` | 同步指定来源 |
 | `scan --json` | 只采集本地日志 |
 | `usage --group total\|day\|thread\|project\|model --json` | 用量和金额汇总 |
-| `records` | 逐条明细及统计证据，返回 JSON |
+| `records` | 逐条明细及结构化来源信息，返回 JSON |
 | `prices`／`sync-prices` | 查询／同步历史价格；独立同步价格后由 reprice 或 sync 更新金额 |
 | `reprice`／`rebuild` | 重算金额（支持断点）／事务重建统计缓存 |
 | `sync-api`／`api-usage` | 显式获取 API；api-usage 在同一进程计算内存参考差额 |
@@ -81,7 +81,7 @@ TokenTick 仅支持 macOS 26.0+、Apple Silicon。App 与 CLI 使用 ad-hoc 签�
 
 ### App
 
-解压 ZIP，将 `TokenTick.app` 放入个人 `~/Applications` 或 `/Applications`，再打开。升级时先退出旧实例，再替换 App。默认数据库保留，应用启动时自动迁移，不自动备份大数据库。
+解压 ZIP，将 `TokenTick.app` 放入个人 `~/Applications` 或 `/Applications`，再打开。升级时先退出旧实例，再替换 App。当前仍处于未上线开发阶段：数据库结构兼容时继续使用，结构变化时直接重建并重新扫描源日志，不维护历史迁移链，也不自动备份大数据库。
 
 首次从浏览器下载后，macOS 可能阻止打开。确认包的来源和校验值后，先尝试打开 App，再到“系统设置 → 隐私与安全性”选择“仍要打开”，遵循系统提示。参考 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。CLI 首次执行可能需要单独确认；安装步骤不关闭 Gatekeeper 或自动清除隔离属性。
 
