@@ -12,7 +12,7 @@ struct UsageRecordsView: View {
     @State private var selectedRecord: UsageRecord?
     @State private var page = 0
     @State private var hasMore = false
-    @State private var loading = false
+    @State private var loading = true
     @State private var error: String?
 
     var body: some View {
@@ -20,11 +20,10 @@ struct UsageRecordsView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title).font(.headline).lineLimit(1)
-                    Text("用量明细 · \(query.timezone ?? app.status?.timezone ?? "UTC")")
+                    Text("用量明细")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                if loading { ProgressView().controlSize(.small) }
                 Button("关闭", action: onClose).keyboardShortcut(.cancelAction)
             }.padding(16)
             Divider()
@@ -48,7 +47,9 @@ struct UsageRecordsView: View {
                     }
                     .tableStyle(.inset(alternatesRowBackgrounds: false)).scrollContentBackground(.hidden)
                     .overlay {
-                        if records.isEmpty && !loading && error == nil {
+                        if loading {
+                            ProgressView("正在查询明细")
+                        } else if records.isEmpty && error == nil {
                             ContentUnavailableView("暂无明细", systemImage: "doc.text.magnifyingglass")
                         }
                     }
@@ -94,7 +95,7 @@ struct UsageRecordsView: View {
             }
             loading = false
         }
-        .onChange(of: page) { records = [] }
+        .onChange(of: page) { loading = true; records = [] }
     }
 }
 
@@ -111,9 +112,9 @@ private struct UsageRecordDetail: View {
                 UsageDetailField("轮次 ID", value: record.turnID ?? "未知")
                 UsageDetailField("用量时间", value: UsageFormatting.timestamp(record.occurredAt, timezone: timezone))
                 UsageDetailField("响应 ID", value: record.responseID ?? "未知")
-                UsageDetailField("UTC 小时／分钟", value: record.hour.flatMap { h in record.minute.map { String(format: "%02d:%02d", h, $0) } } ?? "未知")
+                UsageDetailField("小时／分钟", value: record.hour.flatMap { h in record.minute.map { String(format: "%02d:%02d", h, $0) } } ?? "未知")
                 UsageDetailField("统计日期", value: record.statisticalDate ?? "未知")
-                UsageDetailField("计价日期 · UTC", value: record.usageDate ?? "未知")
+                UsageDetailField("计价日期", value: record.usageDate ?? "未知")
             }
             Section("模型与计价模式") {
                 UsageDetailField("模型", value: record.model ?? "其他")

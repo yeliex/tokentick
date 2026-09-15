@@ -35,7 +35,7 @@ struct LimitsView: View {
     private var request: Request { Request(query: query, refresh: app.refreshID, retry: state.retry) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Spacer()
                 UsageDateFilter(period: $state.period, from: $state.customFrom, through: $state.customThrough,
@@ -59,12 +59,8 @@ struct LimitsView: View {
                     }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                HSplitView {
+                HStack(alignment: .top, spacing: 20) {
                     VStack(spacing: 12) {
-                        HStack {
-                            Text("额度周期").font(.headline)
-                            Spacer()
-                        }.padding(.horizontal, 12).padding(.top, 12)
                         List(selection: $state.selectedWindow) {
                             ForEach(state.windows) { window in
                                 VStack(alignment: .leading, spacing: 9) {
@@ -109,14 +105,15 @@ struct LimitsView: View {
                         .background(.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 18))
                     ScrollView {
                         if let window = state.windows.first(where: { $0.id == state.selectedWindow }) {
-                            WeeklyCycleDetail(window: window, timezone: timezone).padding(.leading, 20).padding(.vertical, 8)
+                            WeeklyCycleDetail(window: window, timezone: timezone).padding(.vertical, 8)
                         } else {
                             ContentUnavailableView("选择一个周期", systemImage: "calendar")
                         }
                     }.frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-        }.padding(24)
+        }.padding(.horizontal, 24)
+        .padding(.bottom, 24)
         .task(id: request) {
             guard let store = app.store else { return }
             let current = query

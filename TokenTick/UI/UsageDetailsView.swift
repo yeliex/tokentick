@@ -105,7 +105,8 @@ struct UsageDetailsView: View {
                         }
                 }
         }
-        .padding(24)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 24)
         .sheet(isPresented: Binding(get: { state.detail != nil }, set: { if !$0 { state.detail = nil } })) {
             VStack(spacing: 0) {
                 switch state.detail {
