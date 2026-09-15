@@ -157,10 +157,10 @@ public enum UsageQueryError: Error, LocalizedError {
     case invalidTimezone, invalidDate, invalidRange, invalidPagination
     public var errorDescription: String? {
         switch self {
-        case .invalidTimezone: "统计时区必须是有效的 IANA 时区。"
-        case .invalidDate: "筛选日期必须为有效的 YYYY-MM-DD。"
-        case .invalidRange: "开始日期不能晚于结束日期。"
-        case .invalidPagination: "limit 必须为 1–10000，offset 不能为负数。"
+        case .invalidTimezone: String(localized: "The statistics timezone must be a valid IANA timezone.", bundle: .module)
+        case .invalidDate: String(localized: "Filter dates must use a valid YYYY-MM-DD format.", bundle: .module)
+        case .invalidRange: String(localized: "The start date cannot be later than the end date.", bundle: .module)
+        case .invalidPagination: String(localized: "limit must be 1–10000 and offset cannot be negative.", bundle: .module)
         }
     }
 }

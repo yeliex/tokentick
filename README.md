@@ -8,6 +8,12 @@
 - [技术方案](docs/technical-design.md)：表结构、采集去重、价格、API、额度、查询及开发重建。
 - [图标资源](assets/icons/README.md)：当前定稿及资源维护。
 
+## 语言
+
+应用支持英文和简体中文，使用 macOS 原生语言选择。英文是开发语言及缺失翻译的回退语言；系统偏好简体中文时显示中文。可在系统设置的「通用 → 语言与地区 → 应用程序」中为 TokenTick 指定语言，重新启动后生效。应用内不提供语言切换。
+
+界面翻译维护在 `TokenTick/Resources/Localizable.xcstrings`；Core 错误提示维护在 `TokenTick/Core/Resources` 的语言目录中，通过 SwiftPM 资源 Bundle 加载。持久化标识与查询值不随显示语言改变。
+
 ## 本地开发
 
 使用带 macOS 26 或更新 SDK 的 Xcode，打开 `TokenTick.xcodeproj`。App target 为 `TokenTick`，CLI target 为 `tokentick`；Core 和测试由根目录 `Package.swift` 管理。

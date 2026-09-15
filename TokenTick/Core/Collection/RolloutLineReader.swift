@@ -7,9 +7,9 @@ final class RolloutLineReader {
         case lineTooLarge, invalidCompression(String), truncatedCompression
         var errorDescription: String? {
             switch self {
-            case .lineTooLarge: "单行超过 16 MiB，已停止该文件扫描，游标未越过该行。"
-            case .invalidCompression(let reason): "Zstandard 解压失败：\(reason)"
-            case .truncatedCompression: "Zstandard 文件不完整。"
+            case .lineTooLarge: String(localized: "A line exceeds 16 MiB. Scanning stopped without advancing past this line.", bundle: .module)
+            case .invalidCompression(let reason): String(localized: "Zstandard decompression failed: \(reason)", bundle: .module)
+            case .truncatedCompression: String(localized: "The Zstandard file is incomplete.", bundle: .module)
             }
         }
     }
@@ -31,7 +31,7 @@ final class RolloutLineReader {
         self.offset = offset
         if compressed {
             guard let decoder = ZSTD_createDStream() else {
-                throw ReadError.invalidCompression("无法创建解码器")
+                throw ReadError.invalidCompression(String(localized: "Unable to create decoder", bundle: .module))
             }
             stream = decoder
             let result = ZSTD_initDStream(decoder)

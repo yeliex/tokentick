@@ -20,18 +20,18 @@ struct OverviewView: View {
             VStack(alignment: .leading, spacing: 30) {
                 CurrentLimitsView()
                 HStack {
-                    Text("用量").font(.title2.weight(.semibold))
+                    Text(String(localized: "Usage")).font(.title2.weight(.semibold))
                     Spacer()
-                    Picker("统计周期", selection: Binding(get: { period }, set: { storedPeriod = $0.rawValue })) {
-                        ForEach(OverviewPeriod.allCases) { Text($0 == .all ? "所有" : $0 == .year ? "1年" : $0.rawValue.replacingOccurrences(of: " ", with: "")).tag($0) }
+                    Picker(String(localized: "Period"), selection: Binding(get: { period }, set: { storedPeriod = $0.rawValue })) {
+                        ForEach(OverviewPeriod.allCases) { Text($0.title).tag($0) }
                     }.pickerStyle(.segmented).labelsHidden().controlSize(.regular)
                         .fixedSize(horizontal: true, vertical: true).frame(width: 410, alignment: .trailing)
                 }
                 if loading && (report == nil || loadedPeriod != period) {
-                    ProgressView("正在汇总用量").frame(maxWidth: .infinity, minHeight: 260)
+                    ProgressView(String(localized: "Summarizing usage")).frame(maxWidth: .infinity, minHeight: 260)
                 } else if let error {
-                    ContentUnavailableView("无法查询用量", systemImage: "exclamationmark.triangle", description: Text(error))
-                    Button("重试") { refreshedAt = Date() }
+                    ContentUnavailableView(String(localized: "Unable to load usage"), systemImage: "exclamationmark.triangle", description: Text(error))
+                    Button(String(localized: "Retry")) { refreshedAt = Date() }
                 } else if let report, let total = report.total {
                     VStack(alignment: .leading, spacing: 22) {
                     HStack(alignment: .top, spacing: 18) {
@@ -39,41 +39,41 @@ struct OverviewView: View {
                             Text("Tokens").font(.callout).foregroundStyle(.secondary)
                             Text(UsageFormatting.tokens(total.totalTokens)).font(.system(size: 34, weight: .semibold)).monospacedDigit()
                                 .help(UsageFormatting.exactTokens(total.totalTokens)).textSelection(.enabled)
-                            Text("\(total.records.formatted()) 次请求").font(.caption).foregroundStyle(.secondary)
+                            Text(String(localized: "Requests: \(total.records.formatted())")).font(.caption).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("预估费用").font(.callout).foregroundStyle(.secondary)
-                                .help("按模型公开 API 价格估算，不代表订阅账单。")
+                            Text(String(localized: "Estimated cost")).font(.callout).foregroundStyle(.secondary)
+                                .help(String(localized: "Estimated using public model API prices, not your subscription bill."))
                             Text(UsageFormatting.money(total.knownAmountNanoUSD)).font(.system(size: 34, weight: .semibold)).monospacedDigit().textSelection(.enabled)
-                                .help(total.unpricedRecords > 0 ? "\(UsageFormatting.tokens(total.unpricedTokens)) Tokens 尚未完整计价，金额仅包含已知部分。" : "金额已完整计价。")
+                                .help(total.unpricedRecords > 0 ? String(localized: "\(UsageFormatting.tokens(total.unpricedTokens)) tokens are not fully priced. Cost includes only known amounts.") : String(localized: "All usage is priced."))
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
                     Divider()
                     HStack(alignment: .top, spacing: 24) {
-                        tokenPart("输入", total.inputTokens).help("输入包含缓存读取和缓存写入，不与缓存分项重复累加。")
-                        tokenPart("输出", total.outputTokens).help("输出包含思考，不与思考分项重复累加。")
-                        tokenPart("思考", total.reasoningOutputTokens)
-                        tokenPart("缓存读取", total.cachedInputTokens)
-                        tokenPart("缓存写入", total.cacheWriteInputTokens)
+                        tokenPart(String(localized: "Input"), total.inputTokens).help(String(localized: "Input includes cache reads and writes. Cache components are not counted twice."))
+                        tokenPart(String(localized: "Output"), total.outputTokens).help(String(localized: "Output includes reasoning. Reasoning is not counted twice."))
+                        tokenPart(String(localized: "Reasoning"), total.reasoningOutputTokens)
+                        tokenPart(String(localized: "Cache read"), total.cachedInputTokens)
+                        tokenPart(String(localized: "Cache write"), total.cacheWriteInputTokens)
                     }
                     }.usageSurface()
                     if period != .day {
                         OverviewChartsView(points: report.trend, hourly: report.hourly, monthly: period == .all, weekly: period == .year,
                                            query: report.query, timezone: timezone)
                         if report.unknownDateTokens > 0 {
-                            Label("\(UsageFormatting.tokens(report.unknownDateTokens)) Tokens 无法确定日期，未绘入趋势。", systemImage: "calendar.badge.exclamationmark")
+                            Label(String(localized: "\(UsageFormatting.tokens(report.unknownDateTokens)) tokens have no known date and are excluded from the trend."), systemImage: "calendar.badge.exclamationmark")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     ModelUsageView(models: report.models, modes: report.modes, efforts: report.efforts)
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text("最近对话").font(.headline)
+                            Text(String(localized: "Recent conversations")).font(.headline)
                             Spacer()
-                            Text("金额 / Tokens").font(.caption).foregroundStyle(.secondary)
+                            Text(String(localized: "Cost / Tokens")).font(.caption).foregroundStyle(.secondary)
                         }
                         if report.conversations.isEmpty {
-                            Text("暂无可归属到对话的用量").foregroundStyle(.secondary).padding(.vertical)
+                            Text(String(localized: "No usage attributed to conversations")).foregroundStyle(.secondary).padding(.vertical)
                         }
                         ForEach(report.conversations) { conversation in
                             Button {
@@ -98,7 +98,7 @@ struct OverviewView: View {
                         }
                     }.usageSurface()
                 } else {
-                    ContentUnavailableView("所选周期暂无用量", systemImage: "chart.bar")
+                    ContentUnavailableView(String(localized: "No usage in the selected period"), systemImage: "chart.bar")
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)

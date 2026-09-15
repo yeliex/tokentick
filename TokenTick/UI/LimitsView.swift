@@ -45,17 +45,17 @@ struct LimitsView: View {
             }
             if let error = state.error {
                 ContentUnavailableView {
-                    Label("无法读取额度记录", systemImage: "exclamationmark.triangle")
-                } description: { Text(error) } actions: { Button("重试") { state.retry += 1 } }
+                    Label(String(localized: "Unable to load limit history"), systemImage: "exclamationmark.triangle")
+                } description: { Text(error) } actions: { Button(String(localized: "Retry")) { state.retry += 1 } }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if state.loadedQuery != query {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if state.windows.isEmpty {
                 ContentUnavailableView {
-                    Label("暂无额度记录", systemImage: "calendar")
+                    Label(String(localized: "No limit history yet"), systemImage: "calendar")
                 } actions: {
                     if state.period != .all || state.account != .all {
-                        Button("查看全部记录") { state.period = .all; state.account = .all }
+                        Button(String(localized: "Show all records")) { state.period = .all; state.account = .all }
                     }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -71,13 +71,13 @@ struct LimitsView: View {
                                     }.font(.callout.weight(.medium))
                                     if Set(state.accounts + [app.currentLimits?.accountID].compactMap { $0 }).count > 1 {
                                         Text(window.observedAccountIDs.map { id in
-                                            id == app.currentLimits?.accountID ? "当前账号" : "账号 · " + String(id.suffix(8))
+                                            id == app.currentLimits?.accountID ? String(localized: "Current account") : String(localized: "Account · ") + String(id.suffix(8))
                                         }.joined(separator: "、"))
                                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                     }
                                     HStack {
-                                        Text(window.endsAt > Date().timeIntervalSince1970 ? "进行中" : "已结束")
-                                        if window.resetKind == "early" { Text("· 提前重置") }
+                                        Text(window.endsAt > Date().timeIntervalSince1970 ? String(localized: "Active") : String(localized: "Ended"))
+                                        if window.resetKind == "early" { Text(String(localized: "· Early reset")) }
                                         Spacer()
                                         Text(window.lastUsedPercent.map { $0.formatted(.number.precision(.fractionLength(0...1))) + "%" } ?? "—")
                                             .monospacedDigit()
@@ -85,7 +85,7 @@ struct LimitsView: View {
                                     if let percent = window.lastUsedPercent {
                                         ProgressView(value: min(100, max(0, percent)), total: 100).tint(.primary).opacity(0.65)
                                     } else {
-                                        Text("使用记录不一致").font(.caption).foregroundStyle(.secondary)
+                                        Text(String(localized: "Inconsistent usage records")).font(.caption).foregroundStyle(.secondary)
                                     }
                                 }.padding(.vertical, 9).tag(window.id)
                             }
@@ -93,12 +93,12 @@ struct LimitsView: View {
                         if state.page > 0 || state.hasMore {
                             HStack {
                                 Button { state.page -= 1 } label: { Image(systemName: "chevron.left") }
-                                    .disabled(state.page == 0).help("上一页")
+                                    .disabled(state.page == 0).help(String(localized: "Previous"))
                                 Spacer()
-                                Text("第 \(state.page + 1) 页").font(.caption).foregroundStyle(.secondary)
+                                Text(String(localized: "Page \(state.page + 1)")).font(.caption).foregroundStyle(.secondary)
                                 Spacer()
                                 Button { state.page += 1 } label: { Image(systemName: "chevron.right") }
-                                    .disabled(!state.hasMore).help("下一页")
+                                    .disabled(!state.hasMore).help(String(localized: "Next"))
                             }.padding(12)
                         }
                     }.frame(minWidth: 230, idealWidth: 270, maxWidth: 310, maxHeight: .infinity)
@@ -107,7 +107,7 @@ struct LimitsView: View {
                         if let window = state.windows.first(where: { $0.id == state.selectedWindow }) {
                             WeeklyCycleDetail(window: window, timezone: timezone).padding(.vertical, 8)
                         } else {
-                            ContentUnavailableView("选择一个周期", systemImage: "calendar")
+                            ContentUnavailableView(String(localized: "Select a cycle"), systemImage: "calendar")
                         }
                     }.frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -156,24 +156,24 @@ private struct WeeklyCycleDetail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("周期详情").font(.title3.weight(.semibold))
+                Text(String(localized: "Cycle details")).font(.title3.weight(.semibold))
                 Text("\(date(Double(window.startedAtInferred))) — \(date(Double(window.endsAt)))")
                     .font(.caption).foregroundStyle(.secondary)
                 if window.resetKind == "early" {
-                    Text("原定重置时间 \(date(Double(window.scheduledResetAt)))")
+                    Text(String(localized: "Originally scheduled reset: \(date(Double(window.scheduledResetAt)))"))
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("已使用").font(.callout).foregroundStyle(.secondary)
+                        Text(String(localized: "used")).font(.callout).foregroundStyle(.secondary)
                         Text(window.lastUsedPercent.map { $0.formatted(.number.precision(.fractionLength(0...1))) + "%" } ?? "—")
                             .font(.system(size: 32, weight: .semibold)).monospacedDigit()
                     }
                     Spacer()
                     if window.resetKind == "early" {
-                        Text("提前重置").font(.caption).padding(8)
+                        Text(String(localized: "Early reset")).font(.caption).padding(8)
                             .background(.primary.opacity(0.05), in: Capsule())
                     }
                 }
@@ -183,15 +183,15 @@ private struct WeeklyCycleDetail: View {
                 Divider().padding(.vertical, 4)
                 HStack(spacing: 20) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("本地 Tokens").font(.caption).foregroundStyle(.secondary)
+                        Text(String(localized: "Local tokens")).font(.caption).foregroundStyle(.secondary)
                         Text(UsageFormatting.tokens(window.totalTokens)).font(.title3.weight(.semibold))
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("预估费用").font(.caption).foregroundStyle(.secondary)
+                        Text(String(localized: "Estimated cost")).font(.caption).foregroundStyle(.secondary)
                         Text(UsageFormatting.money(window.knownAmountNanoUSD ?? window.amountNanoUSD)).font(.title3.weight(.semibold))
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("请求次数").font(.caption).foregroundStyle(.secondary)
+                        Text(String(localized: "Requests")).font(.caption).foregroundStyle(.secondary)
                         Text(window.requestCount.map { $0.formatted() } ?? "—").font(.title3.weight(.semibold))
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }.monospacedDigit()

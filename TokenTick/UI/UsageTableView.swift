@@ -14,7 +14,7 @@ struct UsageTableView: View {
     var body: some View {
         VStack(spacing: 0) {
             Table(rows, selection: $selection) {
-                TableColumn(isThread ? "任务" : "名称") { row in
+                TableColumn(isThread ? String(localized: "Task") : String(localized: "Name")) { row in
                     VStack(alignment: .leading, spacing: 3) {
                         Button { openRow(row) } label: {
                             HStack {
@@ -28,22 +28,22 @@ struct UsageTableView: View {
                 }.width(min: 180, ideal: 340)
                 TableColumn("Tokens") { row in TokenText(value: row.summary.totalTokens).monospacedDigit() }
                     .width(min: 105, ideal: 125)
-                TableColumn("预估费用") { row in Text(UsageFormatting.money(row.summary.knownAmountNanoUSD)).monospacedDigit()
-                    .help(row.summary.unpricedTokens > 0 ? "部分用量未定价" : "按公开 API 价格估算") }
+                TableColumn(String(localized: "Estimated cost")) { row in Text(UsageFormatting.money(row.summary.knownAmountNanoUSD)).monospacedDigit()
+                    .help(row.summary.unpricedTokens > 0 ? String(localized: "Some usage is unpriced") : String(localized: "Estimated using public API prices")) }
                     .width(min: 90, ideal: 110)
-                TableColumn("请求次数") { row in Text(row.summary.records.formatted()).monospacedDigit() }
+                TableColumn(String(localized: "Requests")) { row in Text(row.summary.records.formatted()).monospacedDigit() }
                     .width(min: 75, ideal: 90)
 
-                TableColumn("详情") { row in
-                    Button("详情") { showDetails(row) }.buttonStyle(.borderless)
+                TableColumn(String(localized: "Details")) { row in
+                    Button(String(localized: "Details")) { showDetails(row) }.buttonStyle(.borderless)
                 }.width(50)
             }.tableStyle(.inset(alternatesRowBackgrounds: false)).scrollContentBackground(.hidden)
             Divider()
             HStack {
-                Text("第 \(totalGroups == 0 ? 0 : page + 1) / \((totalGroups + 99) / 100) 页 · 共 \(totalGroups) 条").foregroundStyle(.secondary)
+                Text(String(localized: "Page \(totalGroups == 0 ? 0 : page + 1) of \((totalGroups + 99) / 100) · Total: \(totalGroups)")).foregroundStyle(.secondary)
                 Spacer()
-                Button("上一页") { selection = nil; page -= 1 }.disabled(page == 0)
-                Button("下一页") { selection = nil; page += 1 }.disabled(!hasMore)
+                Button(String(localized: "Previous")) { selection = nil; page -= 1 }.disabled(page == 0)
+                Button(String(localized: "Next")) { selection = nil; page += 1 }.disabled(!hasMore)
             }.padding(12)
         }
     }

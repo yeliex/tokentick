@@ -33,8 +33,8 @@ public struct PriceSynchronizer: Sendable {
         case httpStatus(Int), responseTooLarge
         var errorDescription: String? {
             switch self {
-            case .httpStatus(let code): "models.dev 请求失败（HTTP \(code)），保留已有价格。"
-            case .responseTooLarge: "价格响应超过 32 MiB，未更新快照。"
+            case .httpStatus(let code): String(localized: "The models.dev request failed (HTTP \(code)). Existing prices were kept.", bundle: .module)
+            case .responseTooLarge: String(localized: "The price response exceeds 32 MiB. The snapshot was not updated.", bundle: .module)
             }
         }
     }

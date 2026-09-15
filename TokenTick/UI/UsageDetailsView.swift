@@ -52,36 +52,36 @@ struct UsageDetailsView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     ScrollView(.horizontal) {
                         HStack(spacing: 6) {
-                            Picker("聚合方式", selection: $state.grouping) {
-                                Text("每日").tag(UsageGrouping.day)
-                                Text("项目").tag(UsageGrouping.project)
-                                Text("任务").tag(UsageGrouping.thread)
+                            Picker(String(localized: "Group by"), selection: $state.grouping) {
+                                Text(String(localized: "Daily")).tag(UsageGrouping.day)
+                                Text(String(localized: "Project")).tag(UsageGrouping.project)
+                                Text(String(localized: "Task")).tag(UsageGrouping.thread)
                             }.pickerStyle(.segmented).labelsHidden().fixedSize(horizontal: true, vertical: true)
                             UsageDateFilter(period: periodSelection, from: $state.customFrom, through: $state.customThrough,
                                             periods: [.today, .week, .month, .quarter, .year, .all], timezone: timezone)
-                        TextField("搜索任务标题或 ID", text: $state.filters.search)
+                        TextField(String(localized: "Search task title or ID"), text: $state.filters.search)
                             .textFieldStyle(.roundedBorder).frame(width: 130)
-                        Picker("项目", selection: $state.filters.project) {
-                            Text("全部项目").tag(UsageValueFilter.all)
+                        Picker(String(localized: "Project"), selection: $state.filters.project) {
+                            Text(String(localized: "All projects")).tag(UsageValueFilter.all)
                             ForEach(state.options?.projects ?? [], id: \.self) { Text(UsageFormatting.project($0)).tag(UsageValueFilter.value($0)) }
 
                         }.labelsHidden().frame(width: 100)
-                        Picker("模型", selection: $state.filters.model) {
-                            Text("全部模型").tag(UsageValueFilter.all)
+                        Picker(String(localized: "Model"), selection: $state.filters.model) {
+                            Text(String(localized: "All models")).tag(UsageValueFilter.all)
                             ForEach(state.options?.models ?? [], id: \.self) { Text($0).tag(UsageValueFilter.value($0)) }
 
                         }.labelsHidden().frame(width: 110)
                         AccountScopeControl(account: $state.account, accounts: state.options?.accounts ?? [],
                                             currentAccount: app.currentLimits?.accountID)
-                        Picker("排序", selection: $state.sort) {
+                        Picker(String(localized: "Sort"), selection: $state.sort) {
                             ForEach(UsageSort.allCases, id: \.self) { Text($0.title).tag($0) }
                         }.labelsHidden().frame(width: 100)
                         }
                     }.scrollIndicators(.hidden).controlSize(.small).frame(height: 28)
                     HStack(spacing: 20) {
                         summaryMetric("Tokens", UsageFormatting.tokens(currentTotal?.totalTokens))
-                        summaryMetric("预估费用", UsageFormatting.money(currentTotal?.knownAmountNanoUSD))
-                        summaryMetric("请求次数", currentTotal.map { $0.records.formatted() } ?? "—")
+                        summaryMetric(String(localized: "Estimated cost"), UsageFormatting.money(currentTotal?.knownAmountNanoUSD))
+                        summaryMetric(String(localized: "Requests"), currentTotal.map { $0.records.formatted() } ?? "—")
                         Spacer(minLength: 8)
                         Text(rangeLabel).font(.caption).foregroundStyle(.secondary)
                             .lineLimit(1).help(rangeLabel).textSelection(.enabled)
@@ -90,10 +90,10 @@ struct UsageDetailsView: View {
                 }.padding(.bottom, 14)
                 if let error = state.dashboard.error {
                     ContentUnavailableView {
-                        Label("查询失败", systemImage: "exclamationmark.triangle")
-                    } description: { Text(error) } actions: { Button("重试") { state.retry += 1 } }
+                        Label(String(localized: "Query failed"), systemImage: "exclamationmark.triangle")
+                    } description: { Text(error) } actions: { Button(String(localized: "Retry")) { state.retry += 1 } }
                 } else if state.dashboard.loadedQuery != query {
-                    ProgressView("正在查询用量").frame(maxWidth: .infinity, maxHeight: .infinity)
+                    ProgressView(String(localized: "Loading usage")).frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     UsageTableView(rows: state.dashboard.rows, isThread: state.grouping == .thread,
                                    hasMore: state.dashboard.hasMore, totalGroups: state.dashboard.totalGroups, selection: $state.selectedRow, page: $state.page, openRow: openRow, showDetails: { row in
@@ -101,7 +101,7 @@ struct UsageDetailsView: View {
                                            query: query.focused(on: query.grouping, value: row.summary.group)))
                                    })
                         .overlay {
-                            if state.dashboard.rows.isEmpty { ContentUnavailableView("所选范围暂无用量", systemImage: "tablecells") }
+                            if state.dashboard.rows.isEmpty { ContentUnavailableView(String(localized: "No usage in the selected range"), systemImage: "tablecells") }
                         }
                 }
         }
@@ -114,7 +114,7 @@ struct UsageDetailsView: View {
                     HStack {
                         Text(destination.row.title).font(.headline).lineLimit(1)
                         Spacer()
-                        Button("关闭") { state.detail = nil }.keyboardShortcut(.cancelAction)
+                        Button(String(localized: "Close")) { state.detail = nil }.keyboardShortcut(.cancelAction)
                     }.padding(20)
                     Divider()
                     UsageSummaryInspector(row: destination.row, query: destination.query) { focused in
@@ -130,7 +130,7 @@ struct UsageDetailsView: View {
         }
         .task {
             if let initialQuery {
-                state.detail = .records(UsageRecordDestination(title: "请求明细", query: initialQuery))
+                state.detail = .records(UsageRecordDestination(title: String(localized: "Request records"), query: initialQuery))
                 self.initialQuery = nil
             }
         }
@@ -238,10 +238,10 @@ struct AccountScopeControl: View {
     var body: some View {
         Group {
             if available.count > 1 {
-                Picker("账号", selection: $account) {
-                    Text("全部账号").tag(UsageAccountScope.all)
+                Picker(String(localized: "Account"), selection: $account) {
+                    Text(String(localized: "All accounts")).tag(UsageAccountScope.all)
                     ForEach(available, id: \.self) { id in
-                        Text(id == currentAccount ? "当前账号" : "账号 · " + String(id.suffix(8)))
+                        Text(id == currentAccount ? String(localized: "Current account") : String(localized: "Account · ") + String(id.suffix(8)))
                             .help(id).tag(UsageAccountScope.account(id))
                     }
                 }.labelsHidden().frame(width: 160)

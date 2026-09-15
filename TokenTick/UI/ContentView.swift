@@ -4,6 +4,15 @@ import SwiftUI
 enum AppPage: String, CaseIterable, Identifiable {
     case overview = "总览", usage = "用量明细", limits = "套餐用量"
     var id: Self { self }
+    // 保留原始值供偏好存储使用，展示名称随系统语言本地化。
+    var title: String {
+        switch self {
+        case .overview: String(localized: "Overview")
+        case .usage: String(localized: "Usage details")
+        case .limits: String(localized: "Plan usage")
+        }
+    }
+
     var symbol: String {
         switch self {
         case .overview: "chart.pie"
@@ -32,7 +41,7 @@ struct ContentView: View {
                 VStack(spacing: 6) {
                     ForEach(AppPage.allCases) { item in
                         Button { selectedPage = item.rawValue } label: {
-                            Label(item.rawValue, systemImage: item.symbol)
+                            Label(item.title, systemImage: item.symbol)
                                 .font(.system(size: 14, weight: page == item ? .semibold : .medium))
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                                 .background(page == item ? Color.primary.opacity(0.08) : .clear,
@@ -43,7 +52,7 @@ struct ContentView: View {
                 }
                 Spacer()
                 SettingsLink {
-                    Label("设置", systemImage: "gearshape")
+                    Label(String(localized: "Settings"), systemImage: "gearshape")
                         .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                         .contentShape(Rectangle())
                 }
@@ -54,9 +63,9 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 if app.store == nil {
                     ContentUnavailableView {
-                        Label(app.error == nil ? "正在打开数据库" : "无法打开数据库", systemImage: "externaldrive")
+                        Label(app.error == nil ? String(localized: "Opening database") : String(localized: "Unable to open database"), systemImage: "externaldrive")
                     } actions: {
-                        if app.error != nil { Button("重试") { Task { await app.start() } } }
+                        if app.error != nil { Button(String(localized: "Retry")) { Task { await app.start() } } }
                     }
                 } else {
                     switch page {
@@ -68,7 +77,7 @@ struct ContentView: View {
                 }
             }
             .background(scheme == .dark ? Color.black.opacity(0.5) : Color.white.opacity(0.2))
-            .navigationTitle(page.rawValue)
+            .navigationTitle(page.title)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -89,8 +98,8 @@ struct ContentView: View {
                             }
                         }.frame(width: 16, height: 16)
                     }
-                    .accessibilityLabel(app.isSyncing ? "正在同步" : "刷新")
-                    .help(app.isSyncing ? "正在同步" : "刷新")
+                    .accessibilityLabel(app.isSyncing ? String(localized: "Syncing") : String(localized: "Refresh"))
+                    .help(app.isSyncing ? String(localized: "Syncing") : String(localized: "Refresh"))
                     .disabled(app.store == nil || app.isSyncing).keyboardShortcut("r")
                 }
             }
@@ -110,12 +119,12 @@ struct ContentView: View {
         app.requestedPage = nil
     }
     private func syncTime(now: Date) -> String {
-        guard let finished = app.lastSync?.finishedAt else { return "尚未同步" }
+        guard let finished = app.lastSync?.finishedAt else { return String(localized: "Not synced yet") }
         let minutes = max(0, Int((now.timeIntervalSince1970 - finished) / 60))
-        if minutes == 0 { return "上次同步 刚刚" }
-        if minutes < 60 { return "上次同步 \(minutes) 分钟前" }
-        if minutes < 1440 { return "上次同步 \(minutes / 60) 小时前" }
-        return "上次同步 \(minutes / 1440) 天前"
+        if minutes == 0 { return String(localized: "Last synced just now") }
+        if minutes < 60 { return String(localized: "Last synced \(minutes) min ago") }
+        if minutes < 1440 { return String(localized: "Last synced \(minutes / 60) hr ago") }
+        return String(localized: "Last synced \(minutes / 1440)d ago")
     }
 
 }

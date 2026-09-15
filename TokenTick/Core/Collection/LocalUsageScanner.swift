@@ -59,7 +59,7 @@ public struct LocalUsageScanner: Sendable {
             do { try CodexFastEvidence.collect(codexHome: codexHome, store: store) }
             catch {
                 try Task.checkCancellation()
-                report.addIssue(ScanIssue(fileName: "logs_*.sqlite", line: nil, message: "Fast 证据：\(error.localizedDescription)"))
+                report.addIssue(ScanIssue(fileName: "logs_*.sqlite", line: nil, message: String(localized: "Fast evidence: \(error.localizedDescription)", bundle: .module)))
             }
             try store.restoreWeeklyWindows()
             let ordered = try discoverRollouts(codexHome: codexHome, report: &report)
@@ -114,7 +114,7 @@ public struct LocalUsageScanner: Sendable {
                 guard let identity = RolloutIdentity(fileName: url.lastPathComponent) else {
                     let name = url.lastPathComponent
                     if name.hasPrefix("rollout-"), name.hasSuffix(".jsonl") || name.hasSuffix(".jsonl.zst") {
-                        report.addIssue(ScanIssue(fileName: name, line: nil, message: "无法识别 rollout 文件身份，未猜测对话 ID。"))
+                        report.addIssue(ScanIssue(fileName: name, line: nil, message: String(localized: "Unable to identify the rollout file. No conversation ID was inferred.", bundle: .module)))
                     }
                     continue
                 }
@@ -124,7 +124,7 @@ public struct LocalUsageScanner: Sendable {
             }
         }
         if candidates.isEmpty {
-            report.addIssue(ScanIssue(fileName: codexHome.lastPathComponent, line: nil, message: "未发现可识别的 rollout 日志。"))
+            report.addIssue(ScanIssue(fileName: codexHome.lastPathComponent, line: nil, message: String(localized: "No recognizable rollout logs found.", bundle: .module)))
         }
         return candidates.values.sorted { $0[0].1.fileName < $1[0].1.fileName }
     }
@@ -136,7 +136,7 @@ public struct LocalUsageScanner: Sendable {
             let first = try contentDigest(url: url, identity: identity)
             for (otherURL, otherIdentity) in sorted.dropFirst() {
                 if try contentDigest(url: otherURL, identity: otherIdentity) != first {
-                    report.addIssue(ScanIssue(fileName: identity.fileName, line: nil, message: "同一 rollout 的多份文件内容不一致，已保留原有用量并停止更新该 rollout。"))
+                    report.addIssue(ScanIssue(fileName: identity.fileName, line: nil, message: String(localized: "Conflicting copies of this rollout were found. Existing usage was kept and updates to this rollout were stopped.", bundle: .module)))
                     return false
                 }
             }
@@ -201,7 +201,7 @@ public struct LocalUsageScanner: Sendable {
             } catch {
                 parser.state = previousState
                 report.addIssue(ScanIssue(fileName: identity.fileName, line: line + 1,
-                                          message: "解析停止：\(error.localizedDescription)"))
+                                          message: String(localized: "Parsing stopped: \(error.localizedDescription)", bundle: .module)))
                 failed = true
                 break
             }

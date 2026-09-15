@@ -69,11 +69,11 @@ enum PriceError: Error, LocalizedError {
     case invalidRate, invalidDocument, invalidDate, amountOverflow, invalidUsage
     var errorDescription: String? {
         switch self {
-        case .invalidRate: "模型单价必须是非负十进制数。"
-        case .invalidDocument: "价格响应缺少有效的 OpenAI 模型条目。"
-        case .invalidDate: "价格日期必须为有效的 UTC YYYY-MM-DD。"
-        case .amountOverflow: "金额超出整数纳美元范围，未写入近似结果。"
-        case .invalidUsage: "Token 总量或缓存分项不一致，无法可靠计算金额。"
+        case .invalidRate: String(localized: "Model prices must be nonnegative decimal numbers.", bundle: .module)
+        case .invalidDocument: String(localized: "The price response has no valid OpenAI model entries.", bundle: .module)
+        case .invalidDate: String(localized: "Price dates must use a valid UTC YYYY-MM-DD format.", bundle: .module)
+        case .amountOverflow: String(localized: "The cost exceeds the integer nanoUSD range. No approximate result was written.", bundle: .module)
+        case .invalidUsage: String(localized: "Token totals or cache components are inconsistent. Cost cannot be calculated reliably.", bundle: .module)
         }
     }
 }

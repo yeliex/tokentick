@@ -5,10 +5,10 @@ struct RolloutParser {
         case missingSession, mismatchedThread, missingTimestamp, ambiguousFork
         var errorDescription: String? {
             switch self {
-            case .missingSession: "用量事件前缺少 session_meta。"
-            case .mismatchedThread: "日志的 session_meta 与文件名中的对话 ID 不一致。"
-            case .missingTimestamp: "用量事件缺少有效时间。"
-            case .ambiguousFork: "fork 日志缺少可验证的继承边界，暂停入库以避免重复统计。"
+            case .missingSession: String(localized: "Missing session_meta before a usage event.", bundle: .module)
+            case .mismatchedThread: String(localized: "The session_meta in the log does not match the conversation ID in the file name.", bundle: .module)
+            case .missingTimestamp: String(localized: "The usage event has no valid timestamp.", bundle: .module)
+            case .ambiguousFork: String(localized: "The fork log has no verifiable inheritance boundary. Import was paused to avoid double counting.", bundle: .module)
             }
         }
     }

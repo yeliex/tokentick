@@ -5,6 +5,16 @@
 	"objectVersion" = "56";
 	"archiveVersion" = "1";
 	"objects" = {
+        "A0110CA10000000000000001" = {
+            "isa" = "PBXFileReference";
+            "path" = "TokenTick/Resources/Localizable.xcstrings";
+            "lastKnownFileType" = "text.json.xcstrings";
+            "sourceTree" = "<group>";
+        };
+        "A0110CA10000000000000002" = {
+            "isa" = "PBXBuildFile";
+            "fileRef" = "A0110CA10000000000000001";
+        };
 		"0BFFF1C249F1AE32AAED9616" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -151,7 +161,7 @@
 				"93FC48C7297D497665DCB3A0",
 				"1F67E260C0CE078CC861FA98",
 			);
-			"developmentRegion" = "zh-Hans";
+			"developmentRegion" = "en";
 			"knownRegions" = (
 				"zh-Hans",
 				"en",
@@ -293,6 +303,7 @@
 			"name" = "Resources";
 			"children" = (
 				"5FE9F455950903D8C3C10DC5",
+                "A0110CA10000000000000001",
 				"3685E330EC5277A9DD5661C6",
 				"F8995BA5891B07E328C60D6B",
 			);
@@ -378,6 +389,7 @@
 				"SWIFT_COMPILATION_MODE" = "wholemodule";
 				"MACOSX_DEPLOYMENT_TARGET" = "26.0";
 				"SWIFT_VERSION" = "6.0";
+                "SWIFT_EMIT_LOC_STRINGS" = "YES";
 				"SDKROOT" = "macosx";
 				"ARCHS" = "arm64";
 				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
@@ -432,6 +444,7 @@
 			"buildActionMask" = "2147483647";
 			"files" = (
 				"04200CFFD12D083534B07BB1",
+                "A0110CA10000000000000002",
 				"74C2431FE30C4A47C8443B80",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
@@ -536,6 +549,7 @@
 				"DEBUG_INFORMATION_FORMAT" = "dwarf";
 				"MACOSX_DEPLOYMENT_TARGET" = "26.0";
 				"SWIFT_VERSION" = "6.0";
+                "SWIFT_EMIT_LOC_STRINGS" = "YES";
 				"SDKROOT" = "macosx";
 				"ARCHS" = "arm64";
 				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";

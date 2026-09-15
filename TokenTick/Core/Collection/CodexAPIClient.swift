@@ -37,7 +37,7 @@ public struct CodexAPIClient: Sendable {
                 let after: CodexRateLimits = try session.request("account/rateLimits/read")
                 if before.accountId != after.accountId {
                     daily = nil
-                    issue = "读取期间账号发生切换，未采用本次每日桶。"
+                    issue = String(localized: "The account changed during the request. These daily buckets were discarded.", bundle: .module)
                 }
                 try Task.checkCancellation()
                 return try store.saveAPIObservation(limits: after, daily: daily, observedAt: Date(), issue: issue,
@@ -57,13 +57,13 @@ enum CodexAPIError: Error, LocalizedError {
     case missingExecutable, timeout, processExited, invalidResponse, oversizedResponse, rpc(Int), invalidStatistics
     var errorDescription: String? {
         switch self {
-        case .missingExecutable: "未找到可执行的 Codex CLI，请指定 codex 路径。"
-        case .timeout: "Codex 统计接口读取超时。"
-        case .processExited: "Codex app-server 已退出，未完成统计读取。"
-        case .invalidResponse: "Codex app-server 返回了无法识别的协议响应。"
-        case .oversizedResponse: "Codex 统计响应超过 4 MiB 限制。"
-        case .rpc(let code): "Codex 统计接口返回错误（\(code)）；未改写已有历史。"
-        case .invalidStatistics: "Codex 统计包含非法日期、重复日桶或无效数值，未写入。"
+        case .missingExecutable: String(localized: "Codex CLI executable not found. Specify the codex path.", bundle: .module)
+        case .timeout: String(localized: "The Codex statistics request timed out.", bundle: .module)
+        case .processExited: String(localized: "Codex app-server exited before statistics were loaded.", bundle: .module)
+        case .invalidResponse: String(localized: "Codex app-server returned an unrecognized protocol response.", bundle: .module)
+        case .oversizedResponse: String(localized: "The Codex statistics response exceeds the 4 MiB limit.", bundle: .module)
+        case .rpc(let code): String(localized: "The Codex statistics API returned error \(code). Existing history was kept.", bundle: .module)
+        case .invalidStatistics: String(localized: "Codex statistics contain invalid dates, duplicate daily buckets, or invalid values. No data was written.", bundle: .module)
         }
     }
 }

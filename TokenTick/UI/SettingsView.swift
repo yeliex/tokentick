@@ -6,6 +6,15 @@ import TokenTickUpdates
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case general = "通用", data = "数据", about = "关于"
     var id: Self { self }
+    // 保留原始值供偏好存储使用，展示名称随系统语言本地化。
+    var title: String {
+        switch self {
+        case .general: String(localized: "General")
+        case .data: String(localized: "Data")
+        case .about: String(localized: "About")
+        }
+    }
+
     var symbol: String {
         switch self {
         case .general: "gearshape"
@@ -24,7 +33,7 @@ struct SettingsView: View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
             List(SettingsSection.allCases, selection: $selection) { section in
                 NavigationLink(value: section) {
-                    Label(section.rawValue, systemImage: section.symbol)
+                    Label(section.title, systemImage: section.symbol)
                 }
             }
             .toolbar(removing: .sidebarToggle)
@@ -60,8 +69,8 @@ private struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
-            Section("启动") {
-                Toggle("开机启动", isOn: Binding(
+            Section(String(localized: "Startup")) {
+                Toggle(String(localized: "Launch at login"), isOn: Binding(
                     get: { loginStatus == .enabled || loginStatus == .requiresApproval },
                     set: { enabled in
                         do {
@@ -73,19 +82,19 @@ private struct GeneralSettingsView: View {
                     }
                 ))
                 if loginStatus == .requiresApproval {
-                    Button("在系统设置中允许开机启动") { SMAppService.openSystemSettingsLoginItems() }
+                    Button(String(localized: "Allow launch at login in System Settings")) { SMAppService.openSystemSettingsLoginItems() }
                 }
                 if let loginError { Text(loginError).foregroundStyle(.secondary).textSelection(.enabled) }
             }
-            Section("额度显示") {
-                Picker("显示方式", selection: $limitsShowRemaining) {
-                    Text("剩余").tag(true)
-                    Text("已使用").tag(false)
+            Section(String(localized: "Limit display")) {
+                Picker(String(localized: "Display"), selection: $limitsShowRemaining) {
+                    Text(String(localized: "remaining")).tag(true)
+                    Text(String(localized: "used")).tag(false)
                 }.pickerStyle(.segmented)
-                Picker("每周工作日刻度", selection: $limitsWorkingDays) {
-                    Text("4 天").tag(4)
-                    Text("5 天").tag(5)
-                    Text("7 天").tag(7)
+                Picker(String(localized: "Working days per week"), selection: $limitsWorkingDays) {
+                    Text(String(localized: "4 days")).tag(4)
+                    Text(String(localized: "5 days")).tag(5)
+                    Text(String(localized: "7 days")).tag(7)
                 }.pickerStyle(.segmented)
             }
         }
@@ -111,7 +120,7 @@ private struct AboutSettingsView: View {
                         .accessibilityHidden(true)
                     Text(ApplicationInfo.name)
                         .font(.system(size: 30, weight: .semibold, design: .rounded))
-                    Text("版本 \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ApplicationInfo.version)")
+                    Text(String(localized: "Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ApplicationInfo.version)"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 12)
@@ -122,11 +131,11 @@ private struct AboutSettingsView: View {
                 .padding(.top, 16)
 
                 VStack(spacing: 12) {
-                    Toggle("自动检查更新", isOn: Binding(
+                    Toggle(String(localized: "Check for updates automatically"), isOn: Binding(
                         get: { updates.automaticallyChecksForUpdates },
                         set: { updates.setAutomaticallyChecksForUpdates($0) }
                     ))
-                    Button("检查更新…", action: updates.checkForUpdates)
+                    Button(String(localized: "Check for Updates…"), action: updates.checkForUpdates)
                         .disabled(!updates.canCheckForUpdates)
                 }
 

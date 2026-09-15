@@ -20,45 +20,45 @@ struct UsageRecordsView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title).font(.headline).lineLimit(1)
-                    Text("用量明细")
+                    Text(String(localized: "Usage details"))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("关闭", action: onClose).keyboardShortcut(.cancelAction)
+                Button(String(localized: "Close"), action: onClose).keyboardShortcut(.cancelAction)
             }.padding(16)
             Divider()
             if let error { Text(error).foregroundStyle(.secondary).textSelection(.enabled).padding(12) }
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     Table(records) {
-                        TableColumn("时间") { row in
+                        TableColumn(String(localized: "Time")) { row in
                             Text(row.occurredAt.map { UsageFormatting.timestamp($0, timezone: TimeZone(identifier: query.timezone ?? "UTC") ?? .gmt) }
-                                 ?? row.usageDate ?? "未知")
+                                 ?? row.usageDate ?? String(localized: "Unknown"))
                         }.width(min: 110, ideal: 150)
-                        TableColumn("模型") { row in Text(row.model ?? "其他").lineLimit(1).help(row.model ?? "其他") }
+                        TableColumn(String(localized: "Model")) { row in Text(row.model ?? String(localized: "Other")).lineLimit(1).help(row.model ?? String(localized: "Other")) }
                             .width(min: 90, ideal: 120)
                         TableColumn("Tokens") { row in TokenText(value: row.totalTokens).monospacedDigit() }
                             .width(min: 80, ideal: 100)
-                        TableColumn("详情") { row in
-                            Button("详情") { selectedRecord = row }.buttonStyle(.borderless)
+                        TableColumn(String(localized: "Details")) { row in
+                            Button(String(localized: "Details")) { selectedRecord = row }.buttonStyle(.borderless)
                         }.width(50)
-                        TableColumn("费用") { row in Text(UsageFormatting.money(row.knownAmountNanoUSD)).monospacedDigit() }
+                        TableColumn(String(localized: "Cost")) { row in Text(UsageFormatting.money(row.knownAmountNanoUSD)).monospacedDigit() }
                             .width(min: 70, ideal: 90)
                     }
                     .tableStyle(.inset(alternatesRowBackgrounds: false)).scrollContentBackground(.hidden)
                     .overlay {
                         if loading {
-                            ProgressView("正在查询明细")
+                            ProgressView(String(localized: "Loading records"))
                         } else if records.isEmpty && error == nil {
-                            ContentUnavailableView("暂无明细", systemImage: "doc.text.magnifyingglass")
+                            ContentUnavailableView(String(localized: "No records yet"), systemImage: "doc.text.magnifyingglass")
                         }
                     }
                     Divider()
                     HStack {
-                        Text("第 \(page + 1) 页").foregroundStyle(.secondary)
+                        Text(String(localized: "Page \(page + 1)")).foregroundStyle(.secondary)
                         Spacer()
-                        Button("上一页") { page -= 1 }.disabled(page == 0 || loading)
-                        Button("下一页") { page += 1 }.disabled(!hasMore || loading)
+                        Button(String(localized: "Previous")) { page -= 1 }.disabled(page == 0 || loading)
+                        Button(String(localized: "Next")) { page += 1 }.disabled(!hasMore || loading)
                     }.padding(12)
                 }.frame(minWidth: 390, maxHeight: .infinity)
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -67,9 +67,9 @@ struct UsageRecordsView: View {
         .sheet(item: $selectedRecord) { record in
             VStack(spacing: 0) {
                 HStack {
-                    Text("请求详情").font(.headline)
+                    Text(String(localized: "Request details")).font(.headline)
                     Spacer()
-                    Button("关闭") { selectedRecord = nil }.keyboardShortcut(.cancelAction)
+                    Button(String(localized: "Close")) { selectedRecord = nil }.keyboardShortcut(.cancelAction)
                 }.padding(20)
                 Divider()
                 UsageRecordDetail(record: record, timezone: TimeZone(identifier: query.timezone ?? "UTC") ?? .gmt)
@@ -104,59 +104,59 @@ private struct UsageRecordDetail: View {
     let timezone: TimeZone
     var body: some View {
         Form {
-            Section("轮次归属") {
-                UsageDetailField("任务", value: record.title ?? record.threadID ?? "未知")
-                UsageDetailField("任务 ID", value: record.threadID ?? "未知")
-                UsageDetailField("项目", value: UsageFormatting.project(record.projectName))
-                UsageDetailField("账号", value: record.accountID ?? "未知")
-                UsageDetailField("轮次 ID", value: record.turnID ?? "未知")
-                UsageDetailField("用量时间", value: UsageFormatting.timestamp(record.occurredAt, timezone: timezone))
-                UsageDetailField("响应 ID", value: record.responseID ?? "未知")
-                UsageDetailField("小时／分钟", value: record.hour.flatMap { h in record.minute.map { String(format: "%02d:%02d", h, $0) } } ?? "未知")
-                UsageDetailField("统计日期", value: record.statisticalDate ?? "未知")
-                UsageDetailField("计价日期", value: record.usageDate ?? "未知")
+            Section(String(localized: "Turn attribution")) {
+                UsageDetailField(String(localized: "Task"), value: record.title ?? record.threadID ?? String(localized: "Unknown"))
+                UsageDetailField(String(localized: "Task ID"), value: record.threadID ?? String(localized: "Unknown"))
+                UsageDetailField(String(localized: "Project"), value: UsageFormatting.project(record.projectName))
+                UsageDetailField(String(localized: "Account"), value: record.accountID ?? String(localized: "Unknown"))
+                UsageDetailField(String(localized: "Turn ID"), value: record.turnID ?? String(localized: "Unknown"))
+                UsageDetailField(String(localized: "Usage time"), value: UsageFormatting.timestamp(record.occurredAt, timezone: timezone))
+                UsageDetailField(String(localized: "Response ID"), value: record.responseID ?? String(localized: "Unknown"))
+                UsageDetailField(String(localized: "Hour / minute"), value: record.hour.flatMap { h in record.minute.map { String(format: "%02d:%02d", h, $0) } } ?? String(localized: "Unknown"))
+                UsageDetailField(String(localized: "Statistics date"), value: record.statisticalDate ?? String(localized: "Unknown"))
+                UsageDetailField(String(localized: "Pricing date"), value: record.usageDate ?? String(localized: "Unknown"))
             }
-            Section("模型与计价模式") {
-                UsageDetailField("模型", value: record.model ?? "其他")
-                UsageDetailField("Fast", value: record.isFast.map { $0 ? "是" : "否" } ?? (record.pricingIsFast ? "是（额外日志）" : "否（默认普通）"))
-                UsageDetailField("长上下文计价", value: record.isLongContext.map { $0 ? "是" : "否" } ?? "未知")
+            Section(String(localized: "Model and pricing mode")) {
+                UsageDetailField(String(localized: "Model"), value: record.model ?? String(localized: "Other"))
+                UsageDetailField("Fast", value: record.isFast.map { $0 ? String(localized: "Yes") : String(localized: "No") } ?? (record.pricingIsFast ? String(localized: "Yes (additional logs)") : String(localized: "No (standard by default)")))
+                UsageDetailField(String(localized: "Long-context pricing"), value: record.isLongContext.map { $0 ? String(localized: "Yes") : String(localized: "No") } ?? String(localized: "Unknown"))
             }
             Section("Tokens") {
-                UsageDetailField("总量", value: UsageFormatting.tokens(record.totalTokens)).help(UsageFormatting.exactTokens(record.totalTokens))
-                UsageDetailField("输入", value: UsageFormatting.tokens(record.inputTokens)).help(UsageFormatting.exactTokens(record.inputTokens))
-                UsageDetailField("缓存读取", value: UsageFormatting.tokens(record.cacheReadTokens)).help(UsageFormatting.exactTokens(record.cacheReadTokens))
-                UsageDetailField("缓存写入", value: UsageFormatting.tokens(record.cacheWriteTokens)).help(UsageFormatting.exactTokens(record.cacheWriteTokens))
-                UsageDetailField("输出", value: UsageFormatting.tokens(record.outputTokens)).help(UsageFormatting.exactTokens(record.outputTokens))
-                UsageDetailField("思考", value: UsageFormatting.tokens(record.reasoningTokens)).help(UsageFormatting.exactTokens(record.reasoningTokens))
+                UsageDetailField(String(localized: "Total"), value: UsageFormatting.tokens(record.totalTokens)).help(UsageFormatting.exactTokens(record.totalTokens))
+                UsageDetailField(String(localized: "Input"), value: UsageFormatting.tokens(record.inputTokens)).help(UsageFormatting.exactTokens(record.inputTokens))
+                UsageDetailField(String(localized: "Cache read"), value: UsageFormatting.tokens(record.cacheReadTokens)).help(UsageFormatting.exactTokens(record.cacheReadTokens))
+                UsageDetailField(String(localized: "Cache write"), value: UsageFormatting.tokens(record.cacheWriteTokens)).help(UsageFormatting.exactTokens(record.cacheWriteTokens))
+                UsageDetailField(String(localized: "Output"), value: UsageFormatting.tokens(record.outputTokens)).help(UsageFormatting.exactTokens(record.outputTokens))
+                UsageDetailField(String(localized: "Reasoning"), value: UsageFormatting.tokens(record.reasoningTokens)).help(UsageFormatting.exactTokens(record.reasoningTokens))
             }
-            Section("实际费率 · $ / 百万 tokens") {
-                UsageDetailField("输入", value: record.inputPrice ?? "未知")
-                UsageDetailField("缓存读取", value: record.cacheReadPrice ?? "未知")
-                UsageDetailField("缓存写入", value: record.cacheWritePrice ?? "未知")
-                UsageDetailField("输出", value: record.outputPrice ?? "未知")
+            Section(String(localized: "Applied rates · $ / million tokens")) {
+                UsageDetailField(String(localized: "Input"), value: record.inputPrice ?? String(localized: "Unknown"))
+                UsageDetailField(String(localized: "Cache read"), value: record.cacheReadPrice ?? String(localized: "Unknown"))
+                UsageDetailField(String(localized: "Cache write"), value: record.cacheWritePrice ?? String(localized: "Unknown"))
+                UsageDetailField(String(localized: "Output"), value: record.outputPrice ?? String(localized: "Unknown"))
             }
-            Section("精确金额") {
-                UsageDetailField("输入", value: UsageFormatting.exactMoney(record.inputAmountNanoUSD))
-                UsageDetailField("缓存读取", value: UsageFormatting.exactMoney(record.cacheReadAmountNanoUSD))
-                UsageDetailField("缓存写入", value: UsageFormatting.exactMoney(record.cacheWriteAmountNanoUSD))
-                UsageDetailField("输出", value: UsageFormatting.exactMoney(record.outputAmountNanoUSD))
-                UsageDetailField("已知金额", value: UsageFormatting.exactMoney(record.knownAmountNanoUSD))
-                UsageDetailField("完整金额", value: UsageFormatting.exactMoney(record.amountNanoUSD))
+            Section(String(localized: "Exact cost")) {
+                UsageDetailField(String(localized: "Input"), value: UsageFormatting.exactMoney(record.inputAmountNanoUSD))
+                UsageDetailField(String(localized: "Cache read"), value: UsageFormatting.exactMoney(record.cacheReadAmountNanoUSD))
+                UsageDetailField(String(localized: "Cache write"), value: UsageFormatting.exactMoney(record.cacheWriteAmountNanoUSD))
+                UsageDetailField(String(localized: "Output"), value: UsageFormatting.exactMoney(record.outputAmountNanoUSD))
+                UsageDetailField(String(localized: "Known cost"), value: UsageFormatting.exactMoney(record.knownAmountNanoUSD))
+                UsageDetailField(String(localized: "Full cost"), value: UsageFormatting.exactMoney(record.amountNanoUSD))
             }
-            Section("来源信息") {
-                UsageDetailField("来源", value: record.source == "local" ? "本地日志" : "API")
-                UsageDetailField("Rollout ID", value: record.rolloutID ?? "未知")
-                UsageDetailField("文件名", value: record.fileName ?? "未知")
-                UsageDetailField("原始事件序号", value: record.sourceOrdinal.map(String.init) ?? "未知")
-                UsageDetailField("解压后行号", value: record.sourceLine.map(String.init) ?? "未知")
+            Section(String(localized: "Source information")) {
+                UsageDetailField(String(localized: "Source"), value: record.source == "local" ? String(localized: "Local logs") : "API")
+                UsageDetailField("Rollout ID", value: record.rolloutID ?? String(localized: "Unknown"))
+                UsageDetailField(String(localized: "File name"), value: record.fileName ?? String(localized: "Unknown"))
+                UsageDetailField(String(localized: "Original event index"), value: record.sourceOrdinal.map(String.init) ?? String(localized: "Unknown"))
+                UsageDetailField(String(localized: "Decompressed line number"), value: record.sourceLine.map(String.init) ?? String(localized: "Unknown"))
                 if let path = record.lastKnownPath {
-                    UsageDetailField("最近扫描位置", value: path)
-                    Button("在 Finder 中显示日志") {
+                    UsageDetailField(String(localized: "Last scan position"), value: path)
+                    Button(String(localized: "Show log in Finder")) {
                         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
                     }.disabled(!FileManager.default.fileExists(atPath: path))
                 }
-                UsageDetailField("推理深度", value: record.reasoningEffort ?? "未知")
-                UsageDetailField("计价模式", value: record.pricingIsFast ? "快速" : "普通")
+                UsageDetailField(String(localized: "Reasoning effort"), value: record.reasoningEffort ?? String(localized: "Unknown"))
+                UsageDetailField(String(localized: "Pricing mode"), value: record.pricingIsFast ? String(localized: "Fast") : String(localized: "Standard"))
             }
         }.formStyle(.grouped).scrollContentBackground(.hidden).textSelection(.enabled)
     }

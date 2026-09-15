@@ -16,7 +16,7 @@ struct MenuBarView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if subscriptionLoading {
-                ProgressView("正在读取订阅与额度…")
+                ProgressView(String(localized: "Loading subscription and limits…"))
                     .controlSize(.small)
                     .frame(maxWidth: .infinity, minHeight: 100)
             } else {
@@ -38,10 +38,10 @@ struct MenuBarView: View {
                         NSApp.setActivationPolicy(.regular)
                         openWindow(id: "main")
                         NSApp.activate(ignoringOtherApps: true)
-                    } label: { menuLabel(page.rawValue, symbol: page.symbol) }
+                    } label: { menuLabel(page.title, symbol: page.symbol) }
                 }
                 Button { NSApp.terminate(nil) } label: {
-                    menuLabel("退出", symbol: "rectangle.portrait.and.arrow.right", showsChevron: false)
+                    menuLabel(String(localized: "Quit"), symbol: "rectangle.portrait.and.arrow.right", showsChevron: false)
                 }.keyboardShortcut("q")
             }.buttonStyle(MenuRowButtonStyle())
                 .padding(.horizontal, -10)
@@ -89,17 +89,17 @@ struct MenuBarView: View {
     }
 
     private func syncStatus(now: Date) -> String {
-        if app.isSyncing { return "同步中…" }
-        if app.error != nil { return "同步失败" }
+        if app.isSyncing { return String(localized: "Syncing…") }
+        if app.error != nil { return String(localized: "Sync failed") }
         if let observed = app.currentLimits?.observedAt, now.timeIntervalSince1970 - observed > 900 {
-            return "额度已过期"
+            return String(localized: "Limits are out of date")
         }
-        guard let finished = app.lastSync?.finishedAt else { return "尚未同步" }
+        guard let finished = app.lastSync?.finishedAt else { return String(localized: "Not synced yet") }
         let minutes = max(0, Int(now.timeIntervalSince1970 - finished) / 60)
-        if minutes == 0 { return "刚刚同步" }
-        if minutes < 60 { return "\(minutes) 分钟前同步" }
-        if minutes < 1440 { return "\(minutes / 60) 小时前同步" }
-        return "\(minutes / 1440) 天前同步"
+        if minutes == 0 { return String(localized: "Synced just now") }
+        if minutes < 60 { return String(localized: "Synced \(minutes) min ago") }
+        if minutes < 1440 { return String(localized: "Synced \(minutes / 60) hr ago") }
+        return String(localized: "Synced \(minutes / 1440)d ago")
     }
 
     private func menuLabel(_ title: String, symbol: String, showsChevron: Bool = true) -> some View {

@@ -42,10 +42,10 @@ public struct UsageSynchronizer: Sendable {
                     report.api = result
                     await onCurrentLimits?(result.currentLimits)
                     if let issue = result.issue { report.issues.append(issue) }
-                    if !result.accountAvailable { report.issues.append("服务端未提供可确认的账号归属。") }
+                    if !result.accountAvailable { report.issues.append(String(localized: "The server did not provide a verifiable account identity.", bundle: .module)) }
                 } catch {
                     try Task.checkCancellation()
-                    report.issues.append("服务端：\(error.localizedDescription)")
+                    report.issues.append(String(localized: "Server: \(error.localizedDescription)", bundle: .module))
                     await onCurrentLimits?(nil)
                 }
             }
@@ -56,10 +56,10 @@ public struct UsageSynchronizer: Sendable {
                     report.scan = try LocalUsageScanner(store: store).scan(codexHome: codexHome) { progress in
                         onProgress?(SynchronizationProgress(stage: .scanning, scan: progress))
                     }
-                    if let count = report.scan?.issueCount, count > 0 { report.issues.append("日志扫描发现 \(count) 个问题，已保留成功采集的数据。") }
+                    if let count = report.scan?.issueCount, count > 0 { report.issues.append(String(localized: "Log scan issues: \(count). Successfully collected data was kept.", bundle: .module)) }
                 } catch {
                     try Task.checkCancellation()
-                    report.issues.append("日志：\(error.localizedDescription)")
+                    report.issues.append(String(localized: "Logs: \(error.localizedDescription)", bundle: .module))
                 }
             }
             try Task.checkCancellation()
@@ -70,7 +70,7 @@ public struct UsageSynchronizer: Sendable {
                     report.prices = prices
                 } catch {
                     try Task.checkCancellation()
-                    report.issues.append("价格：\(error.localizedDescription)")
+                    report.issues.append(String(localized: "Prices: \(error.localizedDescription)", bundle: .module))
                 }
             }
             try Task.checkCancellation()
@@ -83,13 +83,13 @@ public struct UsageSynchronizer: Sendable {
                     }
                 } catch {
                     try Task.checkCancellation()
-                    report.issues.append("计价：\(error.localizedDescription)")
+                    report.issues.append(String(localized: "Pricing: \(error.localizedDescription)", bundle: .module))
                 }
             }
             try Task.checkCancellation()
             onProgress?(SynchronizationProgress(stage: .statistics, scan: nil))
             do { report.statistics = try store.rebuildStatistics() }
-            catch { report.issues.append("统计：\(error.localizedDescription)") }
+            catch { report.issues.append(String(localized: "Statistics: \(error.localizedDescription)", bundle: .module)) }
             try Task.checkCancellation()
             report.finishedAt = Date().timeIntervalSince1970
             try store.saveSynchronizationReport(report)

@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
   name: "TokenTick",
+  defaultLocalization: "en",
   platforms: [.macOS("26.0")],
   products: [
     .library(
@@ -25,7 +26,7 @@ let package = Package(
       dependencies: [
         .product(name: "GRDB", package: "GRDB.swift"),
         .product(name: "libzstd", package: "zstd"),
-      ], path: "TokenTick/Core", resources: [.copy("Pricing/openai-default-prices.json")]),
+      ], path: "TokenTick/Core", resources: [.copy("Pricing/openai-default-prices.json"), .process("Resources")]),
     .testTarget(
       name: "TokenTickCoreTests",
       dependencies: ["TokenTickCore",.product(name: "GRDB", package: "GRDB.swift"),.product(name: "libzstd", package: "zstd"),]

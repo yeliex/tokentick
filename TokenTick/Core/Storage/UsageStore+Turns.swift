@@ -3,7 +3,7 @@ import GRDB
 
 extension UsageStore {
     private struct ConflictingEvent: Error, LocalizedError {
-        var errorDescription: String? { "同一用量事件的身份或分项冲突，未推进明细和扫描游标。" }
+        var errorDescription: String? { String(localized: "The usage event has conflicting identity or components. Records and the scan cursor were not advanced.", bundle: .module) }
     }
 
     /// 请求保留轮次归属与累计分项，混合日志格式按响应或完整累计值去重。

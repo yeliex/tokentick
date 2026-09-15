@@ -37,7 +37,7 @@ public struct TokenUsage: Codable, Equatable, Sendable {
         totalTokens = try values.decode(Int64.self, forKey: .totalTokens)
         let counters = [inputTokens, outputTokens, cachedInputTokens, cacheWriteInputTokens, reasoningOutputTokens, totalTokens]
         guard counters.compactMap({ $0 }).allSatisfy({ $0 >= 0 }) else {
-            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Token 计数不能为负数。"))
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: String(localized: "Token counts cannot be negative.", bundle: .module)))
         }
     }
 }

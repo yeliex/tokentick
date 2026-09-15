@@ -5,6 +5,19 @@ import TokenTickCore
 enum UsagePeriod: String, CaseIterable, Identifiable {
     case today = "当天", week = "7天", month = "30天", quarter = "90天", year = "1年", all = "所有", custom = "自定义"
     var id: Self { self }
+    // 保留原始值供偏好存储使用，展示名称随系统语言本地化。
+    var title: String {
+        switch self {
+        case .today: String(localized: "Today")
+        case .week: String(localized: "7 days")
+        case .month: String(localized: "30 days")
+        case .quarter: String(localized: "90 days")
+        case .year: String(localized: "1 year")
+        case .all: String(localized: "Lifetime")
+        case .custom: String(localized: "Custom")
+        }
+    }
+
     func dates(timezone: TimeZone) -> (String?, String?) {
         guard self != .all && self != .custom else { return (nil, nil) }
         var calendar = Calendar(identifier: .gregorian)
@@ -30,7 +43,7 @@ struct UsageDisplayRow: Identifiable, Sendable, Equatable {
     let thread: ThreadInfo?
     let grouping: UsageGrouping
     var id: String { summary.group.map { "value:" + $0 } ?? "unknown" }
-    var title: String { grouping == .project ? UsageFormatting.project(summary.group) : thread?.title ?? summary.group ?? "未知归属" }
+    var title: String { grouping == .project ? UsageFormatting.project(summary.group) : thread?.title ?? summary.group ?? String(localized: "Unattributed") }
 }
 
 @MainActor @Observable

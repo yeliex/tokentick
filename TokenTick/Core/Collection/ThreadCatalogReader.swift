@@ -52,6 +52,6 @@ struct ThreadCatalogReader {
 
     private enum CatalogError: LocalizedError {
         case unsupportedSchema
-        var errorDescription: String? { "Codex 任务数据库字段与已验证格式不兼容，保留现有名称缓存。" }
+        var errorDescription: String? { String(localized: "Codex task database fields are incompatible with the verified format. The existing name cache was kept.", bundle: .module) }
     }
 }

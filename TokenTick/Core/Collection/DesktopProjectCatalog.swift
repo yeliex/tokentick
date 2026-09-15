@@ -91,6 +91,6 @@ struct DesktopProjectCatalog: Decodable {
 
     private enum CatalogError: LocalizedError {
         case tooLarge
-        var errorDescription: String? { "Codex 桌面项目缓存超过 32 MiB，保留现有映射并停止读取。" }
+        var errorDescription: String? { String(localized: "The Codex desktop project cache exceeds 32 MiB. Existing mappings were kept and reading was stopped.", bundle: .module) }
     }
 }

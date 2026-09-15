@@ -4,21 +4,22 @@ import TokenTickCore
 extension UsageSort {
     var title: String {
         switch self {
-        case .automatic: "默认顺序"
-        case .tokens: "Tokens 从高到低"
-        case .amount: "已知金额从高到低"
-        case .name: "名称升序"
+        case .automatic: String(localized: "Default order")
+        case .tokens: String(localized: "Tokens, highest first")
+        case .amount: String(localized: "Known cost, highest first")
+        case .name: String(localized: "Name, ascending")
         }
     }
 }
 
 extension UsageFilters {
     var summary: String {
-        [("任务", thread), ("项目", project), ("模型", model), ("单日", day)].compactMap { name, filter in
-            switch filter {
+        [(String(localized: "Task"), thread), (String(localized: "Project"), project), (String(localized: "Model"), model), (String(localized: "Day"), day)].enumerated().compactMap { index, entry in
+            let (name, filter) = entry
+            return switch filter {
             case .all: nil
-            case .unknown: "\(name)：未知"
-            case .value(let value): "\(name)：\(name == "项目" ? UsageFormatting.project(value) : value)"
+            case .unknown: String(localized: "\(name): Unknown")
+            case .value(let value): String(localized: "\(name): \(index == 1 ? UsageFormatting.project(value) : value)")
             }
         }.joined(separator: " · ")
     }
@@ -38,24 +39,24 @@ struct UsageDateFilter: View {
         Menu {
             ForEach(periods) { value in
                 Button { period = value } label: {
-                    if period == value { Label(value.rawValue, systemImage: "checkmark") }
-                    else { Text(value.rawValue) }
+                    if period == value { Label(value.title, systemImage: "checkmark") }
+                    else { Text(value.title) }
                 }
             }
             Divider()
-            Button("自定义…") { openCalendar() }
+            Button(String(localized: "Custom…")) { openCalendar() }
         } label: {
-            Text(period == .custom ? "自定义" : period.rawValue)
-        }.frame(width: 90).accessibilityLabel("日期范围")
+            Text(period.title)
+        }.frame(width: 90).accessibilityLabel(String(localized: "Date range"))
         .popover(isPresented: $showingCalendar, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 20) {
-                Text("选择日期范围").font(.headline)
-                DatePicker("开始日期", selection: $draftFrom, in: ...draftThrough, displayedComponents: .date)
-                DatePicker("结束日期", selection: $draftThrough, in: draftFrom..., displayedComponents: .date)
+                Text(String(localized: "Choose date range")).font(.headline)
+                DatePicker(String(localized: "Start date"), selection: $draftFrom, in: ...draftThrough, displayedComponents: .date)
+                DatePicker(String(localized: "End date"), selection: $draftThrough, in: draftFrom..., displayedComponents: .date)
                 HStack {
                     Spacer()
-                    Button("取消") { showingCalendar = false }.keyboardShortcut(.cancelAction)
-                    Button("应用") {
+                    Button(String(localized: "Cancel")) { showingCalendar = false }.keyboardShortcut(.cancelAction)
+                    Button(String(localized: "Apply")) {
                         from = draftFrom; through = draftThrough; period = .custom
                         showingCalendar = false
                     }.keyboardShortcut(.defaultAction)

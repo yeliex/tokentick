@@ -26,11 +26,11 @@ struct TokenTickApp: App {
         .commands {
             CommandGroup(replacing: .appSettings) { MainWindowSettingsButton() }
             CommandGroup(replacing: .saveItem) {
-                Button("关闭窗口") { NSApp.keyWindow?.performClose(nil) }
+                Button(String(localized: "Close Window")) { NSApp.keyWindow?.performClose(nil) }
                     .keyboardShortcut("w")
             }
             CommandGroup(after: .appInfo) {
-                Button("检查更新…", action: updates.checkForUpdates)
+                Button(String(localized: "Check for Updates…"), action: updates.checkForUpdates)
                     .disabled(!updates.canCheckForUpdates)
             }
         }
@@ -61,12 +61,12 @@ struct TokenTickApp: App {
     private var menuBarTooltip: String {
         let windows = model.currentLimits?.windows.filter { $0.limitID == "codex" } ?? []
         guard let window = windows.first(where: { $0.durationMinutes == 10_080 }) ?? windows.first,
-              window.usedPercent.isFinite else { return "TokenTick · 等待额度更新" }
+              window.usedPercent.isFinite else { return String(localized: "TokenTick · Waiting for limit update") }
         if let reset = window.resetsAt, Double(reset) <= Date().timeIntervalSince1970 {
-            return "TokenTick · 等待额度重置"
+            return String(localized: "TokenTick · Waiting for limit reset")
         }
         let percent = showRemaining ? max(0, 100 - window.usedPercent) : window.usedPercent
-        return "TokenTick · \(window.durationMinutes == 10_080 ? "7 天" : "主订阅")\(showRemaining ? "剩余" : "已使用") \(percent.formatted(.number.precision(.fractionLength(0...1))))%"
+        return String(localized: "TokenTick · \(window.durationMinutes == 10_080 ? String(localized: "7 days") : String(localized: "Subscription")) · \(percent.formatted(.number.precision(.fractionLength(0...1))))% \(showRemaining ? String(localized: "remaining") : String(localized: "used"))")
     }
 
     // 标签直接使用稳定的图片实例，避免菜单栏宿主反复失效和重新布局。
@@ -95,7 +95,7 @@ struct MainWindowSettingsButton: View {
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        Button("设置…") {
+        Button(String(localized: "Settings…")) {
             // 在切换激活窗口前收起菜单；应用命令与弹层内快捷键均经过这里。
             let sourceWindow = NSApp.keyWindow
             dismiss()

@@ -63,6 +63,6 @@ public final class CodexLogWatcher {
 
     private enum WatchError: LocalizedError {
         case unavailable
-        var errorDescription: String? { "文件通知不可用，将通过定时扫描核对日志。" }
+        var errorDescription: String? { String(localized: "File notifications are unavailable. Logs will be checked through scheduled scans.", bundle: .module) }
     }
 }

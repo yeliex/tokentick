@@ -35,18 +35,18 @@ struct OverviewChartsView: View {
     }
     private var tokenMean: Double { points.reduce(0) { $0 + Double($1.summary.totalTokens) } / bucketCount }
     private var moneyMean: Double { points.reduce(0) { $0 + Double($1.summary.knownAmountNanoUSD ?? 0) / 1_000_000_000 } / bucketCount }
-    private var meanTitle: String { monthly ? "月均" : weekly ? "周均" : "日均" }
+    private var meanTitle: String { monthly ? String(localized: "Monthly average") : weekly ? String(localized: "Weekly average") : String(localized: "Daily average") }
     private var axisValues: [Double] { (0...4).map { tokenMaximum * Double($0) / 4 } }
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
-                Text("用量趋势").font(.headline)
+                Text(String(localized: "Usage trend")).font(.headline)
                 Spacer()
                 Label("Tokens", systemImage: "square.fill").foregroundStyle(UsageChartColors.tokens)
-                Label("金额", systemImage: "line.diagonal").foregroundStyle(UsageChartColors.money)
+                Label(String(localized: "Cost"), systemImage: "line.diagonal").foregroundStyle(UsageChartColors.money)
             }.font(.caption)
             if points.isEmpty {
-                ContentUnavailableView("暂无用量", systemImage: "chart.bar").frame(height: 240)
+                ContentUnavailableView(String(localized: "No usage yet"), systemImage: "chart.bar").frame(height: 240)
             } else {
                 HStack {
                     if let selected {
@@ -54,33 +54,33 @@ struct OverviewChartsView: View {
                     } else { Text("Tokens / $").foregroundStyle(.secondary) }
                 }.font(.caption).monospacedDigit().frame(height: 18)
                 Chart {
-                    RuleMark(y: .value("平均 Tokens", tokenMean))
+                    RuleMark(y: .value(String(localized: "Average tokens"), tokenMean))
                         .foregroundStyle(UsageChartColors.tokens.opacity(0.65)).lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 4]))
                     if hasMoney {
-                        RuleMark(y: .value("平均金额", moneyMean / moneyMaximum * tokenMaximum))
+                        RuleMark(y: .value(String(localized: "Average cost"), moneyMean / moneyMaximum * tokenMaximum))
                             .foregroundStyle(UsageChartColors.money.opacity(0.65)).lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 4]))
                     }
                     ForEach(points) { point in
-                        BarMark(x: .value("时间", point.date, unit: bucket), y: .value("Tokens", Double(point.summary.totalTokens)))
+                        BarMark(x: .value(String(localized: "Time"), point.date, unit: bucket), y: .value("Tokens", Double(point.summary.totalTokens)))
                             .foregroundStyle(UsageChartColors.tokens.opacity(selected?.id == point.id ? 1 : selected == nil ? 0.8 : 0.45)).cornerRadius(3)
                             .accessibilityLabel(point.date.formatted())
                             .accessibilityValue(UsageFormatting.exactTokens(point.summary.totalTokens) + " Tokens")
                         if let amount = point.summary.knownAmountNanoUSD {
-                            LineMark(x: .value("时间", point.date, unit: bucket),
-                                y: .value("金额", Double(amount) / 1_000_000_000 / moneyMaximum * tokenMaximum),
-                                series: .value("连续金额", moneySegment(at: point.date)))
+                            LineMark(x: .value(String(localized: "Time"), point.date, unit: bucket),
+                                y: .value(String(localized: "Cost"), Double(amount) / 1_000_000_000 / moneyMaximum * tokenMaximum),
+                                series: .value(String(localized: "Cost segment"), moneySegment(at: point.date)))
                                 .foregroundStyle(UsageChartColors.money).lineStyle(StrokeStyle(lineWidth: 2))
                                 .accessibilityLabel(point.date.formatted())
                                 .accessibilityValue(UsageFormatting.money(amount))
                             if points.count == 1 {
-                                PointMark(x: .value("时间", point.date, unit: bucket),
-                                    y: .value("金额", Double(amount) / 1_000_000_000 / moneyMaximum * tokenMaximum))
+                                PointMark(x: .value(String(localized: "Time"), point.date, unit: bucket),
+                                    y: .value(String(localized: "Cost"), Double(amount) / 1_000_000_000 / moneyMaximum * tokenMaximum))
                                     .foregroundStyle(UsageChartColors.money)
                             }
                         }
                     }
                     if let selected {
-                        RuleMark(x: .value("选中时间", selected.date, unit: bucket))
+                        RuleMark(x: .value(String(localized: "Selected time"), selected.date, unit: bucket))
                             .foregroundStyle(.secondary).lineStyle(StrokeStyle(dash: [3]))
                     }
                 }
@@ -123,7 +123,7 @@ struct OverviewChartsView: View {
                 .accessibilityRepresentation {
                     VStack {
                         ForEach(points) { point in
-                            Text("\(UsageFormatting.timestamp(point.date.timeIntervalSince1970, timezone: calendar.timeZone))：\(UsageFormatting.exactTokens(point.summary.totalTokens)) Tokens，\(UsageFormatting.money(point.summary.knownAmountNanoUSD))")
+                            Text("\(UsageFormatting.timestamp(point.date.timeIntervalSince1970, timezone: calendar.timeZone)): \(UsageFormatting.exactTokens(point.summary.totalTokens)) Tokens, \(UsageFormatting.money(point.summary.knownAmountNanoUSD))")
                         }
                     }.accessibilityElement(children: .contain)
                 }
@@ -131,7 +131,7 @@ struct OverviewChartsView: View {
                     Text("\(meanTitle) \(compact(tokenMean)) Tokens").foregroundStyle(UsageChartColors.tokens)
                     if hasMoney { Text("\(meanTitle) $\(compact(moneyMean))").foregroundStyle(UsageChartColors.money) }
                     Spacer()
-                }.font(.caption).help("按所选范围内的日／周／月计算，包含无用量的时间段；费用只汇总已知金额。")
+                }.font(.caption).help(String(localized: "Calculated per day, week, or month in the selected range, including periods without usage. Cost includes only known amounts."))
             }
         }.usageSurface().environment(\.timeZone, calendar.timeZone).environment(\.calendar, calendar)
     }
@@ -182,25 +182,37 @@ struct ModelUsageView: View {
     private func color(_ item: OverviewUsageShare, index: Int, ring: Int) -> Color {
         item.name == "未知" ? .secondary.opacity(0.45) : colors[(index + ring * 2) % colors.count]
     }
+    private func shareTitle(_ name: String, ring: Int) -> String {
+        if name == "未知" { return String(localized: "Unknown") }
+        if ring == 2 { return effortTitle(name) }
+        guard ring == 1 else { return name }
+        return switch name {
+        case "快速": String(localized: "Fast")
+        case "普通": String(localized: "Standard")
+        case "快速＋长上下文": String(localized: "Fast + long context")
+        case "长上下文": String(localized: "Long context")
+        default: name
+        }
+    }
     private func effortTitle(_ name: String) -> String {
         switch name {
-        case "none": "无推理"
-        case "minimal": "最低"
-        case "low": "低"
-        case "medium": "中"
-        case "high": "高"
-        case "xhigh": "极高"
-        case "max": "最高"
-        case "ultra": "超高"
+        case "none": String(localized: "None")
+        case "minimal": String(localized: "Minimal")
+        case "low": String(localized: "Low")
+        case "medium": String(localized: "Medium")
+        case "high": String(localized: "High")
+        case "xhigh": String(localized: "Extra high")
+        case "max": String(localized: "Maximum")
+        case "ultra": String(localized: "Ultra")
         default: name
         }
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
-                Text("模型使用").font(.headline)
+                Text(String(localized: "Model usage")).font(.headline)
                 Spacer()
-                Picker("统计指标", selection: $money) { Text("Tokens").tag(false); Text("金额").tag(true) }
+                Picker(String(localized: "Metric"), selection: $money) { Text("Tokens").tag(false); Text(String(localized: "Cost")).tag(true) }
                     .pickerStyle(.segmented).labelsHidden().frame(width: 150)
             }
             ViewThatFits(in: .horizontal) {
@@ -218,9 +230,9 @@ struct ModelUsageView: View {
     }
     private var shareColumns: some View {
         HStack(alignment: .top, spacing: 16) {
-            shareList(modelShares, title: "模型", ring: 0)
-            shareList(modeShares, title: "使用模式", ring: 1)
-            shareList(effortShares, title: "推理深度", ring: 2)
+            shareList(modelShares, title: String(localized: "Model"), ring: 0)
+            shareList(modeShares, title: String(localized: "Usage mode"), ring: 1)
+            shareList(effortShares, title: String(localized: "Reasoning effort"), ring: 2)
         }
     }
     private var rings: some View {
@@ -268,7 +280,7 @@ struct ModelUsageView: View {
                         .rotationEffect(.degrees(-90))
                         .scaleEffect(selected ? 1.025 : 1)
                         .opacity(hovered == nil || selected ? 1 : 0.45)
-                        .accessibilityLabel(index == 2 ? effortTitle(item.name) : item.name)
+                        .accessibilityLabel(shareTitle(item.name, ring: index))
                         .accessibilityValue(money ? UsageFormatting.money(item.amount) : UsageFormatting.exactTokens(item.tokens))
                 }
             }
@@ -285,7 +297,7 @@ struct ModelUsageView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 6) {
                                 Circle().fill(color(item, index: index, ring: ring)).frame(width: 6, height: 6)
-                                Text(ring == 2 ? effortTitle(item.name) : item.name).lineLimit(1).help(item.name)
+                                Text(shareTitle(item.name, ring: ring)).lineLimit(1).help(shareTitle(item.name, ring: ring))
                                 Spacer(minLength: 2)
                                 Text(total > 0 ? (value(item) / total).formatted(.percent.precision(.fractionLength(0...1))) : "—")
                                     .foregroundStyle(.secondary)

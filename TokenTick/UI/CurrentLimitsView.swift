@@ -11,7 +11,7 @@ struct CurrentLimitsView: View {
             VStack(alignment: .leading, spacing: compact ? 12 : 18) {
                 if !compact {
                     HStack {
-                        Text("当前额度").font(.title2.weight(.semibold))
+                        Text(String(localized: "Current limits")).font(.title2.weight(.semibold))
                         Spacer()
                         if let plan = app.currentLimits?.planType, let name = Self.planName(plan) {
                             Text(name).font(.callout).foregroundStyle(.secondary)
@@ -21,7 +21,7 @@ struct CurrentLimitsView: View {
                 if let snapshot = app.currentLimits {
                     let main = snapshot.windows.filter { $0.limitID == "codex" }
                     if !main.isEmpty { limitGroup(windows: main, snapshot: snapshot, now: context.date) }
-                    else { Text("暂无主订阅额度").font(.callout).foregroundStyle(.secondary) }
+                    else { Text(String(localized: "No subscription limits available")).font(.callout).foregroundStyle(.secondary) }
                     if !compact {
                         let groups = Dictionary(grouping: snapshot.windows.filter { $0.limitID != "codex" }, by: \.limitID)
                         ForEach(groups.keys.sorted(), id: \.self) { name in
@@ -30,9 +30,9 @@ struct CurrentLimitsView: View {
                     }
                 } else {
                     if app.isSyncing {
-                        ProgressView("正在读取额度…").controlSize(.small).frame(maxWidth: .infinity, minHeight: compact ? 40 : 100)
+                        ProgressView(String(localized: "Loading limits…")).controlSize(.small).frame(maxWidth: .infinity, minHeight: compact ? 40 : 100)
                     } else {
-                        Text("暂无当前额度，请刷新或检查 Codex 登录状态。")
+                        Text(String(localized: "No current limits. Refresh or check your Codex sign-in status."))
                             .font(.callout).foregroundStyle(.secondary)
                     }
                 }
@@ -48,12 +48,12 @@ struct CurrentLimitsView: View {
                 VStack(alignment: .leading, spacing: compact ? 2 : 4) {
                     if let count = snapshot.availableResets {
                         HStack(alignment: .center, spacing: 8) {
-                            Text("可用重置").fixedSize()
-                            Text("\(count) 次").fixedSize()
+                            Text(String(localized: "Available resets")).fixedSize()
+                            Text(count.formatted()).fixedSize()
                             Spacer(minLength: 12)
                             if let expirations = snapshot.resetCreditExpirations, !expirations.isEmpty {
                                 let dates = expirations.map { expiry in
-                                    expiry.map { Date(timeIntervalSince1970: Double($0)).formatted(.dateTime.month().day().hour().minute()) + " 到期" } ?? "永不过期"
+                                    expiry.map { String(localized: "Expires \(Date(timeIntervalSince1970: Double($0)).formatted(.dateTime.month().day().hour().minute()))") } ?? String(localized: "Never expires")
                                 }.joined(separator: " · ")
                                 ScrollView(.horizontal) {
                                     Text(dates).fixedSize().help(dates)
@@ -64,7 +64,7 @@ struct CurrentLimitsView: View {
                     if snapshot.unlimitedCredits == true || snapshot.creditsBalance != nil {
                         HStack(alignment: .center, spacing: 8) {
                             Text("Credits").fixedSize()
-                            if snapshot.unlimitedCredits == true { Text("不限额") }
+                            if snapshot.unlimitedCredits == true { Text(String(localized: "Unlimited")) }
                             else if let balance = snapshot.creditsBalance {
                                 Text(Decimal(string: balance, locale: Locale(identifier: "en_US_POSIX")).map { $0.formatted(.number.precision(.fractionLength(0...2))) } ?? balance)
                                     .help(balance)
@@ -80,10 +80,10 @@ struct CurrentLimitsView: View {
             ForEach(windows.sorted { ($0.durationMinutes ?? 0) < ($1.durationMinutes ?? 0) }) { window in
                 VStack(spacing: 10) {
                     HStack(spacing: 8) {
-                        Text(window.displayName.flatMap { $0.isEmpty ? nil : $0 } ?? (window.limitID == "codex_bengalfox" ? "Codex Spark" : "扩展额度"))
+                        Text(window.displayName.flatMap { $0.isEmpty ? nil : $0 } ?? (window.limitID == "codex_bengalfox" ? "Codex Spark" : String(localized: "Additional limits")))
                             .fontWeight(.medium)
                         Text(periodName(window))
-                        Text("\(showRemaining ? "剩余" : "已使用") \(displayPercent(window).formatted(.number.precision(.fractionLength(0...1))))%")
+                        Text("\(showRemaining ? String(localized: "remaining") : String(localized: "used")) \(displayPercent(window).formatted(.number.precision(.fractionLength(0...1))))%")
                             .foregroundStyle(.secondary)
                         Spacer()
                         if let reset = window.resetsAt {
@@ -97,7 +97,7 @@ struct CurrentLimitsView: View {
         }.padding(18).background(.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 16))
     }
     private func periodName(_ window: CurrentLimitWindow) -> String {
-        window.durationMinutes.map { $0 == 10080 ? "7 天" : $0 == 300 ? "5 小时" : "\($0) 分钟" } ?? "额度"
+        window.durationMinutes.map { $0 == 10080 ? String(localized: "7 days") : $0 == 300 ? String(localized: "5 hours") : String(localized: "\($0) min") } ?? String(localized: "Limit")
     }
     private func progress(_ percent: Double) -> some View {
         GeometryReader { geometry in
@@ -117,18 +117,18 @@ struct CurrentLimitsView: View {
                 Text(periodName(window)).font(.callout).foregroundStyle(.secondary)
             }
             if expired {
-                Text("等待额度重置").foregroundStyle(.secondary)
+                Text(String(localized: "Waiting for limit reset")).foregroundStyle(.secondary)
             } else {
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
                     if compact {
                         Text(periodName(window)).font(.callout).foregroundStyle(.secondary)
                         Text("\(displayPercent(window).formatted(.number.precision(.fractionLength(0...1))))%")
                             .font(.system(size: 16, weight: .semibold)).monospacedDigit()
-                        Text(showRemaining ? "剩余" : "已使用").font(.caption).foregroundStyle(.secondary)
+                        Text(showRemaining ? String(localized: "remaining") : String(localized: "used")).font(.caption).foregroundStyle(.secondary)
                     } else {
                         Text("\(displayPercent(window).formatted(.number.precision(.fractionLength(0...1))))%")
                             .font(.system(size: 36, weight: .semibold, design: .rounded)).monospacedDigit()
-                        Text(showRemaining ? "剩余" : "已使用").font(.caption).foregroundStyle(.secondary)
+                        Text(showRemaining ? String(localized: "remaining") : String(localized: "used")).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     if let reset = window.resetsAt {
@@ -142,7 +142,7 @@ struct CurrentLimitsView: View {
                 if progressDifference != nil || prediction(forecast, window: window, now: now) != nil {
                     HStack(alignment: .firstTextBaseline) {
                         if let difference = progressDifference {
-                            Text("\(difference > 0 ? "超前" : "结余") \(abs(difference).formatted(.number.precision(.fractionLength(0...1))))%")
+                            Text("\(difference > 0 ? String(localized: "Ahead of pace") : String(localized: "Below pace")) \(abs(difference).formatted(.number.precision(.fractionLength(0...1))))%")
                         }
                         Spacer(minLength: 8)
                         if let text = prediction(forecast, window: window, now: now) {
@@ -176,37 +176,37 @@ struct CurrentLimitsView: View {
         case .stale: return nil
         case .invalidBoundary: return nil
         case .idle: return nil
-        case .exhausted: return "额度已耗尽"
+        case .exhausted: return String(localized: "Limit exhausted")
         case .estimated:
             guard let exhaustion = value.exhaustsAt, let reset = window.resetsAt else { return nil }
             if exhaustion < Double(reset) {
-                if exhaustion <= now.timeIntervalSince1970 { return "预计已耗尽，请刷新" }
-                return "预计\(duration(exhaustion - now.timeIntervalSince1970))后耗尽"
+                if exhaustion <= now.timeIntervalSince1970 { return String(localized: "Estimated exhausted. Refresh to check.") }
+                return String(localized: "Estimated to run out in \(duration(exhaustion - now.timeIntervalSince1970))")
             }
-            return "预计重置时剩余 \((value.remainingAtReset ?? 0).formatted(.number.precision(.fractionLength(0...1))))%"
+            return String(localized: "Estimated \((value.remainingAtReset ?? 0).formatted(.number.precision(.fractionLength(0...1))))% remaining at reset")
         }
     }
     private func predictionDetail(_ value: LimitForecast, window: CurrentLimitWindow, now: Date) -> String? {
         guard value.state == .estimated, let exhaustion = value.exhaustsAt,
               let reset = window.resetsAt, exhaustion > now.timeIntervalSince1970,
               exhaustion < Double(reset) else { return nil }
-        return "比额度重置提前 \(duration(Double(reset) - exhaustion))耗尽"
+        return String(localized: "Runs out \(duration(Double(reset) - exhaustion)) before reset")
     }
     private func resetTime(_ timestamp: Int64, now: Date) -> String {
         let seconds = Double(timestamp) - now.timeIntervalSince1970
-        guard seconds > 0 else { return "等待重置" }
+        guard seconds > 0 else { return String(localized: "Waiting for reset") }
         if seconds < 86400 {
             let date = Date(timeIntervalSince1970: Double(timestamp))
-            let day = Calendar.current.isDate(date, inSameDayAs: now) ? "今天" : "明天"
-            return "\(day) \(date.formatted(.dateTime.hour().minute())) 重置"
+            let day = Calendar.current.isDate(date, inSameDayAs: now) ? String(localized: "Today") : String(localized: "Tomorrow")
+            return String(localized: "Resets \(day) at \(date.formatted(.dateTime.hour().minute()))")
         }
-        return "\(duration(seconds))后重置"
+        return String(localized: "Resets in \(duration(seconds))")
     }
     private func duration(_ seconds: Double) -> String {
         let minutes = max(0, Int(seconds / 60))
-        if minutes >= 1440 { return "\(minutes / 1440) 天 \((minutes % 1440) / 60) 小时" }
-        if minutes >= 60 { return "\(minutes / 60) 小时 \(minutes % 60) 分钟" }
-        return "\(minutes) 分钟"
+        if minutes >= 1440 { return String(localized: "\(minutes / 1440)d \((minutes % 1440) / 60)h") }
+        if minutes >= 60 { return String(localized: "\(minutes / 60)h \(minutes % 60)m") }
+        return String(localized: "\(minutes) min")
     }
 }
 
@@ -234,16 +234,16 @@ struct LimitProgressBar: View {
                 ForEach(window.usageTicks(workingDays: workingDays), id: \.self) { used in
                     Rectangle().fill(.primary.opacity(0.55)).frame(width: 1, height: 11)
                         .offset(x: geometry.size.width * position(used))
-                        .help("已使用 \(used.formatted(.number.precision(.fractionLength(0...1))))%")
+                        .help(String(localized: "\(used.formatted(.number.precision(.fractionLength(0...1))))% used"))
                 }
                 if let expected = window.expectedUsedPercent(now: now.timeIntervalSince1970) {
                     Rectangle().fill(.green).frame(width: 2, height: 13)
                         .offset(x: max(0, min(geometry.size.width - 2, geometry.size.width * position(expected) - 1)))
-                        .accessibilityLabel("当前应使用 \(expected.formatted(.number.precision(.fractionLength(0...1))))%")
+                        .accessibilityLabel(String(localized: "Expected usage now: \(expected.formatted(.number.precision(.fractionLength(0...1))))%"))
                 }
             }
         }.frame(height: 13).padding(.top, 3)
-            .accessibilityLabel("\(showRemaining ? "剩余" : "已使用") \((position(window.usedPercent) * 100).formatted())%")
+            .accessibilityLabel("\(showRemaining ? String(localized: "remaining") : String(localized: "used")) \((position(window.usedPercent) * 100).formatted())%")
     }
 }
 
@@ -252,24 +252,24 @@ extension CurrentLimitsView {
     var previewGallery: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text("额度布局 · 状态预览").font(.title2.bold())
-                Text("以下为固定示例数据，复用实际额度组件，不影响当前账号。预测文字悬浮可查看提前耗尽时间。")
+                Text(String(localized: "Limit layout · State previews")).font(.title2.bold())
+                Text(String(localized: "Fixed sample data using the actual limit components. Your account is unaffected. Hover over predictions to see how early limits run out."))
                     .font(.callout).foregroundStyle(.secondary)
-                previewCard("单窗口 · 暂无节奏和预测", scenarios: [.init(used: 29, rate: nil)])
-                previewCard("单窗口 · 结余，预计重置时仍有剩余", scenarios: [.init(used: 29, rate: 0.6)])
-                previewCard("单窗口 · 超前，预计提前耗尽", scenarios: [.init(used: 85, rate: 1)])
-                previewCard("多窗口 · 不同消耗节奏", scenarios: [
+                previewCard(String(localized: "Single window · No pace or prediction"), scenarios: [.init(used: 29, rate: nil)])
+                previewCard(String(localized: "Single window · Below pace, remaining at reset"), scenarios: [.init(used: 29, rate: 0.6)])
+                previewCard(String(localized: "Single window · Ahead of pace, runs out early"), scenarios: [.init(used: 85, rate: 1)])
+                previewCard(String(localized: "Multiple windows · Different usage rates"), scenarios: [
                     .init(minutes: 300, remaining: 7200, used: 58, rate: 30),
                     .init(used: 29, rate: 0.6)
                 ])
-                previewCard("多窗口 · 暂无预测", scenarios: [
+                previewCard(String(localized: "Multiple windows · No prediction"), scenarios: [
                     .init(minutes: 300, remaining: 7200, used: 58, rate: nil),
                     .init(used: 29, rate: nil)
                 ])
-                previewCard("额度耗尽", scenarios: [.init(minutes: 300, remaining: 7200, used: 100, rate: 0)])
-                previewCard("已到重置时间 · 等待更新", scenarios: [.init(remaining: -60, used: 100, rate: nil)])
-                previewCard("只有节奏 · 使用速度为零", scenarios: [.init(used: 29, rate: 0)])
-                previewCard("菜单栏宽度 · 多窗口", scenarios: [
+                previewCard(String(localized: "Limit exhausted"), scenarios: [.init(minutes: 300, remaining: 7200, used: 100, rate: 0)])
+                previewCard(String(localized: "Reset time reached · Waiting for update"), scenarios: [.init(remaining: -60, used: 100, rate: nil)])
+                previewCard(String(localized: "Pace only · Zero usage rate"), scenarios: [.init(used: 29, rate: 0)])
+                previewCard(String(localized: "Menu bar width · Multiple windows"), scenarios: [
                     .init(minutes: 300, remaining: 7200, used: 58, rate: 30),
                     .init(used: 29, rate: 0.6)
                 ]).frame(width: 360)
@@ -324,7 +324,7 @@ extension CurrentLimitsView {
     }
 }
 
-#Preview("额度各状态") {
+#Preview(String(localized: "Limit states")) {
     CurrentLimitsView().previewGallery.environment(ApplicationModel())
         .frame(width: 900, height: 900)
 }

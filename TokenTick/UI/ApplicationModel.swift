@@ -24,15 +24,15 @@ final class ApplicationModel {
     var automaticSyncIssue: String?
 
     var progressText: String {
-        guard let progress else { return "准备同步…" }
+        guard let progress else { return String(localized: "Preparing to sync…") }
         switch progress.stage {
         case .scanning:
-            if let scan = progress.scan { return "扫描 \(scan.completedFiles)/\(scan.totalFiles) 个文件" }
-            return "发现本地日志…"
-        case .prices: return "更新模型价格…"
-        case .repricing: return "计算分项金额…"
-        case .api: return "读取服务端用量…"
-        case .statistics: return "更新统计缓存…"
+            if let scan = progress.scan { return String(localized: "Scanning files: \(scan.completedFiles)/\(scan.totalFiles)") }
+            return String(localized: "Finding local logs…")
+        case .prices: return String(localized: "Updating model prices…")
+        case .repricing: return String(localized: "Calculating cost components…")
+        case .api: return String(localized: "Loading server usage…")
+        case .statistics: return String(localized: "Updating statistics cache…")
         }
     }
 
@@ -95,7 +95,7 @@ final class ApplicationModel {
                         automatic?.acceptedLog(observedAt: log.observedAt)
                     }
                 }
-            } catch is CancellationError { error = "同步已取消，已提交的数据保留。" }
+            } catch is CancellationError { error = String(localized: "Sync canceled. Committed data has been kept.") }
             catch {
                 self.error = error.localizedDescription
             }
