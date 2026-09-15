@@ -5,7 +5,7 @@ struct OverviewView: View {
     @Environment(ApplicationModel.self) private var app
     var openConversation: (UsageQuery) -> Void
     @SceneStorage("overview.period") private var storedPeriod = OverviewPeriod.week.rawValue
-    private var period: OverviewPeriod { OverviewPeriod(rawValue: storedPeriod) ?? .week }
+    private var period: OverviewPeriod { OverviewPeriod(rawValue: storedPeriod) ?? (storedPeriod == "1 天" ? .day : .week) }
     @State private var loadedPeriod: OverviewPeriod?
     @State private var report: OverviewReport?
     @State private var loading = false
@@ -57,11 +57,13 @@ struct OverviewView: View {
                         tokenPart("缓存写入", total.cacheWriteInputTokens)
                     }
                     }.usageSurface()
-                    OverviewChartsView(points: report.trend, hourly: report.hourly, monthly: period == .all, weekly: period == .year,
-                                       query: report.query, timezone: timezone)
-                    if report.unknownDateTokens > 0 {
-                        Label("\(UsageFormatting.tokens(report.unknownDateTokens)) Tokens 无法确定日期，未绘入趋势。", systemImage: "calendar.badge.exclamationmark")
-                            .font(.caption).foregroundStyle(.secondary)
+                    if period != .day {
+                        OverviewChartsView(points: report.trend, hourly: report.hourly, monthly: period == .all, weekly: period == .year,
+                                           query: report.query, timezone: timezone)
+                        if report.unknownDateTokens > 0 {
+                            Label("\(UsageFormatting.tokens(report.unknownDateTokens)) Tokens 无法确定日期，未绘入趋势。", systemImage: "calendar.badge.exclamationmark")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     ModelUsageView(models: report.models, modes: report.modes, efforts: report.efforts)
                     VStack(alignment: .leading, spacing: 6) {

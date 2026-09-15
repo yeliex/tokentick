@@ -2,8 +2,9 @@ import Foundation
 
 struct RolloutParserState: Codable {
     // 解析状态可丢弃重建；版本变化只触发重扫，不改写事实。
-    static let currentVersion = 8
+    static let currentVersion = 9
     var version = currentVersion
+    var weeklyWindows: [WeeklyCycleCalculator.Window]?
     var session: RolloutEvent.Session?
     var turnID: String?
     var model: String?

@@ -61,6 +61,7 @@ public struct LocalUsageScanner: Sendable {
                 try Task.checkCancellation()
                 report.addIssue(ScanIssue(fileName: "logs_*.sqlite", line: nil, message: "Fast 证据：\(error.localizedDescription)"))
             }
+            try store.restoreWeeklyWindows()
             let ordered = try discoverRollouts(codexHome: codexHome, report: &report)
             var lastProgress = ContinuousClock.now
             for (index, copies) in ordered.enumerated() {
@@ -156,31 +157,6 @@ public struct LocalUsageScanner: Sendable {
         var offset: UInt64 = 0
         do {
             snapshot = try FileSnapshot(url: url, compressed: identity.isCompressed)
-            // 当前窗口不落库：进程首次遇到已有游标时，从对应日志恢复额度状态。
-            if let cursor, cursor.state.version == RolloutParserState.currentVersion,
-               try (cursor.file.sameFile(as: snapshot) || cursor.file.canResume(url: url, snapshot: snapshot, offset: cursor.offset)),
-               !store.weeklyMemory.withLock({ $0.restoredFiles.contains(key) }) {
-                let replay = try RolloutLineReader(url: url, compressed: identity.isCompressed)
-                var parser = RolloutParser(state: RolloutParserState(), identity: identity)
-                var snapshots: [CurrentLimitSnapshot] = []
-                var restored = 0
-                let markers = ["\"session_meta\"","\"turn_context\"","\"rate_limits\"","\"task_started\"","\"turn_started\""].map { Data($0.utf8) }
-                while restored < cursor.line {
-                    try Task.checkCancellation()
-                    guard let data = try replay.nextLine() else { break }
-                    // 恢复额度不需要解码工具输出或请求用量记录。
-                    if markers.contains(where: { data.range(of: $0) != nil }) {
-                        _ = try parser.consume(data, line: restored + 1)
-                        if let snapshot = parser.currentLimits { snapshots.append(snapshot) }
-                    }
-                    restored += 1
-                    if snapshots.count >= 256 {
-                        try store.observeWeeklyLimits(snapshots); snapshots.removeAll(keepingCapacity: true)
-                    }
-                }
-                try store.observeWeeklyLimits(snapshots)
-                _ = store.weeklyMemory.withLock { $0.restoredFiles.insert(key) }
-            }
             if let cursor, cursor.state.version == RolloutParserState.currentVersion,
                cursor.file.sameFile(as: snapshot) {
                 try store.updateScanPath(rolloutID: key, url: url)
@@ -231,15 +207,14 @@ public struct LocalUsageScanner: Sendable {
             }
             if linesSinceCommit >= 512 {
                 try store.commitScan(batch, limits: quotaBatch, identity: identity, url: url, line: line, offset: offset,
-                                     file: snapshot, state: parser.state, completed: false, report: &report)
+                                     file: snapshot, state: &parser.state, completed: false, report: &report)
                 batch.removeAll(keepingCapacity: true)
                 quotaBatch.removeAll(keepingCapacity: true)
                 linesSinceCommit = 0
             }
         }
         try store.commitScan(batch, limits: quotaBatch, identity: identity, url: url, line: line, offset: offset,
-                             file: snapshot, state: parser.state, completed: !failed, report: &report)
-        _ = store.weeklyMemory.withLock { $0.restoredFiles.insert(key) }
+                             file: snapshot, state: &parser.state, completed: !failed, report: &report)
         report.scannedBytes += offset - startingOffset
         report.inheritedEvents += parser.inheritedEvents - inheritedBefore
     }

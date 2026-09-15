@@ -148,14 +148,14 @@ struct OverviewReportTests {
         }
         for zone in ["UTC", "Asia/Shanghai", "America/Los_Angeles"] {
             let report = try store.overviewReport(period: .day, now: now, timezone: zone)
-            #expect(report.total?.totalTokens == 60)
-            #expect(report.total?.knownAmountNanoUSD == 180)
-            #expect(report.models.reduce(0) { $0 + $1.totalTokens } == 60)
-            #expect(report.trend.reduce(0) { $0 + $1.summary.totalTokens } == 60)
-            #expect(report.trend.reduce(0) { $0 + ($1.summary.knownAmountNanoUSD ?? 0) } == 180)
-            #expect(report.conversations.map(\.id) == ["a", "b"])
-            #expect(report.conversations.map { $0.summary.totalTokens } == [40, 20])
-            #expect(!report.hourly && report.trend.count == 2)
+            #expect(report.total?.totalTokens == 30)
+            #expect(report.total?.knownAmountNanoUSD == 90)
+            #expect(report.models.reduce(0) { $0 + $1.totalTokens } == 30)
+            #expect(report.trend.reduce(0) { $0 + $1.summary.totalTokens } == 30)
+            #expect(report.trend.reduce(0) { $0 + ($1.summary.knownAmountNanoUSD ?? 0) } == 90)
+            #expect(report.conversations.map(\.id) == ["a"])
+            #expect(report.conversations.map { $0.summary.totalTokens } == [30])
+            #expect(!report.hourly && report.trend.count == 1)
             for item in report.conversations {
                 let rows = try store.usageRecords(report.query.focused(on: .thread, value: item.id)).rows
                 #expect(rows.reduce(0) { $0 + $1.totalTokens } == item.summary.totalTokens)
@@ -210,20 +210,37 @@ struct OverviewReportTests {
         let shanghai = try store.overviewReport(period: .year, now: now, timezone: "Asia/Shanghai")
         #expect(shanghai.trend.count == 1 && shanghai.trend.first?.summary.totalTokens == 20)
         let day = try store.overviewReport(period: .day, now: now, timezone: "UTC")
-        #expect(!day.hourly && day.trend.count == 2)
+        #expect(!day.hourly && day.trend.count == 1 && day.total?.totalTokens == 10)
         let all = try store.overviewReport(period: .all, now: now, timezone: "UTC")
         #expect(all.trend.count == 1 && all.trend.first?.summary.totalTokens == 20)
     }
 
-    @Test func sixPeriodsUseExactRollingDurationsAndHistoryHasNoTimeFilter() {
+    @Test func todayUsesMidnightOtherPeriodsRollAndHistoryHasNoTimeFilter() {
         let now = Date(timeIntervalSince1970: 20_000_000)
         for period in OverviewPeriod.allCases {
             let query = period.query(now: now, timezone: "UTC")
             if let days = period.days {
                 #expect(query.filters.occurredBefore == now.timeIntervalSince1970)
-                #expect(query.filters.occurredFrom == now.timeIntervalSince1970 - Double(days) * 86400)
+                let start = period == .day ? floor(now.timeIntervalSince1970 / 86400) * 86400
+                    : now.timeIntervalSince1970 - Double(days) * 86400
+                #expect(query.filters.occurredFrom == start)
             } else { #expect(query.filters.isEmpty) }
             #expect(query.account == .all)
         }
     }
+
+    @Test func todayRespectsTimezoneAndDaylightSaving() throws {
+        for (zone, timestamp, midnight) in [
+            ("Asia/Shanghai", "2026-09-14T18:30:00Z", "2026-09-14T16:00:00Z"),
+            ("America/Los_Angeles", "2026-03-08T12:30:00Z", "2026-03-08T08:00:00Z"),
+            ("America/Los_Angeles", "2026-11-01T12:30:00Z", "2026-11-01T07:00:00Z")
+        ] {
+            let now = try #require(DateParsing.parseTimestamp(timestamp))
+            let start = try #require(DateParsing.parseTimestamp(midnight))
+            let query = OverviewPeriod.day.query(now: now, timezone: zone)
+            #expect(query.filters.occurredFrom == start.timeIntervalSince1970)
+            #expect(query.filters.occurredBefore == now.timeIntervalSince1970)
+        }
+    }
+
 }

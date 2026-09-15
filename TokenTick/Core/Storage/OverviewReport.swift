@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 public enum OverviewPeriod: String, CaseIterable, Sendable, Identifiable {
-    case day = "1 天", week = "7 天", month = "30 天", quarter = "90 天", year = "一年", all = "历史总和"
+    case day = "当天", week = "7 天", month = "30 天", quarter = "90 天", year = "一年", all = "历史总和"
     public var id: Self { self }
     public var days: Int? {
         switch self { case .day: 1; case .week: 7; case .month: 30; case .quarter: 90; case .year: 365; case .all: nil }
@@ -10,7 +10,13 @@ public enum OverviewPeriod: String, CaseIterable, Sendable, Identifiable {
     public func query(now: Date, timezone: String) -> UsageQuery {
         var query = UsageQuery(grouping: .total, timezone: timezone)
         if let days {
-            query.filters.occurredFrom = now.timeIntervalSince1970 - Double(days) * 86400
+            if self == .day {
+                var calendar = Calendar(identifier: .gregorian)
+                calendar.timeZone = TimeZone(identifier: timezone) ?? .gmt
+                query.filters.occurredFrom = calendar.startOfDay(for: now).timeIntervalSince1970
+            } else {
+                query.filters.occurredFrom = now.timeIntervalSince1970 - Double(days) * 86400
+            }
             query.filters.occurredBefore = now.timeIntervalSince1970
         }
         return query

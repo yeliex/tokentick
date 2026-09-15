@@ -185,6 +185,7 @@
 			"buildActionMask" = "2147483647";
 			"files" = (
 				"8243D276881AFF2F0C3B8780",
+				"AB1457BBEEAB123456789013",
 				"A5077C071927F890C4537C32",
 				"8C201586ED70116E47042557",
 				"70B1D599F03C479E45144952",
@@ -470,6 +471,7 @@
 				"24B60AB934D3663FE0D00C41",
 				"617600C445CBC20BF2424190",
 				"CB9423DA37914B9492C90220",
+				"AB1457BBEEAB123456789012",
 				"348E469623AC8A6F45B73938",
 				"695659D4986A23D8F2E8FFA3",
 				"338913A77F2AD96050B0B9CF",
@@ -497,6 +499,16 @@
 		"04200CFFD12D083534B07BB1" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "3685E330EC5277A9DD5661C6";
+		};
+		"AB1457BBEEAB123456789012" = {
+			"path" = "TokenTick/UI/MenuUsageView.swift";
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"sourceTree" = "<group>";
+		};
+		"AB1457BBEEAB123456789013" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "AB1457BBEEAB123456789012";
 		};
 		"CB9423DA37914B9492C90220" = {
 			"path" = "TokenTick/UI/MenuBarView.swift";

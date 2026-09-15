@@ -3,19 +3,21 @@ import GRDB
 
 extension UsageStore {
     func observeWeeklyLimits(_ snapshots: [CurrentLimitSnapshot]) throws {
-        // 轮次归属由请求明细判断，fork 中继承的窗口不参与周期识别。
-        let accepted = try pool.read { db in
-            try snapshots.filter { snapshot in
-                guard snapshot.historyExclusion == nil else { return false }
-                if let turn = snapshot.turnID, snapshot.scopeKey.hasPrefix("thread:"),
-                   let owner = try String.fetchOne(db, sql: "SELECT thread_id FROM usage WHERE turn_key=? LIMIT 1", arguments: ["turn:" + turn]) {
-                    return owner == String(snapshot.scopeKey.dropFirst(7))
-                }
-                return true
-            }
-        }
+        let accepted = try pool.read { try Self.acceptedWeeklyLimits(snapshots, db: $0) }
         weeklyMemory.withLock { memory in
             for snapshot in accepted { memory.consume(snapshot) }
+        }
+    }
+
+    static func acceptedWeeklyLimits(_ snapshots: [CurrentLimitSnapshot], db: Database) throws -> [CurrentLimitSnapshot] {
+        // 轮次归属由请求明细判断，fork 中继承的窗口不参与周期识别。
+        try snapshots.filter { snapshot in
+            guard snapshot.historyExclusion == nil else { return false }
+            if let turn = snapshot.turnID, snapshot.scopeKey.hasPrefix("thread:"),
+               let owner = try String.fetchOne(db, sql: "SELECT thread_id FROM usage WHERE turn_key=? LIMIT 1", arguments: ["turn:" + turn]) {
+                return owner == String(snapshot.scopeKey.dropFirst(7))
+            }
+            return true
         }
     }
 

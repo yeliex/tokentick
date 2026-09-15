@@ -2,6 +2,11 @@ import Charts
 import SwiftUI
 import TokenTickCore
 
+enum UsageChartColors {
+    static let tokens = Color.accentColor
+    static let money = Color(red: 0.83, green: 0.59, blue: 0.34)
+}
+
 struct OverviewChartsView: View {
     let points: [OverviewTrendPoint]
     let hourly: Bool
@@ -25,8 +30,6 @@ struct OverviewChartsView: View {
     private var tokenMaximum: Double { max(1, points.map { Double($0.summary.totalTokens) }.max() ?? 0) }
     private var moneyMaximum: Double { max(0.01, points.compactMap { $0.summary.knownAmountNanoUSD.map { Double($0) / 1_000_000_000 } }.max() ?? 0) }
     private var hasMoney: Bool { points.contains { $0.summary.knownAmountNanoUSD != nil } }
-    private let tokenColor = Color(red: 0.43, green: 0.56, blue: 0.69)
-    private let moneyColor = Color(red: 0.83, green: 0.59, blue: 0.34)
     private var bucketCount: Double {
         max(1, Double(calendar.dateComponents([bucket], from: domain.lowerBound, to: domain.upperBound).value(for: bucket) ?? points.count))
     }
@@ -39,8 +42,8 @@ struct OverviewChartsView: View {
             HStack {
                 Text("用量趋势").font(.headline)
                 Spacer()
-                Label("Tokens", systemImage: "square.fill").foregroundStyle(tokenColor)
-                Label("金额", systemImage: "line.diagonal").foregroundStyle(moneyColor)
+                Label("Tokens", systemImage: "square.fill").foregroundStyle(UsageChartColors.tokens)
+                Label("金额", systemImage: "line.diagonal").foregroundStyle(UsageChartColors.money)
             }.font(.caption)
             if points.isEmpty {
                 ContentUnavailableView("暂无用量", systemImage: "chart.bar").frame(height: 240)
@@ -52,27 +55,27 @@ struct OverviewChartsView: View {
                 }.font(.caption).monospacedDigit().frame(height: 18)
                 Chart {
                     RuleMark(y: .value("平均 Tokens", tokenMean))
-                        .foregroundStyle(tokenColor.opacity(0.65)).lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                        .foregroundStyle(UsageChartColors.tokens.opacity(0.65)).lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 4]))
                     if hasMoney {
                         RuleMark(y: .value("平均金额", moneyMean / moneyMaximum * tokenMaximum))
-                            .foregroundStyle(moneyColor.opacity(0.65)).lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 4]))
+                            .foregroundStyle(UsageChartColors.money.opacity(0.65)).lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 4]))
                     }
                     ForEach(points) { point in
                         BarMark(x: .value("时间", point.date, unit: bucket), y: .value("Tokens", Double(point.summary.totalTokens)))
-                            .foregroundStyle(tokenColor.opacity(selected?.id == point.id ? 0.95 : selected == nil ? 0.48 : 0.2)).cornerRadius(3)
+                            .foregroundStyle(UsageChartColors.tokens.opacity(selected?.id == point.id ? 1 : selected == nil ? 0.8 : 0.45)).cornerRadius(3)
                             .accessibilityLabel(point.date.formatted())
                             .accessibilityValue(UsageFormatting.exactTokens(point.summary.totalTokens) + " Tokens")
                         if let amount = point.summary.knownAmountNanoUSD {
                             LineMark(x: .value("时间", point.date, unit: bucket),
                                 y: .value("金额", Double(amount) / 1_000_000_000 / moneyMaximum * tokenMaximum),
                                 series: .value("连续金额", moneySegment(at: point.date)))
-                                .foregroundStyle(moneyColor).lineStyle(StrokeStyle(lineWidth: 2))
+                                .foregroundStyle(UsageChartColors.money).lineStyle(StrokeStyle(lineWidth: 2))
                                 .accessibilityLabel(point.date.formatted())
                                 .accessibilityValue(UsageFormatting.money(amount))
                             if points.count == 1 {
                                 PointMark(x: .value("时间", point.date, unit: bucket),
                                     y: .value("金额", Double(amount) / 1_000_000_000 / moneyMaximum * tokenMaximum))
-                                    .foregroundStyle(moneyColor)
+                                    .foregroundStyle(UsageChartColors.money)
                             }
                         }
                     }
@@ -88,14 +91,14 @@ struct OverviewChartsView: View {
                     AxisMarks(position: .leading, values: axisValues) { value in
                         AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 4]))
                         AxisValueLabel {
-                            if let number = value.as(Double.self) { Text(compact(number)) }
+                            if let number = value.as(Double.self) { Text(compact(number)).foregroundStyle(UsageChartColors.tokens) }
                         }
                     }
                     if hasMoney {
                         AxisMarks(position: .trailing, values: axisValues) { value in
                             AxisValueLabel {
                                 if let number = value.as(Double.self) {
-                                    Text("$" + compact(number / tokenMaximum * moneyMaximum)).foregroundStyle(moneyColor)
+                                    Text("$" + compact(number / tokenMaximum * moneyMaximum)).foregroundStyle(UsageChartColors.money)
                                 }
                             }
                         }
@@ -125,8 +128,8 @@ struct OverviewChartsView: View {
                     }.accessibilityElement(children: .contain)
                 }
                 HStack(spacing: 16) {
-                    Text("\(meanTitle) \(compact(tokenMean)) Tokens").foregroundStyle(tokenColor)
-                    if hasMoney { Text("\(meanTitle) $\(compact(moneyMean))").foregroundStyle(moneyColor) }
+                    Text("\(meanTitle) \(compact(tokenMean)) Tokens").foregroundStyle(UsageChartColors.tokens)
+                    if hasMoney { Text("\(meanTitle) $\(compact(moneyMean))").foregroundStyle(UsageChartColors.money) }
                     Spacer()
                 }.font(.caption).help("按所选范围内的日／周／月计算，包含无用量的时间段；费用只汇总已知金额。")
             }

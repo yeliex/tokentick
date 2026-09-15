@@ -3,7 +3,7 @@ import Observation
 import TokenTickCore
 
 enum UsagePeriod: String, CaseIterable, Identifiable {
-    case today = "1天", week = "7天", month = "30天", quarter = "90天", year = "1年", all = "所有", custom = "自定义"
+    case today = "当天", week = "7天", month = "30天", quarter = "90天", year = "1年", all = "所有", custom = "自定义"
     var id: Self { self }
     func dates(timezone: TimeZone) -> (String?, String?) {
         guard self != .all && self != .custom else { return (nil, nil) }

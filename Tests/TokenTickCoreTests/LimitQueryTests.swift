@@ -41,7 +41,7 @@ struct LimitQueryTests {
         #expect(try store.saveCompletedWeeklyCycles(now: Date(timeIntervalSince1970: 604901)) == 0)
     }
 
-    @Test func restartRestoresPreviousWindowAndNewLogClosesItOnce() throws {
+    @Test(arguments: [false, true]) func restartRestoresPreviousWindowAndNewLogClosesItOnce(separateFile: Bool) throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let sessions = root.appendingPathComponent("sessions")
@@ -64,10 +64,18 @@ struct LimitQueryTests {
         _ = try LocalUsageScanner(store: store).scan(codexHome: root)
         #expect(try store.weeklyLimitHistory().rows.isEmpty)
         let reopened = try UsageStore(databaseURL: url)
-        _ = try LocalUsageScanner(store: reopened).scan(codexHome: root)
-        let handle = try FileHandle(forWritingTo: file)
+        let unchanged = try LocalUsageScanner(store: reopened).scan(codexHome: root)
+        #expect(unchanged.scannedFiles == 0 && unchanged.scannedBytes == 0)
+        let secondThread = "00000000-0000-0000-0000-000000000098"
+        let secondFile = sessions.appendingPathComponent("rollout-2026-09-01T00-00-00-\(secondThread).jsonl")
+        if separateFile {
+            try Data("{\"type\":\"session_meta\",\"payload\":{\"id\":\"\(secondThread)\"}}\n".utf8).write(to: secondFile)
+        }
+        let handle = try FileHandle(forWritingTo: separateFile ? secondFile : file)
         try handle.seekToEnd()
         try handle.write(contentsOf: Data(event(now-50, reset: Int64(now)+550000, percent: 3, count: 2).utf8))
+        // 跨过提交批次，再次提交空额度批次也必须保留窗口状态。
+        try handle.write(contentsOf: Data(String(repeating: "{\"type\":\"other\"}\n", count: 520).utf8))
         try handle.close()
         #expect(try LocalUsageScanner(store: reopened).scan(codexHome: root).insertedRequests == 1)
         let rows = try reopened.weeklyLimitHistory().rows
@@ -76,6 +84,19 @@ struct LimitQueryTests {
         #expect(try LocalUsageScanner(store: third).scan(codexHome: root).insertedRequests == 0)
         #expect(try third.weeklyLimitHistory().rows == rows)
         #expect(try third.tableCounts()["usage"] == 2)
+        let checkpoint = try #require(try third.scanCursor(rolloutID: separateFile ? secondThread : thread))
+        #expect(checkpoint.state.weeklyWindows?.count == 1)
+        #expect(checkpoint.state.weeklyWindows?.first?.percent == 3)
+        let next = try FileHandle(forWritingTo: separateFile ? secondFile : file)
+        try next.seekToEnd()
+        try next.write(contentsOf: Data(event(now-20, reset: Int64(now)+590000, percent: 1, count: 3).utf8))
+        try next.close()
+        _ = try LocalUsageScanner(store: third).scan(codexHome: root)
+        let finalRows = try third.weeklyLimitHistory().rows
+        #expect(finalRows.count == 2)
+        let fourth = try UsageStore(databaseURL: url)
+        #expect(try LocalUsageScanner(store: fourth).scan(codexHome: root).scannedBytes == 0)
+        #expect(try fourth.weeklyLimitHistory().rows == finalRows)
     }
 
     @Test func cycleSummariesPersistAndRefreshAfterLateUsageAndBoundaryChanges() throws {

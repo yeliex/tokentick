@@ -8,6 +8,7 @@ final class ApplicationModel {
     @ObservationIgnored private var syncTask: Task<Void, Never>?
     @ObservationIgnored private var automatic: AutomaticSyncController?
     private var started = false
+    var requestedPage: AppPage?
     var isSyncing = false
     var progress: SynchronizationProgress?
     var status: StoreStatus?

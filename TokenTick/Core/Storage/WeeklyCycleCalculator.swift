@@ -3,7 +3,7 @@ import GRDB
 
 /// 仅在内存合并窗口，不保存逐次观察；不同文件的事件可以乱序到达。
 struct WeeklyCycleCalculator: Sendable {
-    struct Window: Sendable {
+    struct Window: Codable, Sendable {
         var account: String?
         var reset: Int64
         var first: Double
@@ -14,27 +14,27 @@ struct WeeklyCycleCalculator: Sendable {
         var line: Int?
     }
     var windows: [Window] = []
-    var restoredFiles: Set<String> = []
 
     mutating func consume(_ snapshot: CurrentLimitSnapshot) {
         guard snapshot.historyExclusion == nil else { return }
         for value in snapshot.windows where value.limitID == "codex" && value.durationMinutes == 10_080 {
             guard let reset = value.resetsAt, snapshot.observedAt < Double(reset),
                   Double(reset) - snapshot.observedAt <= 604_805 else { continue }
-            if let index = windows.firstIndex(where: { $0.account == snapshot.accountID && abs($0.reset-reset) <= 60 }) {
-                windows[index].first = min(windows[index].first, snapshot.observedAt)
-                windows[index].positive = windows[index].positive || value.usedPercent > 0
-                if snapshot.observedAt > windows[index].last {
-                    windows[index].last = snapshot.observedAt
-                    windows[index].percent = value.usedPercent
-                    windows[index].file = snapshot.fileName
-                    windows[index].line = snapshot.line
-                }
-            } else {
-                windows.append(Window(account: snapshot.accountID, reset: reset, first: snapshot.observedAt,
-                    last: snapshot.observedAt, percent: value.usedPercent, positive: value.usedPercent > 0,
-                    file: snapshot.fileName, line: snapshot.line))
-            }
+            merge(Window(account: snapshot.accountID, reset: reset, first: snapshot.observedAt,
+                last: snapshot.observedAt, percent: value.usedPercent, positive: value.usedPercent > 0,
+                file: snapshot.fileName, line: snapshot.line))
+        }
+    }
+
+    mutating func merge(_ window: Window) {
+        if let index = windows.firstIndex(where: { $0.account == window.account && abs($0.reset-window.reset) <= 60 }) {
+            let first = min(windows[index].first, window.first)
+            let positive = windows[index].positive || window.positive
+            if window.last > windows[index].last { windows[index] = window }
+            windows[index].first = first
+            windows[index].positive = positive
+        } else {
+            windows.append(window)
         }
     }
 

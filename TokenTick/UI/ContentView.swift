@@ -1,7 +1,7 @@
 import TokenTickCore
 import SwiftUI
 
-private enum AppPage: String, CaseIterable, Identifiable {
+enum AppPage: String, CaseIterable, Identifiable {
     case overview = "总览", usage = "用量明细", limits = "套餐用量"
     var id: Self { self }
     var symbol: String {
@@ -98,10 +98,16 @@ struct ContentView: View {
         .containerBackground(.thinMaterial, for: .window)
         .tint(.primary)
         .frame(minWidth: 940, minHeight: 640)
-        .task { await app.start() }
+        .task { await app.start(); consumePageRequest() }
+        .onChange(of: app.requestedPage) { consumePageRequest() }
         .task(id: scenePhase) {
             if scenePhase == .active { await app.refreshExpiredLimits() }
         }
+    }
+    private func consumePageRequest() {
+        guard let requested = app.requestedPage else { return }
+        selectedPage = requested.rawValue
+        app.requestedPage = nil
     }
     private func syncTime(now: Date) -> String {
         guard let finished = app.lastSync?.finishedAt else { return "尚未同步" }

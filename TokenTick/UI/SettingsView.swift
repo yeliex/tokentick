@@ -52,6 +52,7 @@ struct SettingsView: View {
 
 private struct GeneralSettingsView: View {
     @AppStorage("limitsShowRemaining") private var limitsShowRemaining = true
+    @AppStorage("limitsWorkingDays") private var limitsWorkingDays = 5
     @Environment(\.scenePhase) private var scenePhase
     @State private var loginStatus = SMAppService.mainApp.status
     @State private var loginError: String?
@@ -79,6 +80,11 @@ private struct GeneralSettingsView: View {
                 Picker("显示方式", selection: $limitsShowRemaining) {
                     Text("剩余").tag(true)
                     Text("已使用").tag(false)
+                }.pickerStyle(.segmented)
+                Picker("每周工作日刻度", selection: $limitsWorkingDays) {
+                    Text("4 天").tag(4)
+                    Text("5 天").tag(5)
+                    Text("7 天").tag(7)
                 }.pickerStyle(.segmented)
             }
         }
