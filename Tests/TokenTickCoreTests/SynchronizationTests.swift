@@ -39,7 +39,7 @@ struct SynchronizationTests {
         #expect(try store.lastSynchronizationReport()?.scope == .all)
     }
 
-    @Test func publishesCurrentLimitsBeforeScanningLocalUsage() async throws {
+    @Test func publishesCurrentLimitsWhileLocalScanHoldsWriteLock() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
@@ -49,6 +49,7 @@ struct SynchronizationTests {
         let executable = root.appendingPathComponent("codex-fixture")
         let script = """
         #!/bin/sh
+        while [ ! -f "$CODEX_HOME/scan-started" ]; do sleep 0.01; done
         i=0
         while IFS= read -r line; do
           case "$line" in
@@ -67,14 +68,55 @@ struct SynchronizationTests {
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
         let published = Mutex(false)
         let report = try await UsageSynchronizer(store: store).synchronize(codexHome: root,
-            codexExecutable: executable, onCurrentLimits: { snapshot in
+            codexExecutable: executable, onProgress: { progress in
+                guard progress.scan != nil else { return }
+                // The scanner invokes file progress while still holding its write lock.
+                FileManager.default.createFile(atPath: root.appendingPathComponent("scan-started").path, contents: Data())
+                let deadline = Date().addingTimeInterval(5)
+                while !published.withLock({ $0 }), Date() < deadline { Thread.sleep(forTimeInterval: 0.01) }
+                #expect(published.withLock { $0 })
+            }, onCurrentLimits: { snapshot in
                 #expect(snapshot?.accountID == "account-a")
-                #expect((try? store.tableCounts()["usage"]) == 0)
                 published.withLock { $0 = true }
             })
         #expect(published.withLock { $0 })
         #expect(report.scan?.insertedRequests == 1)
         #expect(report.api?.currentLimits?.accountID == "account-a")
+    }
+
+    @Test func cancellationStopsPendingAPIAndKeepsConcurrentLocalFacts() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        try writeLog(root: root, malformed: false)
+        let executable = root.appendingPathComponent("codex-fixture")
+        try """
+        #!/bin/sh
+        touch "$CODEX_HOME/api-started"
+        while IFS= read -r line; do :; done
+        """.write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        let scanned = Mutex(false)
+        let task = Task {
+            try await UsageSynchronizer(store: store).synchronize(codexHome: root,
+                codexExecutable: executable, onProgress: { progress in
+                    if progress.scan != nil { scanned.withLock { $0 = true } }
+                })
+        }
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            if scanned.withLock({ $0 }), FileManager.default.fileExists(atPath: root.appendingPathComponent("api-started").path) { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(scanned.withLock { $0 })
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("api-started").path))
+        task.cancel()
+        do {
+            _ = try await task.value
+            Issue.record("Cancelled synchronization must throw")
+        } catch is CancellationError { }
+        #expect(try store.tableCounts()["usage"] == 1)
+        #expect(try store.lastSynchronizationReport() == nil)
     }
 
     private func writeLog(root: URL, malformed: Bool) throws {

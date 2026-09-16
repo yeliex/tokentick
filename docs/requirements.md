@@ -57,7 +57,7 @@ Discard an observation if the account changes during the request. Failed or empt
 
 ### Current account
 
-Current-limit cards belong to the confirmed Codex login. Keep all available limit types and observation timestamps in memory. Publish startup API results before waiting for log collection and pricing. Failure to obtain limits must not block local collection.
+Current-limit cards belong to the confirmed Codex login. Keep all available limit types and observation timestamps in memory. Run startup API requests and local log collection concurrently. Publish validated API results without waiting for log collection, database write locks, or pricing. Failure to obtain limits must not block local collection.
 
 Fresh logs may advance API-confirmed windows within the same login session. Window changes, resets, or missing identity require API confirmation. Clear old snapshots and forecasts on login changes and reject late results from the previous session. A recent historical log cannot establish the currently signed-in account.
 

@@ -207,7 +207,7 @@ Use the same range for summaries, charts, groups, and drill-down. Overview reads
 
 Apply intersections, literal search, stable sorting, and pagination in SQL. Count groups after aggregation with the same snapshot/filters as the page. Never sum a limited page to produce a global total. Filter choices depend on date/timezone/account scope but ignore selected project/model/search to avoid locking users out of alternatives.
 
-`UsageSynchronizer` fetches and publishes API limits first, then scans logs, refreshes prices, reprices if necessary, and refreshes statistics according to scope. `remote` selects API and prices. Source errors remain independent; cancellation propagates to background work.
+`UsageSynchronizer` fetches API limits and scans logs concurrently. Validated API limits are published before waiting for the database write lock; only synchronization status and completed weekly-cycle maintenance use the existing write coordination. After both sources finish, synchronization refreshes prices, reprices if necessary, and refreshes statistics according to scope. `remote` selects API and prices. Source errors remain independent; cancellation propagates to background work.
 
 | Trigger | Schedule |
 | --- | --- |

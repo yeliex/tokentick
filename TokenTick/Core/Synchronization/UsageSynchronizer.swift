@@ -34,32 +34,49 @@ public struct UsageSynchronizer: Sendable {
                             onCurrentLimits: (@Sendable (CurrentLimitSnapshot?) async -> Void)? = nil) async throws -> SynchronizationReport {
         let task = Task.detached(priority: .utility) {
             var report = SynchronizationReport(scope: scope, startedAt: Date().timeIntervalSince1970)
-            // Fetch and publish current limits before log scanning and statistics finish.
             if scope == .all || scope == .api || scope == .remote {
                 onProgress?(SynchronizationProgress(stage: .api, scan: nil))
-                do {
-                    let result = try await CodexAPIClient.synchronize(store: store, executable: codexExecutable, codexHome: codexHome)
-                    report.api = result
-                    await onCurrentLimits?(result.currentLimits)
-                    if let issue = result.issue { report.issues.append(issue) }
-                    if !result.accountAvailable { report.issues.append(String(localized: "The server did not provide a verifiable account identity.", bundle: .module)) }
-                } catch {
-                    try Task.checkCancellation()
-                    report.issues.append(String(localized: "Server: \(error.localizedDescription)", bundle: .module))
-                    await onCurrentLimits?(nil)
-                }
             }
-            try Task.checkCancellation()
-            if scope == .all || scope == .local {
-                onProgress?(SynchronizationProgress(stage: .scanning, scan: nil))
-                do {
-                    report.scan = try LocalUsageScanner(store: store).scan(codexHome: codexHome) { progress in
-                        onProgress?(SynchronizationProgress(stage: .scanning, scan: progress))
+            try await withThrowingTaskGroup(of: SynchronizationReport.self) { group in
+                group.addTask {
+                    var report = SynchronizationReport(scope: scope, startedAt: Date().timeIntervalSince1970)
+                    if scope == .all || scope == .api || scope == .remote {
+                        do {
+                            let result = try await CodexAPIClient.synchronize(store: store, executable: codexExecutable, codexHome: codexHome,
+                                onCurrentLimits: onCurrentLimits, onFailure: {
+                                    await onCurrentLimits?(nil)
+                                })
+                            report.api = result
+                            if let issue = result.issue { report.issues.append(issue) }
+                            if !result.accountAvailable { report.issues.append(String(localized: "The server did not provide a verifiable account identity.", bundle: .module)) }
+                        } catch {
+                            try Task.checkCancellation()
+                            report.issues.append(String(localized: "Server: \(error.localizedDescription)", bundle: .module))
+                        }
                     }
-                    if let count = report.scan?.issueCount, count > 0 { report.issues.append(String(localized: "Log scan issues: \(count). Successfully collected data was kept.", bundle: .module)) }
-                } catch {
+                    return report
+                }
+                group.addTask {
+                    var report = SynchronizationReport(scope: scope, startedAt: Date().timeIntervalSince1970)
+                    if scope == .all || scope == .local {
+                        onProgress?(SynchronizationProgress(stage: .scanning, scan: nil))
+                        do {
+                            report.scan = try LocalUsageScanner(store: store).scan(codexHome: codexHome) { progress in
+                                onProgress?(SynchronizationProgress(stage: .scanning, scan: progress))
+                            }
+                            if let count = report.scan?.issueCount, count > 0 { report.issues.append(String(localized: "Log scan issues: \(count). Successfully collected data was kept.", bundle: .module)) }
+                        } catch {
+                            try Task.checkCancellation()
+                            report.issues.append(String(localized: "Logs: \(error.localizedDescription)", bundle: .module))
+                        }
+                    }
                     try Task.checkCancellation()
-                    report.issues.append(String(localized: "Logs: \(error.localizedDescription)", bundle: .module))
+                    return report
+                }
+                for try await result in group {
+                    if let api = result.api { report.api = api }
+                    if let scan = result.scan { report.scan = scan }
+                    report.issues.append(contentsOf: result.issues)
                 }
             }
             try Task.checkCancellation()

@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 extension UsageStore {
-    func saveAPIObservation(limits: CodexRateLimits, daily: CodexDailyUsage?, observedAt: Date,
+    static func prepareAPIObservation(limits: CodexRateLimits, daily: CodexDailyUsage?, observedAt: Date,
                             issue: String? = nil, limitsSourceJSON: String? = nil, accountEmail: String? = nil) throws -> APISyncReport {
         try daily?.validate()
         guard observedAt.timeIntervalSince1970.isFinite else { throw CodexAPIError.invalidStatistics }
@@ -17,22 +17,31 @@ extension UsageStore {
                 guard window.usedPercent.isFinite, window.usedPercent >= 0 else { throw CodexAPIError.invalidStatistics }
             }
         }
-        return try FileWriteLock(url: databaseURL.appendingPathExtension("write.lock")).withLock {
-            let report = try pool.write { db in
-                let snapshot = try CurrentLimitSnapshot.parse(Data(limitsJSON.utf8), accountID: account,
-                    observedAt: observedAt.timeIntervalSince1970, source: "api", scopeKey: account.map { "account:" + $0 } ?? "api:unknown")
-                let saved = 0
-                let skipped = snapshot.windows.filter { $0.limitID == "codex" && $0.durationMinutes == 10_080 && $0.resetsAt == nil }.count
-                var report = APISyncReport(accountID: account, observedAt: observedAt.timeIntervalSince1970,
-                                           accountAvailable: account != nil,
-                                           dailyBucketCount: daily?.dailyUsageBuckets?.count,
-                                           savedWindows: saved, skippedWindows: skipped,
-                                           reconciliation: "in_memory_reference_difference", issue: issue)
-                report.accountEmail = accountEmail
-                report.currentLimits = snapshot
-                try Self.saveAPIReport(report, db: db)
-                return report
-            }
+        let snapshot = try CurrentLimitSnapshot.parse(Data(limitsJSON.utf8), accountID: account,
+            observedAt: observedAt.timeIntervalSince1970, source: "api", scopeKey: account.map { "account:" + $0 } ?? "api:unknown")
+        let saved = 0
+        let skipped = snapshot.windows.filter { $0.limitID == "codex" && $0.durationMinutes == 10_080 && $0.resetsAt == nil }.count
+        var report = APISyncReport(accountID: account, observedAt: observedAt.timeIntervalSince1970,
+                                   accountAvailable: account != nil,
+                                   dailyBucketCount: daily?.dailyUsageBuckets?.count,
+                                   savedWindows: saved, skippedWindows: skipped,
+                                   reconciliation: "in_memory_reference_difference", issue: issue)
+        report.accountEmail = accountEmail
+        report.currentLimits = snapshot
+        return report
+    }
+
+    func saveAPIObservation(limits: CodexRateLimits, daily: CodexDailyUsage?, observedAt: Date,
+                            issue: String? = nil, limitsSourceJSON: String? = nil, accountEmail: String? = nil) throws -> APISyncReport {
+        let report = try Self.prepareAPIObservation(limits: limits, daily: daily, observedAt: observedAt,
+            issue: issue, limitsSourceJSON: limitsSourceJSON, accountEmail: accountEmail)
+        try saveAPIObservation(report, daily: daily, observedAt: observedAt)
+        return report
+    }
+
+    func saveAPIObservation(_ report: APISyncReport, daily: CodexDailyUsage?, observedAt: Date) throws {
+        try FileWriteLock(url: databaseURL.appendingPathExtension("write.lock")).withLock {
+            try pool.write { db in try Self.saveAPIReport(report, db: db) }
             if let snapshot = report.currentLimits {
                 try observeWeeklyLimits([snapshot])
                 _ = try saveCompletedWeeklyCycles(now: observedAt)
@@ -40,9 +49,8 @@ extension UsageStore {
             apiMemory.withLock { memory in
                 guard observedAt.timeIntervalSince1970 >= memory.observedAt else { return }
                 // Clear reference buckets on account changes or missing API data to prevent account leakage.
-                memory = APIMemory(observedAt: observedAt.timeIntervalSince1970, accountID: account, daily: daily)
+                memory = APIMemory(observedAt: observedAt.timeIntervalSince1970, accountID: report.accountID, daily: daily)
             }
-            return report
         }
     }
 

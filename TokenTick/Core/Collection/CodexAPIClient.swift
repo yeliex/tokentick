@@ -18,7 +18,9 @@ public struct CodexAPIClient: Sendable {
     }
 
     public static func synchronize(store: UsageStore, executable: URL? = nil,
-                                   codexHome: URL = LocalUsageScanner.defaultCodexHome) async throws -> APISyncReport {
+                                   codexHome: URL = LocalUsageScanner.defaultCodexHome,
+                                   onCurrentLimits: (@Sendable (CurrentLimitSnapshot?) async -> Void)? = nil,
+                                   onFailure: (@Sendable () async -> Void)? = nil) async throws -> APISyncReport {
         let task = Task.detached(priority: .utility) {
             do {
                 let client = try Self(executable: executable, codexHome: codexHome)
@@ -40,11 +42,18 @@ public struct CodexAPIClient: Sendable {
                     issue = String(localized: "The account changed during the request. These daily buckets were discarded.", bundle: .module)
                 }
                 try Task.checkCancellation()
-                return try store.saveAPIObservation(limits: after, daily: daily, observedAt: Date(), issue: issue,
+                let observedAt = Date()
+                let report = try UsageStore.prepareAPIObservation(limits: after, daily: daily, observedAt: observedAt, issue: issue,
                                                     limitsSourceJSON: session.lastResponseJSON,
                                                     accountEmail: account?.subscriptionEmail(before: before, after: after))
+                // Display validated limits before waiting for the log scanner's database write lock.
+                await onCurrentLimits?(report.currentLimits)
+                try Task.checkCancellation()
+                try store.saveAPIObservation(report, daily: daily, observedAt: observedAt)
+                return report
             } catch {
                 try Task.checkCancellation()
+                await onFailure?()
                 try store.saveAPIFailure(error.localizedDescription)
                 throw error
             }
