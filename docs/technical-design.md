@@ -18,6 +18,7 @@ This guide describes TokenTick's current data model, algorithms, and maintenance
 | `TokenTick/Updates` | Sparkle updater integration |
 | `Tests/TokenTickCoreTests` | Core behavior and regression coverage |
 | `script` | Build/run, distribution packaging, and appcast generation |
+| `pages` | Static Next.js product website; see `pages/README.md` for development and build commands |
 
 The code uses Swift 6, SQLite WAL through GRDB, and in-process libzstd decompression. Core does not depend on SwiftUI or shell out to decompress logs. Dependency versions are defined in `Package.swift` and its resolved files; use SwiftPM tooling to change them.
 

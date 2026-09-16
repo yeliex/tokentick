@@ -150,3 +150,7 @@ Storage measures current Codex local data independently of token usage. The Abou
 App and CLI results must agree for the same filters and timezone. Validate deduplication, exact cost math, null semantics, account isolation, reset boundaries, crash recovery, and agreement between facts and caches. Changes to UI behavior require native interaction checks, including window sizing, sheets, keyboard actions, loading/error states, and both appearances.
 
 Performance claims require measured workloads, with first, unchanged, and incremental scan results, memory use, and query latency where relevant. A successful build is not evidence of UI correctness or live API behavior. Record unresolved verification limits in the delivery summary rather than retaining a growing archive of implementation reports in product documentation.
+
+## Product website
+
+The `pages/` project is a single-page English product website built with Next.js, Tailwind CSS, and shadcn/ui. Lead with the menu-bar screenshot, then alternate app screenshots and feature copy for limits/reset times, token/cost analysis, task/project details, and storage. FAQ addresses privacy, resource use, permissions, and background operation. Downloads, installation instructions, releases, and support link to GitHub rather than separate website documentation. Use the app's light warm-white/amber and dark graphite/mint brand colors, and preserve sample-data labels and estimated-cost boundaries.
