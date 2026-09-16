@@ -60,6 +60,7 @@ struct SettingsView: View {
 }
 
 private struct GeneralSettingsView: View {
+    @AppStorage("appTheme") private var theme: AppTheme = .system
     @AppStorage("limitsShowRemaining") private var limitsShowRemaining = true
     @AppStorage("limitsWorkingDays") private var limitsWorkingDays = 5
     @Environment(\.scenePhase) private var scenePhase
@@ -68,6 +69,13 @@ private struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
+            Section(String(localized: "Appearance")) {
+                Picker(String(localized: "Theme"), selection: $theme) {
+                    Text(String(localized: "Follow System")).tag(AppTheme.system)
+                    Text(String(localized: "Light")).tag(AppTheme.light)
+                    Text(String(localized: "Dark")).tag(AppTheme.dark)
+                }.pickerStyle(.segmented)
+            }
             Section(String(localized: "Startup")) {
                 Toggle(String(localized: "Launch at login"), isOn: Binding(
                     get: { loginStatus == .enabled || loginStatus == .requiresApproval },
@@ -99,6 +107,7 @@ private struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .onChange(of: theme) { theme.apply() }
         .onAppear { loginStatus = SMAppService.mainApp.status }
         .onChange(of: scenePhase) {
             if scenePhase == .active { loginStatus = SMAppService.mainApp.status }

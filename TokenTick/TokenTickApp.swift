@@ -3,6 +3,27 @@ import TokenTickUpdates
 import AppKit
 import SwiftUI
 
+enum AppTheme: String {
+    case system, light, dark
+
+    @MainActor
+    func apply() {
+        var theme = self
+        #if DEBUG
+        // Keep appearance checks process-local without changing the saved preference.
+        if let override = ProcessInfo.processInfo.environment["TOKENTICK_APPEARANCE"],
+           let preview = AppTheme(rawValue: override) {
+            theme = preview
+        }
+        #endif
+        switch theme {
+        case .system: NSApp.appearance = nil
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
 @main
 struct TokenTickApp: App {
     @NSApplicationDelegateAdaptor(TokenTickAppDelegate.self) private var delegate
@@ -122,14 +143,8 @@ final class TokenTickAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        #if DEBUG
-        // Limit appearance overrides to this process without changing user or system preferences.
-        switch ProcessInfo.processInfo.environment["TOKENTICK_APPEARANCE"] {
-        case "light": NSApp.appearance = NSAppearance(named: .aqua)
-        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
-        default: break
-        }
-        #endif
+        let theme = AppTheme(rawValue: UserDefaults.standard.string(forKey: "appTheme") ?? "system") ?? .system
+        theme.apply()
         // Show the main window at launch; keep the menu-bar app running after the last ordinary window closes.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)

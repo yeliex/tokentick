@@ -117,7 +117,7 @@ The compact menu panel shares current main-limit data and shows Today/7/30/90-da
 
 ### Settings, language, and presentation
 
-Settings has General, Data, and About sections for login items, limit display, synchronization and prices, update controls, CLI installation, and paths/database size. General settings creates `/usr/local/bin/tokentick` as a symbolic link to the bundled CLI without administrator privileges. Existing files and other links are never overwritten; installation reports conflicts and permission failures. The linked CLI updates with the app. App usage follows system timezone changes and automatic synchronization is part of normal operation.
+Settings has General, Data, and About sections for login items, limit display, synchronization and prices, update controls, CLI installation, and paths/database size. General includes a persistent theme preference: Follow System (default), Light, or Dark. Changes apply immediately to the main window, Settings, and menu-bar panel. General settings creates `/usr/local/bin/tokentick` as a symbolic link to the bundled CLI without administrator privileges. Existing files and other links are never overwritten; installation reports conflicts and permission failures. The linked CLI updates with the app. App usage follows system timezone changes and automatic synchronization is part of normal operation.
 
 Use native SwiftUI surfaces, restrained colors, rounded geometry, translucent backgrounds, and consistent light/dark appearances. Keep product copy short and user-oriented; put technical caveats in relevant details or help. Preserve hover, selection, scrolling, and drill-down state when background results have not changed. Distinguish initial loading, empty results, errors, and cancellation.
 

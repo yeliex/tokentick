@@ -386,7 +386,7 @@
 			"buildSettings" = {
 				"GENERATE_INFOPLIST_FILE" = "NO";
 				"CODE_SIGN_IDENTITY" = "-";
-				"MARKETING_VERSION" = "0.1.1";
+				"MARKETING_VERSION" = "0.2.0";
 				"ENABLE_HARDENED_RUNTIME" = "YES";
 				"ENABLE_APP_SANDBOX" = "NO";
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.yeliex.tokentick";
@@ -612,7 +612,7 @@
 			"buildSettings" = {
 				"GENERATE_INFOPLIST_FILE" = "NO";
 				"CODE_SIGN_IDENTITY" = "-";
-				"MARKETING_VERSION" = "0.1.1";
+				"MARKETING_VERSION" = "0.2.0";
 				"ENABLE_HARDENED_RUNTIME" = "YES";
 				"ENABLE_APP_SANDBOX" = "NO";
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.yeliex.tokentick";

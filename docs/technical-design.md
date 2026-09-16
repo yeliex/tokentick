@@ -223,6 +223,8 @@ Only one synchronization runs at a time; additional work is coalesced. Current-s
 
 ## UI and localization
 
+General settings stores `appTheme` in UserDefaults through `@AppStorage`. `AppTheme` applies the selected appearance through `NSApp.appearance` at launch and when the picker changes; nil restores system appearance across windows and the menu-bar panel. Debug-only `TOKENTICK_APPEARANCE` overrides remain process-local.
+
 Window-owned detail state preserves filters, grouping, pagination, and selected cycles across navigation. Request/statistics sheets hold their opening snapshot. Cancel old asynchronous work and check generation before assigning results. Unchanged background results must not replace content or clear hover/scroll state.
 
 The menu-bar label uses cached template images, not a nested periodic `TimelineView`; repeated label invalidation can cause host layout churn. The menu chart maps tokens and costs independently for rendering, but tooltips retain original units. Missing amounts break the cost line. Menu averages divide by actual elapsed days; overview averages use the covered chart buckets, including empty buckets.
