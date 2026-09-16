@@ -125,6 +125,8 @@ English is the development and fallback language; Simplified Chinese is selected
 
 ## Codex disk-space analysis
 
+See the [README](../README.md) for a feature overview and Storage screenshot.
+
 Storage measures current Codex local data independently of token usage. The About section continues to show TokenTick database file sizes.
 
 - Restore the latest matching `storage.json` snapshot at startup without scanning. Scan the current `CODEX_HOME` in an independent background task on the first entry into the Storage page per app launch or when requesting Refresh. Keep scan state in memory; do not create a database table or historical trend.

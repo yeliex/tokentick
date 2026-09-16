@@ -1,9 +1,10 @@
 # TokenTick
 
-A native macOS app and CLI for tracking **Codex usage limits, token usage, and estimated API costs**. A Codex-focused alternative to [CodexBar](https://github.com/steipete/CodexBar) and [ccusage](https://ccusage.com/guide/).
+A native macOS app and CLI for tracking **Codex usage limits, token usage, estimated API costs, and local storage**. A Codex-focused alternative to [CodexBar](https://github.com/steipete/CodexBar) and [ccusage](https://ccusage.com/guide/).
 
 - Explore usage by day, task, project, and model.
 - Monitor current limits and review completed weekly windows.
+- Inspect Codex disk usage by category and browse worktree and projectless task directories.
 - Check recent activity from the menu bar.
 - Export detailed usage as JSON with the CLI.
 - Background CPU usage below 1%, with peak memory usage just one-fifth that of comparable tools.
@@ -14,6 +15,8 @@ Requires **macOS 26+ and Apple Silicon**. Supports English and Simplified Chines
 <img src="assets/screenshots/dashboard.png" alt="Dashboard with sample data" width="1120">
 
 <img src="assets/screenshots/menu.png" alt="Menu bar panel with sample data" width="344">
+
+<img src="assets/screenshots/storage.png" alt="Storage page showing Codex disk usage by category" width="1120">
 
 ## Installation
 

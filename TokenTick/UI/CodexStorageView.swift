@@ -105,7 +105,6 @@ private struct StorageTotalsView: View {
                     Text(ByteCountFormatter.string(fromByteCount: snapshot.allocatedBytes, countStyle: .file))
                         .font(.system(size: 32, weight: .semibold)).monospacedDigit().textSelection(.enabled)
                         .help(String(localized: "Approximate disk usage reported by the system."))
-                    Text(String(localized: "Codex local data")).foregroundStyle(.secondary)
                     Spacer()
                 }
                 if snapshot.allocatedBytes > 0 {

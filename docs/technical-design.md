@@ -231,6 +231,8 @@ The menu-bar label uses cached template images, not a nested periodic `TimelineV
 
 Use English internal identifiers and localize display titles separately. App strings live in `TokenTick/Resources/Localizable.xcstrings`; Core strings live in `TokenTick/Core/Resources` and load through `Bundle.module`. English is the fallback, Simplified Chinese follows macOS preferences, and cumulative history is labeled Lifetime. Chinese translations and multilingual test fixtures are intentional data.
 
+See [Codex disk-space analysis](requirements.md#codex-disk-space-analysis) for the product behavior and the [README](../README.md) for a screenshot.
+
 TokenTick database/WAL/SHM sizes remain in About only, read without checkpointing. The Storage page does not query or display them.
 
 `Core/DiskSpace/CodexStorageScanner.swift` runs `/usr/bin/du -k -P -d 1` over the root's immediate entries, including hidden entries. Arguments are passed directly to `Process`, not through a shell. System KiB totals are converted to bytes for display. This provides an approximate snapshot without reading file contents, decompressing records, following symbolic links, or maintaining a separate hard-link accounting algorithm. Only root-entry totals and one level of subdirectory totals are retained; individual descendant files are located through Finder. The root directory's own metadata is excluded.
