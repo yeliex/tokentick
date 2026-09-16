@@ -17,11 +17,14 @@ RELEASE_DIR="$PROJECT_ROOT/.build/releases"
 mkdir -p "$LOG_DIR" "$RELEASE_DIR"
 
 for SCHEME in TokenTick tokentick; do
-  BUILD_LOG="$LOG_DIR/release-$SCHEME-build.log"
+  BUILD_LOG="$LOG_DIR/release-$SCHEME-target-build.log"
+  if [ "$SCHEME" = "tokentick" ]; then
+    BUILD_LOG="$LOG_DIR/release-cli-build.log"
+  fi
   if xcodebuild -project "$PROJECT_ROOT/TokenTick.xcodeproj" -scheme "$SCHEME" \
     -configuration Release -destination 'generic/platform=macOS' \
     -derivedDataPath "$BUILD_DIR" ARCHS=arm64 \
-    "${BUILD_SETTINGS[@]}" build >"$BUILD_LOG" 2>&1; then
+    "${BUILD_SETTINGS[@]}" -showBuildTimingSummary build >"$BUILD_LOG" 2>&1; then
     echo "$SCHEME Release build succeeded."
   else
     awk '/error:|BUILD FAILED|failed:/ && count++ < 30 { print substr($0, 1, 1000) }' "$BUILD_LOG" >&2

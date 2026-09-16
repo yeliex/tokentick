@@ -319,6 +319,8 @@ The packaging script extracts **`## Installation`** from the root README through
 
 Sparkle handles app updates using the feed configured in `TokenTick/Resources/Info.plist`, with hourly checks enabled by default. The app-linked CLI updates with Sparkle; independently copied CLI installations are updated manually. A feed URL in source is not proof that a release has been published.
 
+Build logs include Xcode timing summaries and use distinct App/CLI filenames on case-insensitive filesystems.
+
 Pushing a `vMAJOR.MINOR.PATCH` tag triggers `.github/workflows/release.yml` on `macos-26`, creates notes and a signed appcast, and publishes the latest GitHub Release. The marketing version comes from the tag; `CFBundleVersion` comes from `GITHUB_RUN_NUMBER`. Keep build numbers increasing when changing the workflow.
 
 Release checkout includes full history and tags. `script/generate_release_notes.sh` lists commit subjects and links since the preceding reachable version tag (all history for the first release), followed by a full changelog link. GitHub Release and Sparkle use the same generated Markdown, including commits made without pull requests.
