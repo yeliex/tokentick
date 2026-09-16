@@ -31,7 +31,8 @@ public struct UsageSynchronizer: Sendable {
                             codexHome: URL = LocalUsageScanner.defaultCodexHome,
                             codexExecutable: URL? = nil,
                             onProgress: (@Sendable (SynchronizationProgress) -> Void)? = nil,
-                            onCurrentLimits: (@Sendable (CurrentLimitSnapshot?) async -> Void)? = nil) async throws -> SynchronizationReport {
+                            onCurrentLimits: (@Sendable (CurrentLimitSnapshot?) async -> Void)? = nil,
+                            onAPIFailure: (@Sendable () async -> Void)? = nil) async throws -> SynchronizationReport {
         let task = Task.detached(priority: .utility) {
             var report = SynchronizationReport(scope: scope, startedAt: Date().timeIntervalSince1970)
             if scope == .all || scope == .api || scope == .remote {
@@ -44,7 +45,8 @@ public struct UsageSynchronizer: Sendable {
                         do {
                             let result = try await CodexAPIClient.synchronize(store: store, executable: codexExecutable, codexHome: codexHome,
                                 onCurrentLimits: onCurrentLimits, onFailure: {
-                                    await onCurrentLimits?(nil)
+                                    if let onAPIFailure { await onAPIFailure() }
+                                    else { await onCurrentLimits?(nil) }
                                 })
                             report.api = result
                             if let issue = result.issue { report.issues.append(issue) }

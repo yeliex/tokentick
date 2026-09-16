@@ -16,11 +16,17 @@ struct CurrentLimitsView: View {
                         if let plan = app.currentLimits?.planType, let name = Self.planName(plan) {
                             Text(name).font(.callout).foregroundStyle(.secondary)
                         }
+                        if app.isRefreshingAPI {
+                            ProgressView().controlSize(.small).help(String(localized: "Loading limits…"))
+                        }
                     }
                 }
                 if let snapshot = app.currentLimits {
                     let main = snapshot.windows.filter { $0.limitID == "codex" }
-                    if !main.isEmpty { limitGroup(windows: main, snapshot: snapshot, now: context.date) }
+                    if !main.isEmpty {
+                        limitGroup(windows: main, snapshot: snapshot, now: context.date)
+                            .help(String(localized: "Last updated: \(Date(timeIntervalSince1970: snapshot.observedAt).formatted(date: .abbreviated, time: .standard))"))
+                    }
                     else { Text(String(localized: "No subscription limits available")).font(.callout).foregroundStyle(.secondary) }
                     if !compact {
                         let groups = Dictionary(grouping: snapshot.windows.filter { $0.limitID != "codex" }, by: \.limitID)
@@ -29,8 +35,8 @@ struct CurrentLimitsView: View {
                         }
                     }
                 } else {
-                    if app.isSyncing {
-                        ProgressView(String(localized: "Loading limits…")).controlSize(.small).frame(maxWidth: .infinity, minHeight: compact ? 40 : 100)
+                    if app.isRefreshingAPI {
+                        if compact { ProgressView().controlSize(.small).frame(maxWidth: .infinity, alignment: .trailing) }
                     } else {
                         Text(String(localized: "No current limits. Refresh or check your Codex sign-in status."))
                             .font(.callout).foregroundStyle(.secondary)

@@ -28,7 +28,7 @@ Collection, Pricing, Synchronization, Storage, and UI have separate responsibili
 - Unknown account, model, rate, and amount remain unknown. Never fill historical account attribution from the current login.
 - Input includes caches and output includes reasoning. Use Decimal for rates and checked integer nanoUSD for amounts; never accumulate money in Double.
 - Missing tier evidence may use standard pricing with an explicit basis. Confirmed Fast with a missing rate stays unpriced. Derive Fast/long combinations per component only when required rates exist.
-- Persist only ended main seven-day limit cycles. Current snapshots, API buckets, and forecast samples stay in memory; minimal cursor summaries may support recovery.
+- Persist only ended main seven-day limit cycles. Current display snapshots may be cached in `api.json`; API daily buckets and forecast samples stay in memory; minimal cursor summaries may support recovery.
 - Historical cycle aggregates belong in `weekly_limit_cycles` and update during synchronization. Cross-dimensional usage filters aggregate `usage`; do not precompute every filter combination.
 - Read Codex source files without modifying them. Store statistical fields and source locations, not bodies, tool output, or credentials. Let Codex manage authentication.
 
@@ -50,7 +50,7 @@ Do not recreate redundant turn, individual-limit-observation, or statistics-rebu
 - English is the development/fallback language; Simplified Chinese follows native macOS app-language preferences. Do not add an in-app language selector. Use **Lifetime** for cumulative history.
 - Localize app text in `Localizable.xcstrings` and Core errors through package resources/`Bundle.module`. Do not translate API keys or user-provided task/project names.
 
-Codex disk-space analysis is **planned**, not implemented. Its agreed shape is an independent startup metadata scan, in-memory results, an Overview section below model usage, and a main-sidebar Storage page. Keep it out of Settings and do not implement it incidentally during other work.
+Codex disk-space analysis restores `storage.json` at startup and runs an independent metadata scan only on the first Storage page visit per launch or manual refresh. It uses a disposable snapshot cache, an Overview section below model usage, and a main-sidebar Storage page. Keep it out of Settings and preserve read-only access to Codex files without adding database tables or historical trends.
 
 ## Verification and delivery
 

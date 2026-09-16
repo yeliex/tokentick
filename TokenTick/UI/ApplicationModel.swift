@@ -8,7 +8,10 @@ final class ApplicationModel {
     @ObservationIgnored private var syncTask: Task<Void, Never>?
     @ObservationIgnored private var automatic: AutomaticSyncController?
     private var started = false
+    let storage = CodexStorageModel()
     var requestedPage: AppPage?
+    var isRefreshingAPI = false
+    @ObservationIgnored private let displayCache = LocalDisplayCache()
     var isSyncing = false
     var progress: SynchronizationProgress?
     var status: StoreStatus?
@@ -17,7 +20,7 @@ final class ApplicationModel {
     var currentLimits: CurrentLimitSnapshot? { limitSession.snapshot }
     @ObservationIgnored private var timezoneMonitor: Task<Void, Never>?
     @ObservationIgnored private var loginMonitor: Task<Void, Never>?
-    @ObservationIgnored private var loginStamp: LoginStamp?
+    @ObservationIgnored private var loginStamp: CodexLoginStamp?
     var error: String?
     var refreshID = 0
     var usageRefreshID = 0
@@ -40,6 +43,15 @@ final class ApplicationModel {
         guard ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] != "1" else { return }
         guard !started else { return }
         started = true
+        await storage.loadCache()
+        checkLoginEnvironment()
+        if let stamp = loginStamp {
+            let cached = await displayCache.api(for: stamp)
+            checkLoginEnvironment()
+            if loginStamp == stamp, let cached {
+                limitSession.restoreCached(cached, now: Date().timeIntervalSince1970)
+            }
+        }
         error = nil
         do {
             let database = ProcessInfo.processInfo.environment["TOKENTICK_DATABASE"].map { URL(fileURLWithPath: $0) } ?? UsageStore.defaultDatabaseURL
@@ -70,20 +82,22 @@ final class ApplicationModel {
         checkLoginEnvironment()
         let limitGeneration = limitSession.generation
         isSyncing = true
+        isRefreshingAPI = scope == .all || scope == .api || scope == .remote
         automatic?.started(scope)
         error = nil
         let home = LocalUsageScanner.defaultCodexHome
         syncTask = Task { [self] in
-            defer { isSyncing = false; progress = nil; syncTask = nil; automatic?.finished() }
+            defer { isRefreshingAPI = false; isSyncing = false; progress = nil; syncTask = nil; automatic?.finished() }
             do {
                 lastSync = try await UsageSynchronizer(store: store).synchronize(scope: scope, codexHome: home, onProgress: { [weak self] progress in
                     Task { @MainActor in self?.progress = progress }
                 }, onCurrentLimits: { [weak self] snapshot in
+                    guard let self else { return }
+                    await self.receiveCurrentLimits(snapshot, generation: limitGeneration)
+                }, onAPIFailure: { [weak self] in
                     await MainActor.run {
-                        guard let self else { return }
-                        self.checkLoginEnvironment()
-                        self.limitSession.acceptAPI(snapshot, generation: limitGeneration,
-                                                    now: Date().timeIntervalSince1970)
+                        self?.checkLoginEnvironment()
+                        self?.isRefreshingAPI = false
                     }
                 })
                 checkLoginEnvironment()
@@ -120,19 +134,21 @@ final class ApplicationModel {
 
     func cancelSync() { automatic?.cancelled(); syncTask?.cancel() }
 
-    private struct LoginStamp: Equatable {
-        let home: String
-        let modified: Date?
-        let size: UInt64?
-        let inode: UInt64?
+    private func receiveCurrentLimits(_ snapshot: CurrentLimitSnapshot?, generation: Int) async {
+        checkLoginEnvironment()
+        isRefreshingAPI = false
+        guard generation == limitSession.generation else { return }
+        let accepted = limitSession.acceptAPI(snapshot, generation: generation, now: Date().timeIntervalSince1970)
+        if accepted, let snapshot, let stamp = loginStamp {
+            await displayCache.saveAPI(snapshot, login: stamp)
+        } else if limitSession.snapshot == nil {
+            await displayCache.clearAPI()
+        }
     }
 
     @discardableResult private func checkLoginEnvironment() -> Bool {
         let home = LocalUsageScanner.defaultCodexHome
-        // Inspect authentication file metadata only; never read, copy, or persist credentials.
-        let attributes = try? FileManager.default.attributesOfItem(atPath: home.appendingPathComponent("auth.json").path)
-        let stamp = LoginStamp(home: home.path, modified: attributes?[.modificationDate] as? Date,
-                              size: attributes?[.size] as? UInt64, inode: attributes?[.systemFileNumber] as? UInt64)
+        let stamp = CodexLoginStamp(home: home)
         guard stamp != loginStamp else { return false }
         loginStamp = stamp
         limitSession.invalidate()

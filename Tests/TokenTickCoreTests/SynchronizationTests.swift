@@ -119,6 +119,19 @@ struct SynchronizationTests {
         #expect(try store.lastSynchronizationReport() == nil)
     }
 
+    @Test func apiFailureIsDistinctFromConfirmedMissingAccount() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        let failed = Mutex(false)
+        let report = try await UsageSynchronizer(store: store).synchronize(scope: .api, codexHome: root,
+            codexExecutable: root.appendingPathComponent("missing-codex"),
+            onCurrentLimits: { _ in Issue.record("A transport failure must not clear cached display data") },
+            onAPIFailure: { failed.withLock { $0 = true } })
+        #expect(failed.withLock { $0 })
+        #expect(report.api == nil && !report.issues.isEmpty)
+    }
+
     private func writeLog(root: URL, malformed: Bool) throws {
         let folder = root.appendingPathComponent("sessions")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

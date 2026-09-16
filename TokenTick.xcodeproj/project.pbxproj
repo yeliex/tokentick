@@ -16,6 +16,8 @@
             shellPath = /bin/sh;
             shellScript = "/bin/ln -sfn ../Resources/TokenTick_TokenTickCore.bundle \"$SCRIPT_OUTPUT_FILE_0\"\n";
         };
+        "AB1515151515151515151501" = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TokenTick/UI/CodexStorageView.swift"; sourceTree = "<group>"; };
+        "AB1515151515151515151502" = { isa = PBXBuildFile; fileRef = "AB1515151515151515151501"; };
         "C11000000000000000000001" = {
             isa = PBXCopyFilesBuildPhase;
             buildActionMask = 2147483647;
@@ -223,6 +225,7 @@
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
 			"files" = (
+				"AB1515151515151515151502",
 				"8243D276881AFF2F0C3B8780",
 				"AB1457BBEEAB123456789013",
 				"A5077C071927F890C4537C32",
@@ -496,6 +499,7 @@
 			"isa" = "PBXGroup";
 			"name" = "UI";
 			"children" = (
+				"AB1515151515151515151501",
 				"0BFFF1C249F1AE32AAED9616",
 				"5E04063F6B044BDC4F4869F1",
 				"8A3F357787FB01C35ACE25F6",

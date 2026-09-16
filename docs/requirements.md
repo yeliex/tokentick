@@ -57,13 +57,15 @@ Discard an observation if the account changes during the request. Failed or empt
 
 ### Current account
 
-Current-limit cards belong to the confirmed Codex login. Keep all available limit types and observation timestamps in memory. Run startup API requests and local log collection concurrently. Publish validated API results without waiting for log collection, database write locks, or pricing. Failure to obtain limits must not block local collection.
+Current-limit cards belong to the confirmed Codex login. Cache the latest API display snapshot in `api.json`, scoped to the Codex root and authentication-file metadata. Restore matching cached cards at startup, retaining their original observation time, then refresh in the background. Do not cache authentication contents or raw API responses. Cached data does not confirm a live login session or seed forecasts. Run startup API requests and local log collection concurrently. Publish validated API results without waiting for log collection, database write locks, or pricing. Failure to obtain limits must not block local collection.
 
 Fresh logs may advance API-confirmed windows within the same login session. Window changes, resets, or missing identity require API confirmation. Clear old snapshots and forecasts on login changes and reject late results from the previous session. A recent historical log cannot establish the currently signed-in account.
 
 Show the main `codex` bucket prominently and other buckets as secondary cards. Windows with the same limit ID share a card, with separate percentages and periods. Use the API's plan name, credit balance, available reset count, and returned expiry details when present; do not infer missing balances, plan multipliers, or expiry dates. Reset credits are information, not an action to redeem them.
 
 The default display is remaining percentage, configurable to used percentage. Weekly tick divisions use 4, 5, or 7 equal parts (default 5), plus 50% and 80% used markers. Five-hour windows omit those equal divisions. The time marker reflects elapsed natural time; the setting does not skip weekends or change the window duration. All markers follow the selected used/remaining coordinate system.
+
+The current-limits module shows a small upper-right loading indicator while requesting the API, without replacing cached cards. A failed refresh retains the last known snapshot; a confirmed missing account clears it. Cache files are disposable, atomically replaced on successful refresh, and stored beside the TokenTick database. Invalid or missing files fall back to live fetching.
 
 Within the same login session, an expired observation may remain visible as the latest known snapshot while the app silently refreshes on window activation. Stale observations cannot support forecasts.
 
@@ -121,17 +123,18 @@ Use native SwiftUI surfaces, restrained colors, rounded geometry, translucent ba
 
 English is the development and fallback language; Simplified Chinese is selected through macOS's native app-language mechanism. There is no in-app language selector. Display strings are localized separately from English internal identifiers. Use **Lifetime** for cumulative history.
 
-## Planned: Codex disk-space analysis
+## Codex disk-space analysis
 
-This is agreed future scope and is not implemented in the current app. The current About section measures only TokenTick's database files.
+Storage measures current Codex local data independently of token usage. The About section continues to show TokenTick database file sizes.
 
-- Scan the current `CODEX_HOME` after app startup in an independent background task. Keep results and scan state only in memory; do not create a database table, disk cache, or historical trend.
-- Add a storage summary below model usage in Overview and a dedicated Storage page in the main sidebar, outside Settings. Both share one result and scan state; navigation and usage-period changes do not rescan.
-- Classify conversation records, worktrees (including dependencies/builds), logs, plugins/skills, and other data. Categories are mutually exclusive and cover unknown files as well. Existing backups are ordinary files, not a backup-management feature.
-- Report allocated size as the primary number and logical size in details. Count compressed files as stored without decompressing. Do not follow symlinks outside the root; deduplicate hard links by identity with stable category ownership.
-- Exclude Codex.app, external projects, caches outside the root, and other devices. Show TokenTick database/WAL/SHM sizes separately.
+- Restore the latest matching `storage.json` snapshot at startup without scanning. Scan the current `CODEX_HOME` in an independent background task on the first entry into the Storage page per app launch or when requesting Refresh. Keep scan state in memory; do not create a database table or historical trend.
+- Storage detail shows projectless tasks (their immediate directories), worktrees (their immediate directories, without a redundant `worktrees` row) and conversation records (`sessions` and `archived_sessions`, without deeper expansion). Logs, plugins and skills, generated content (`generated_images` plus `visualizations`) appear only in the summary. Other data is the remaining Codex home usage and always appears last. Projectless task storage reads `desktop.projectlessWorkspaceRoot` from `config.toml`, falling back to `~/Documents/Codex`.
+- Add a storage summary below model usage in Overview and a dedicated Storage page in the main sidebar, outside Settings. Both share one result and scan state; only the first entry into Storage triggers an automatic scan; subsequent navigation, Overview, and usage-period changes do not. Show last-scan time in the Storage page toolbar at the upper right, followed by a Refresh button that becomes a disabled spinner while scanning. The Overview module uses a small upper-right refresh indicator.
+- Classify conversation records, worktrees (including dependencies/builds), logs, plugins/skills, generated content, projectless tasks, and other data. Categories are mutually exclusive and cover unknown files as well. Existing backups are ordinary files, not a backup-management feature.
+- Use the system `du` command for approximate disk usage. Do not maintain a separate per-file accounting algorithm or logical-size metric. Count compressed files as stored, do not follow symlink targets, and leave hard-link accounting to the system.
+- Exclude Codex.app, external projects other than the configured projectless task directory, caches outside the root, and other devices. The Storage page only covers Codex; it does not query or display the TokenTick database.
 - Scan metadata only. Do not read conversation bodies or modify, compress, or delete source files. APFS shared blocks mean measured size is not guaranteed reclaimable space.
-- Provide manual rescan, cancellation, category drill-down, copyable paths, and Finder reveal. Allow one scan at a time and retain prior results during refresh. Distinguish missing root, empty directory, failure, cancellation, and partial results; display observation time.
+- Provide manual refresh, category and directory drill-down, copyable paths, and Finder reveal. Allow one scan at a time and retain prior results during refresh. Unavailable sizes display as zero without scan error messages; retain cached results if a scan fails or is canceled, and display observation time.
 - Validate large directories, symlinks, hard links, permission failures, disappearing files, archive/compression changes, cancellation, and restart. The UI and token synchronization must remain responsive.
 
 ## Quality requirements

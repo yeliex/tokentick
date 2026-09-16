@@ -17,6 +17,18 @@ public struct CurrentLimitSession: Sendable {
     }
 
     @discardableResult
+    public mutating func restoreCached(_ value: CurrentLimitSnapshot, now: Double) -> Bool {
+        guard snapshot == nil, value.source == "api", let account = value.accountID, !account.isEmpty,
+              value.observedAt.isFinite, value.observedAt <= now,
+              value.windows.allSatisfy({ $0.usedPercent.isFinite && $0.usedPercent >= 0 }) else { return false }
+        snapshot = value
+        // Cached display data is not a fresh API confirmation or a forecast sample.
+        apiObservedAt = nil
+        forecasts.confirmAccount(nil)
+        return true
+    }
+
+    @discardableResult
     public mutating func acceptAPI(_ value: CurrentLimitSnapshot?, generation: Int, now: Double) -> Bool {
         guard generation == self.generation else { return false }
         guard let value, value.source == "api", let account = value.accountID, !account.isEmpty,

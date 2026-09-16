@@ -1,14 +1,16 @@
 import TokenTickCore
 import SwiftUI
+import AppKit
 
 enum AppPage: String, CaseIterable, Identifiable {
-    case overview, usage, limits
+    case overview, usage, limits, storage
     var id: Self { self }
     var title: String {
         switch self {
         case .overview: String(localized: "Overview")
         case .usage: String(localized: "Usage details")
         case .limits: String(localized: "Plan usage")
+        case .storage: String(localized: "Storage")
         }
     }
 
@@ -17,6 +19,7 @@ enum AppPage: String, CaseIterable, Identifiable {
         case .overview: "chart.pie"
         case .usage: "tablecells"
         case .limits: "gauge.with.dots.needle.33percent"
+        case .storage: "internaldrive"
         }
     }
 }
@@ -40,7 +43,12 @@ struct ContentView: View {
                 VStack(spacing: 6) {
                     ForEach(AppPage.allCases) { item in
                         Button { selectedPage = item.rawValue } label: {
-                            Label(item.title, systemImage: item.symbol)
+                            HStack(spacing: 10) {
+                                Image(systemName: item.symbol)
+                                    .font(.system(size: 16, weight: .medium))
+                                    .frame(width: 24, height: 20)
+                                Text(item.title)
+                            }
                                 .font(.system(size: 14, weight: page == item ? .semibold : .medium))
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                                 .background(page == item ? Color.primary.opacity(0.08) : .clear,
@@ -51,7 +59,12 @@ struct ContentView: View {
                 }
                 Spacer()
                 SettingsLink {
-                    Label(String(localized: "Settings"), systemImage: "gearshape")
+                    HStack(spacing: 10) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 16, weight: .medium))
+                            .frame(width: 24, height: 20)
+                        Text(String(localized: "Settings")).font(.system(size: 14, weight: .medium))
+                    }
                         .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                         .contentShape(Rectangle())
                 }
@@ -60,7 +73,9 @@ struct ContentView: View {
             .navigationSplitViewColumnWidth(min: 185, ideal: 210, max: 250)
         } detail: {
             VStack(spacing: 0) {
-                if app.store == nil {
+                if page == .storage {
+                    CodexStorageView()
+                } else if app.store == nil && page != .overview {
                     ContentUnavailableView {
                         Label(app.error == nil ? String(localized: "Opening database") : String(localized: "Unable to open database"), systemImage: "externaldrive")
                     } actions: {
@@ -72,34 +87,37 @@ struct ContentView: View {
                         OverviewView { query in detailRequest = query; selectedPage = AppPage.usage.rawValue }
                     case .usage: UsageDetailsView(initialQuery: $detailRequest, state: usageState)
                     case .limits: LimitsView(state: limitsState)
+                    case .storage: CodexStorageView()
                     }
                 }
             }
             .background(scheme == .dark ? Color.black.opacity(0.5) : Color.white.opacity(0.2))
             .navigationTitle(page.title)
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    TimelineView(.periodic(from: .now, by: 60)) { context in
-                        Text(app.isSyncing ? app.progressText : syncTime(now: context.date))
-                            .font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
-                            .help(app.isSyncing ? app.progressText : UsageFormatting.timestamp(app.lastSync?.finishedAt))
+                if page != .storage {
+                    ToolbarItem(placement: .primaryAction) {
+                        TimelineView(.periodic(from: .now, by: 60)) { context in
+                            Text(app.isSyncing ? app.progressText : syncTime(now: context.date))
+                                .font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                                .help(app.isSyncing ? app.progressText : UsageFormatting.timestamp(app.lastSync?.finishedAt))
+                        }
+                    }.sharedBackgroundVisibility(.hidden)
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            app.synchronize()
+                        } label: {
+                            Group {
+                                if app.isSyncing {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                }
+                            }.frame(width: 16, height: 16)
+                        }
+                        .accessibilityLabel(app.isSyncing ? String(localized: "Syncing") : String(localized: "Refresh"))
+                        .help(app.isSyncing ? String(localized: "Syncing") : String(localized: "Refresh"))
+                        .disabled(app.store == nil || app.isSyncing).keyboardShortcut("r")
                     }
-                }.sharedBackgroundVisibility(.hidden)
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        app.synchronize()
-                    } label: {
-                        Group {
-                            if app.isSyncing {
-                                ProgressView().controlSize(.small)
-                            } else {
-                                Image(systemName: "arrow.triangle.2.circlepath")
-                            }
-                        }.frame(width: 16, height: 16)
-                    }
-                    .accessibilityLabel(app.isSyncing ? String(localized: "Syncing") : String(localized: "Refresh"))
-                    .help(app.isSyncing ? String(localized: "Syncing") : String(localized: "Refresh"))
-                    .disabled(app.store == nil || app.isSyncing).keyboardShortcut("r")
                 }
             }
         }
@@ -107,6 +125,7 @@ struct ContentView: View {
         .tint(.primary)
         .frame(minWidth: 940, minHeight: 640)
         .task { await app.start(); consumePageRequest() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in app.storage.cancel() }
         .onChange(of: app.requestedPage) { consumePageRequest() }
         .task(id: scenePhase) {
             if scenePhase == .active { await app.refreshExpiredLimits() }

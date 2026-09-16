@@ -66,6 +66,7 @@ struct OverviewView: View {
                         }
                     }
                     ModelUsageView(models: report.models, modes: report.modes, efforts: report.efforts)
+                    CodexStorageSummaryView()
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Text(String(localized: "Recent conversations")).font(.headline)
@@ -100,6 +101,9 @@ struct OverviewView: View {
                 } else {
                     ContentUnavailableView(String(localized: "No usage in the selected period"), systemImage: "chart.bar")
                         .frame(maxWidth: .infinity, alignment: .center)
+                }
+                if report?.total == nil || error != nil || (loading && loadedPeriod != period) {
+                    CodexStorageSummaryView()
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
                 .padding(32).frame(maxWidth: 1280).frame(maxWidth: .infinity)
