@@ -48,7 +48,7 @@ awk '/^## Installation$/ { active=1; print "# TokenTick installation"; next } ac
 cp "$BUILD_DIR/SourcePackages/checkouts/GRDB.swift/LICENSE" "$PACKAGE_DIR/Licenses/GRDB.txt"
 cp "$BUILD_DIR/SourcePackages/checkouts/zstd/LICENSE" "$PACKAGE_DIR/Licenses/Zstandard.txt"
 cp "$BUILD_DIR/SourcePackages/checkouts/Sparkle/LICENSE" "$PACKAGE_DIR/Licenses/Sparkle.txt"
-cp "$BUILD_DIR/SourcePackages/checkouts/sentry-cocoa/LICENSE" "$PACKAGE_DIR/Licenses/Sentry.txt"
+cp "$BUILD_DIR/SourcePackages/checkouts/sentry-cocoa/LICENSE.md" "$PACKAGE_DIR/Licenses/Sentry.txt"
 
 APP_EXECUTABLE="$PACKAGE_DIR/TokenTick.app/Contents/MacOS/TokenTick"
 CLI_EXECUTABLE="$PACKAGE_DIR/bin/tokentick"
