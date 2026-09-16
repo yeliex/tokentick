@@ -127,10 +127,10 @@ struct CurrentLimitsView: View {
             } else {
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
                     if compact {
-                        Text(periodName(window)).font(.callout).foregroundStyle(.secondary)
                         Text("\(displayPercent(window).formatted(.number.precision(.fractionLength(0...1))))%")
                             .font(.system(size: 16, weight: .semibold)).monospacedDigit()
-                        Text(showRemaining ? String(localized: "remaining") : String(localized: "used")).font(.caption).foregroundStyle(.secondary)
+                        Text(periodName(window)).font(.callout).foregroundStyle(.secondary)
+                        Text(showRemaining ? String(localized: "remaining") : String(localized: "used")).font(.callout).foregroundStyle(.secondary)
                     } else {
                         Text("\(displayPercent(window).formatted(.number.precision(.fractionLength(0...1))))%")
                             .font(.system(size: 36, weight: .semibold, design: .rounded)).monospacedDigit()
