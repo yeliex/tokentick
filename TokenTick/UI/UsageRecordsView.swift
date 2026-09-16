@@ -1,3 +1,4 @@
+import TokenTickTelemetry
 import AppKit
 import SwiftUI
 import TokenTickCore
@@ -91,6 +92,7 @@ struct UsageRecordsView: View {
                 if records != result.rows { records = result.rows }; hasMore = result.hasMore
             } catch {
                 guard !Task.isCancelled else { return }
+                AppTelemetry.capture(error, operation: "records.query")
                 self.error = error.localizedDescription; records = []; hasMore = false
             }
             loading = false

@@ -33,6 +33,12 @@ The scanner streams bounded data and commits batches. It must recover safely fro
 
 The app synchronizes while running using filesystem notifications, startup/wake checks, and periodic reconciliation. Synchronization can be cancelled and retried; quitting stops collection. An unavailable source must not discard successful work from other sources.
 
+## App diagnostics
+
+The macOS app reports crashes, sanitized operational errors, and foreground sessions to Sentry. Count active installations using the SDK-generated anonymous installation ID, including installations without errors; group session users by the installed release and build. This measures reporting installations, not unique people or all downloads. Clearing the SDK cache may reset the identity. Development and production environments remain separate; previews and tests do not initialize reporting. The CLI does not report telemetry.
+
+Do not attach Codex identity, conversation contents, usage records, credentials, raw error descriptions, SQL, or API response bodies. Automatic network and UI breadcrumbs, tracing, profiling, replay, and app-hang tracking are not required for this scope.
+
 ## Costs and prices
 
 Prices come from the OpenAI portion of models.dev, with a bundled JSON catalog for offline and historical coverage. A successful refresh is needed at most once per day; unchanged prices do not create another dated snapshot.

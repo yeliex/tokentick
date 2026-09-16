@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import TokenTickCore
+import TokenTickTelemetry
 
 @MainActor @Observable
 final class ApplicationModel {
@@ -66,7 +67,10 @@ final class ApplicationModel {
                 }
             }
             configureAutomaticSync()
-        } catch { self.error = error.localizedDescription; started = false }
+        } catch {
+            AppTelemetry.capture(error, operation: "database.open")
+            self.error = error.localizedDescription; started = false
+        }
     }
 
     private func configureAutomaticSync() {
@@ -100,6 +104,7 @@ final class ApplicationModel {
                         self?.isRefreshingAPI = false
                     }
                 })
+                AppTelemetry.captureSyncIssues(count: lastSync?.issues.count ?? 0)
                 checkLoginEnvironment()
                 if limitSession.acceptLog(lastSync?.scan?.currentLimits, generation: limitGeneration,
                                           now: Date().timeIntervalSince1970),
@@ -111,6 +116,7 @@ final class ApplicationModel {
                 }
             } catch is CancellationError { error = String(localized: "Sync canceled. Committed data has been kept.") }
             catch {
+                AppTelemetry.capture(error, operation: "synchronization")
                 self.error = error.localizedDescription
             }
             await refresh()
@@ -187,7 +193,10 @@ final class ApplicationModel {
             status = result.0
             lastSync = result.1
             refreshID += 1
-        } catch { self.error = error.localizedDescription }
+        } catch {
+            AppTelemetry.capture(error, operation: "database.refresh")
+            self.error = error.localizedDescription
+        }
     }
 
 }

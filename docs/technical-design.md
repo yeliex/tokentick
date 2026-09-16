@@ -243,6 +243,16 @@ Root names `sessions` and `archived_sessions` map to conversations; `worktrees` 
 
 `CodexStorageModel` owns a utility-priority detached scan, cancellation propagation, the latest snapshot, and page expansion/scroll state. Application startup only restores the cached snapshot; it does not scan. The first entry into the Storage page per app launch, or requesting Refresh, starts a scan independently of the database and usage synchronization. One scan runs at a time, and the previous snapshot remains visible until completion. Canceled scans never publish partial success. The latest snapshot is atomically saved to `storage.json` beside the TokenTick database. Startup restores it when the Codex and configured projectless roots match, then waits for entry into the Storage page before scanning; UI state stays in memory. Older storage snapshots without newly added categories or a projectless root remain displayable until the background scan replaces them; missing categories are not filled with zero estimates. Missing or malformed cache files are ignored and cache write failures do not block live results. Overview displays the same snapshot below model usage (also available with no usage records); the main-sidebar Storage page exposes directory drill-down, copyable paths, and Finder reveal. Last-scan time and Refresh appear at the top right; the refresh button becomes a spinner during scanning.
 
+## Diagnostics
+
+`TokenTickTelemetry` isolates Sentry Cocoa from Core and the CLI. The app initializes it at launch with the TokenTick project DSN. Release names use `<bundle ID>@<CFBundleShortVersionString>+<CFBundleVersion>` and distribution uses the build number. Debug builds use `development`; Release builds use `production`. The SDK supplies a persistent anonymous installation ID for both errors and automatic foreground sessions. Background-only menu-bar time does not imply a new active session.
+
+Handled database, synchronization, and main usage-query failures report only operation, error type, and numeric code. Partial synchronization reports emit an aggregate issue count without their private diagnostic strings. Cancellation is excluded. The final event filter removes requests, extras, breadcrumbs, user details except the anonymous ID, device names, and native exception reasons; crash types and stack traces remain available. App-hang tracking is disabled because the menu-bar process can remain inactive or asleep. No tracing, profiling, or replay is enabled.
+
+In Sentry, filter to `environment:production`. Use Issues for errors and Release Health / Session Health for active users and version adoption. For the sessions API, request `field=count_unique(user)` and `groupBy=release` over the desired date range; omit grouping for the overall distinct count. A user active on two versions appears in both version groups, so do not sum those groups as distinct users. Error-event user counts alone exclude error-free installations.
+
+Native crash symbolication requires uploading matching release dSYMs to the Sentry project. No Sentry auth token is embedded in the app; the public ingestion DSN is sufficient for event and session delivery. Automated dSYM upload is not configured.
+
 ## Development
 
 Use Xcode with a macOS 26 or newer SDK. App and CLI are Xcode targets, not SwiftPM executable products.

@@ -1,3 +1,4 @@
+import TokenTickTelemetry
 import Foundation
 import Observation
 import TokenTickCore
@@ -86,6 +87,7 @@ final class DashboardModel {
             loadedQuery = query
         } catch {
             if request == generation && !Task.isCancelled {
+                AppTelemetry.capture(error, operation: "usage.query")
                 self.error = error.localizedDescription
                 loadedQuery = query
                 dataFromDate = nil; dataThroughDate = nil

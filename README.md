@@ -64,6 +64,10 @@ tokentick current-limits
 
 Run `tokentick --help` for filtering, pricing, and export options.
 
+## Diagnostics
+
+The macOS app sends crash reports, sanitized operational errors, and session statistics to Sentry. An anonymous installation ID measures active installations and version adoption; it is not a Codex account or a count of people. Codex conversations, credentials, usage records, and raw handled-error descriptions are not submitted. The CLI does not initialize Sentry.
+
 ## Documentation
 
 - [Product requirements](docs/requirements.md)

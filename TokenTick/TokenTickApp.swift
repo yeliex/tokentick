@@ -1,5 +1,6 @@
 import TokenTickCore
 import TokenTickUpdates
+import TokenTickTelemetry
 import AppKit
 import SwiftUI
 
@@ -30,6 +31,10 @@ struct TokenTickApp: App {
     @State private var model = ApplicationModel()
     @AppStorage("limitsShowRemaining") private var showRemaining = true
     @StateObject private var updates = UpdateController()
+
+    init() {
+        AppTelemetry.start()
+    }
 
     var body: some Scene {
         Window(ApplicationInfo.name, id: "main") {

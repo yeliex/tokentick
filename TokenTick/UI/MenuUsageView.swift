@@ -1,3 +1,4 @@
+import TokenTickTelemetry
 import SwiftUI
 import Charts
 import TokenTickCore
@@ -58,6 +59,7 @@ struct MenuUsageView: View {
                 error = nil
             } catch {
                 guard !Task.isCancelled else { return }
+                AppTelemetry.capture(error, operation: "menu.query")
                 self.error = error.localizedDescription
             }
         }

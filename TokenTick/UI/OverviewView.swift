@@ -1,3 +1,4 @@
+import TokenTickTelemetry
 import SwiftUI
 import TokenTickCore
 
@@ -122,6 +123,7 @@ struct OverviewView: View {
                 loadedPeriod = current.period
             } catch {
                 guard !Task.isCancelled else { return }
+                AppTelemetry.capture(error, operation: "overview.query")
                 self.error = error.localizedDescription; report = nil
             }
             loading = false

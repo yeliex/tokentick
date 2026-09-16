@@ -5,6 +5,8 @@
 	"objectVersion" = "56";
 	"archiveVersion" = "1";
 	"objects" = {
+        "CE1600000000000000000001" = { isa = XCSwiftPackageProductDependency; package = "E795003646D4952330D66DC9"; productName = TokenTickTelemetry; };
+        "CE1600000000000000000002" = { isa = PBXBuildFile; productRef = "CE1600000000000000000001"; };
         "C11000000000000000000004" = {
             isa = PBXShellScriptBuildPhase;
             buildActionMask = 2147483647;
@@ -271,6 +273,7 @@
 			"packageProductDependencies" = (
 				"6A80958D59791C1178F03805",
 				"ABCDEF000000000000000001",
+				"CE1600000000000000000001",
 			);
 		};
 		"1EE63A94BAD0DF0FCB0E7B8C" = {
@@ -292,6 +295,7 @@
 			"files" = (
 				"9D0D104F1E1B2C997480A345",
 				"ABCDEF000000000000000002",
+				"CE1600000000000000000002",
 			);
 			"runOnlyForDeploymentPostprocessing" = "0";
 		};
