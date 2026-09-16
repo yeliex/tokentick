@@ -187,10 +187,12 @@ Cycle usage is grouped by the earliest known start of each turn, falling back to
 
 Logs can update only API-confirmed windows with matching duration/reset (60-second tolerance), increasing observation time, and nondecreasing percentage. They must be at most five minutes old and from the current session, excluding inherited replay. Unknown/new boundaries require API confirmation. Retained additional windows are not new forecast observations.
 
-`LimitForecastHistory` groups by account and window identity, retaining at most six hours and 360 samples per series. Reject future/nonincreasing timestamps. A gap over 15 minutes, a decrease in percentage, or a changed duration/reset restarts sampling. Forecasts need at least three points spanning ten minutes, with the latest point no older than 15 minutes.
+`LimitForecastHistory` groups by account and window identity, retaining at most six hours and 360 samples per series. Reject future/nonincreasing timestamps. A gap over 15 minutes, a decrease in percentage, or a changed duration/reset restarts sampling. Forecasts bootstrap from `last_percent / (last_time − inferred_start)` when elapsed time is positive. Starting with the second sample, blend the cycle average with recent consumption using `weight = min(1, sampled_seconds / 600)`. Compute the recent contribution as `percent_delta / max(600, sampled_seconds)` to damp short intervals and percentage rounding; at ten minutes the recent rate has full weight, without a sample-count gate. Both rates require the latest point to be no older than 15 minutes and use its observation time rather than advancing the rate denominator with the display clock. Cached display snapshots do not seed this initial estimate.
 
 ```text
-rate = (last_percent − first_percent) / elapsed_seconds
+cycle_rate = last_percent / (last_time − inferred_start)
+weight = min(1, sampled_seconds / 600)
+rate = cycle_rate × (1 − weight) + (last_percent − first_percent) / max(600, sampled_seconds)
 exhausts_at = last_time + (100 − last_percent) / rate
 remaining_at_reset = max(0, 100 − last_percent − rate × (reset_time − last_time))
 forecast_progress_difference = last_percent − 100 × (last_time − inferred_start) / duration

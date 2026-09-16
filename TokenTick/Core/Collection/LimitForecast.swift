@@ -97,10 +97,14 @@ public struct LimitForecastHistory: Sendable {
             return result(.exhausted, observedAt: last.time, count: series.samples.count, span: span,
                           exhaustsAt: last.time, remaining: 0, progress: progress)
         }
-        guard series.samples.count >= 3, span >= 600 else {
+        guard span > 0 || elapsed > 0 else {
             return result(.insufficient, observedAt: last.time, count: series.samples.count, span: span, progress: progress)
         }
-        let rate = (last.percent - first.percent) / span
+        // Blend in recent consumption immediately, damping short intervals and percentage rounding.
+        let recentWeight = min(1, span / 600)
+        let cycleRate = elapsed > 0 ? last.percent / elapsed : 0
+        let rate = cycleRate * (1 - recentWeight)
+            + (last.percent - first.percent) / max(600, span)
         guard rate > 0 else {
             return result(.idle, observedAt: last.time, count: series.samples.count, span: span,
                           rate: 0, progress: progress)

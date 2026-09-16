@@ -4,6 +4,9 @@ A native macOS app and CLI for tracking **Codex usage limits, token usage, estim
 
 - Explore usage by day, task, project, and model.
 - Monitor current limits and review completed weekly windows.
+- Estimate when limits will run out or how much allowance will remain at reset, starting with the current cycle's average pace and adapting as new usage observations arrive.
+- View available reset credits, their expiry dates, and the credits balance returned by Codex.
+- Compare usage by model, usage mode, and reasoning effort.
 - Inspect Codex disk usage by category and browse worktree and projectless task directories.
 - Check recent activity from the menu bar.
 - Export detailed usage as JSON with the CLI.
@@ -12,11 +15,40 @@ A native macOS app and CLI for tracking **Codex usage limits, token usage, estim
 
 Requires **macOS 26+ and Apple Silicon**. Supports English and Simplified Chinese through macOS language settings. Costs are USD estimates based on public API prices, not subscription charges.
 
-<img src="assets/screenshots/dashboard.png" alt="Dashboard with sample data" width="1120">
+## Screenshots
 
-<img src="assets/screenshots/menu.png" alt="Menu bar panel with sample data" width="344">
+Screenshots use sample data.
 
-<img src="assets/screenshots/storage.png" alt="Storage page showing Codex disk usage by category" width="1120">
+**Overview and limit forecasts**
+
+See current limits, estimated exhaustion or remaining allowance at reset, available resets, and credits alongside token usage and estimated costs.
+
+<img src="assets/screenshots/dashboard.png" alt="Overview with exhaustion and reset allowance forecasts, available resets, credits, and usage totals" width="1120">
+
+<details>
+<summary>Model usage, storage, usage details, plan history, and menu bar</summary>
+
+**Model usage and storage summary**
+
+<img src="assets/screenshots/model-usage.png" alt="Usage by model, usage mode, and reasoning effort, with a disk-space summary" width="1120">
+
+**Storage details**
+
+<img src="assets/screenshots/storage.png" alt="Disk usage by category with worktree and projectless task directories" width="1120">
+
+**Usage details**
+
+<img src="assets/screenshots/usage-details.png" alt="Daily token usage, estimated costs, and request counts with filters" width="1120">
+
+**Plan history**
+
+<img src="assets/screenshots/plan-usage.png" alt="Completed weekly windows and the selected cycle's local usage" width="1120">
+
+**Menu bar**
+
+<img src="assets/screenshots/menu.png" alt="Menu bar panel with limit forecasts, reset credits, credits balance, and usage trends" width="344">
+
+</details>
 
 ## Installation
 

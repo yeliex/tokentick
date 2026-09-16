@@ -79,7 +79,7 @@ Within the same login session, an expired observation may remain visible as the 
 
 Compare observed usage with elapsed natural time in the current window. Label usage above that pace **Ahead** and usage at or below it **Allowance**, showing the absolute percentage-point difference. This comparison uses the current time and does not require forecast samples.
 
-Estimate exhaustion and remaining allowance at reset from recent percentage observations of the same account and window. Do not infer allowance from tokens or money, or combine observations across resets. Forecasts are estimates and require sufficient fresh observations and valid boundaries. Missing estimates do not need an explanatory placeholder in the main card; details can explain their state.
+Estimate exhaustion and remaining allowance at reset from recent percentage observations of the same account and window. After the first fresh, API-confirmed observation, use the current window’s used percentage divided by elapsed time at that observation as an initial average rate. Starting with the second observation, blend in the recent consumption rate on every update. Its weight grows with the observed time span, reaching full weight at ten minutes; there is no minimum sample-count gate. Do not infer allowance from tokens or money, or combine observations across resets. Forecasts are estimates and require fresh observations and valid boundaries. An initial estimate requires positive elapsed time; zero consumption does not predict exhaustion. Missing estimates do not need an explanatory placeholder in the main card; details can explain their state.
 
 ### Historical windows
 
