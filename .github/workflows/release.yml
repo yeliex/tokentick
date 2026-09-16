@@ -19,6 +19,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - name: Validate version and signing configuration
         env:
           VERSION: ${{ github.ref_name }}
@@ -34,11 +36,9 @@ jobs:
         run: ./script/package_release.sh "${VERSION#v}" "$GITHUB_RUN_NUMBER"
       - name: Generate release notes
         env:
-          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ github.ref_name }}
         run: |
-          gh api --method POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
-            -f tag_name="$VERSION" --jq .body > .build/release-notes.md
+          ./script/generate_release_notes.sh "$VERSION" > .build/release-notes.md
           test -s .build/release-notes.md
       - name: Generate signed appcast
         env:

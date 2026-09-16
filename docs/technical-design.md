@@ -297,6 +297,8 @@ Sparkle handles app updates using the feed configured in `TokenTick/Resources/In
 
 Pushing a `vMAJOR.MINOR.PATCH` tag triggers `.github/workflows/release.yml` on `macos-26`, creates notes and a signed appcast, and publishes the latest GitHub Release. The marketing version comes from the tag; `CFBundleVersion` comes from `GITHUB_RUN_NUMBER`. Keep build numbers increasing when changing the workflow.
 
+Release checkout includes full history and tags. `script/generate_release_notes.sh` lists commit subjects and links since the preceding reachable version tag (all history for the first release), followed by a full changelog link. GitHub Release and Sparkle use the same generated Markdown, including commits made without pull requests.
+
 Actions uses `SPARKLE_PRIVATE_KEY`, matching `SUPublicEDKey` in Info.plist. The appcast script receives CI signing material through `TOKENTICK_SPARKLE_PRIVATE_KEY` and passes it over standard input; local signing uses the `tokentick` keychain account. Do not print, commit, or routinely regenerate the private key.
 
 macOS code signing and Sparkle Ed25519 signatures serve different purposes. Distribution is ad-hoc signed without Apple notarization or a paid Developer Program account. Sign Sparkle components inside-out; the app's library-validation entitlement permits the dynamic framework without a Team ID. Creating a local package does not authorize tagging or publishing a release.
