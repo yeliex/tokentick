@@ -154,3 +154,5 @@ Performance claims require measured workloads, with first, unchanged, and increm
 ## Product website
 
 The `pages/` project is a single-page English product website built with Next.js, Tailwind CSS, and shadcn/ui. Lead with the menu-bar screenshot, then alternate app screenshots and feature copy for limits/reset times, token/cost analysis, task/project details, and storage. FAQ addresses privacy, resource use, permissions, and background operation. Downloads, installation instructions, releases, and support link to GitHub rather than separate website documentation. Use the app's light warm-white/amber and dark graphite/mint brand colors, and preserve sample-data labels and estimated-cost boundaries.
+
+The website uses Vercel Web Analytics for visitor and page-view statistics. This is separate from the native app diagnostics described above.
