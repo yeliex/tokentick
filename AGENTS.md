@@ -54,7 +54,7 @@ Codex disk-space analysis restores `storage.json` at startup and runs an indepen
 
 ## Verification and delivery
 
-Use the documented Xcode targets and `script/build_and_run.sh`; SwiftPM provides Core libraries/tests, not the CLI executable. The run script stops existing TokenTick processes. Prefer isolated databases for verification, and restore any temporary launch settings you introduce.
+Use the documented Xcode targets and `script/build_and_run.sh`; SwiftPM provides Core libraries/tests, not the CLI executable. For debugging, launch only the Debug app bundle and isolate its writable data (databases, caches, and preferences) from the installed app. Keep the original app running: never quit it or use process-name-wide termination such as `pkill -x TokenTick`. Stop only the specific debug process when necessary. Verify that the launch path enforces this isolation before running it; do not use a script that terminates the original app or shares its writable data. Restore any temporary launch settings you introduce.
 
 Run checks appropriate to the change. For data changes, test actual failure boundaries: duplicates, unknown fields, account switches, time boundaries, cancellation, interrupted commits, and cache/fact agreement. For UI changes, inspect native interactions and both languages/appearances where affected. A passing build does not prove runtime or live API correctness. Performance claims require comparable measured workloads.
 

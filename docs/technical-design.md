@@ -200,7 +200,7 @@ forecast_progress_difference = last_percent − 100 × (last_time − inferred_s
 display_progress_difference = window.used_percent − 100 × (now − inferred_start) / duration
 ```
 
-Zero rate does not predict exhaustion; 100% is exhausted. Invalid/reset-expired windows do not predict. The forecast retains an observation-time comparison. The UI independently uses `CurrentLimitWindow.expectedUsedPercent(now:)` for both the green time marker and the **Ahead** (positive) / **Allowance** (nonpositive) label, without requiring forecast samples. Neither tokens nor costs participate in these formulas.
+Zero rate does not predict exhaustion; 100% is exhausted. Invalid/reset-expired windows do not predict. The forecast retains an observation-time comparison. The UI independently uses `CurrentLimitWindow.expectedUsedPercent(now:)` for both the green time marker and the **Ahead** (positive) / **Allowance** (nonpositive) label, without requiring forecast samples. `LimitProgressBar` always maps used percentage to left-to-right fill and marker positions; the remaining/used preference affects percentage text only. Its accessibility label always describes used percentage. Neither tokens nor costs participate in these formulas.
 
 ## Queries and synchronization
 

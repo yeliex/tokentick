@@ -143,7 +143,7 @@ struct CurrentLimitsView: View {
                             .help(UsageFormatting.timestamp(Double(reset)))
                     }
                 }
-                LimitProgressBar(window: window, now: now, showRemaining: showRemaining, workingDays: workingDays)
+                LimitProgressBar(window: window, now: now, workingDays: workingDays)
                     .padding(.top, compact ? -4 : -6)
                 if progressDifference != nil || prediction(forecast, window: window, now: now) != nil {
                     HStack(alignment: .firstTextBaseline) {
@@ -226,10 +226,9 @@ private struct LimitSurface: ViewModifier {
 struct LimitProgressBar: View {
     let window: CurrentLimitWindow
     let now: Date
-    let showRemaining: Bool
     let workingDays: Int
     private func position(_ used: Double) -> Double {
-        min(1, max(0, (showRemaining ? 100 - used : used) / 100))
+        min(1, max(0, used / 100))
     }
     var body: some View {
         GeometryReader { geometry in
@@ -249,7 +248,7 @@ struct LimitProgressBar: View {
                 }
             }
         }.frame(height: 13).padding(.top, 3)
-            .accessibilityLabel("\(showRemaining ? String(localized: "remaining") : String(localized: "used")) \((position(window.usedPercent) * 100).formatted())%")
+            .accessibilityLabel("\(String(localized: "used")) \((position(window.usedPercent) * 100).formatted())%")
     }
 }
 

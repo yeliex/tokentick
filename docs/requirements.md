@@ -69,7 +69,7 @@ Fresh logs may advance API-confirmed windows within the same login session. Wind
 
 Show the main `codex` bucket prominently and other buckets as secondary cards. Windows with the same limit ID share a card, with separate percentages and periods. Use the API's plan name, credit balance, available reset count, and returned expiry details when present; do not infer missing balances, plan multipliers, or expiry dates. Reset credits are information, not an action to redeem them.
 
-The default display is remaining percentage, configurable to used percentage. Weekly tick divisions use 4, 5, or 7 equal parts (default 5), plus 50% and 80% used markers. Five-hour windows omit those equal divisions. The time marker reflects elapsed natural time; the setting does not skip weekends or change the window duration. All markers follow the selected used/remaining coordinate system.
+The default percentage text shows remaining allowance, configurable to used percentage. This preference changes only the text; the progress bar always fills from left to right with used percentage, and all markers use the same used-percentage coordinates. Weekly tick divisions use 4, 5, or 7 equal parts (default 5), plus 50% and 80% used markers. Five-hour windows omit those equal divisions. The time marker reflects elapsed natural time; the setting does not skip weekends or change the window duration.
 
 The current-limits module shows a small upper-right loading indicator while requesting the API, without replacing cached cards. A failed refresh retains the last known snapshot; a confirmed missing account clears it. Cache files are disposable, atomically replaced on successful refresh, and stored beside the TokenTick database. Invalid or missing files fall back to live fetching.
 
