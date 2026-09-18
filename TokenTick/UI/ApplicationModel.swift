@@ -103,8 +103,10 @@ final class ApplicationModel {
                         self?.checkLoginEnvironment()
                         self?.isRefreshingAPI = false
                     }
+                }, onDiagnostic: { diagnostic in
+                    AppTelemetry.captureSyncIssue(operation: diagnostic.operation, reason: diagnostic.reason,
+                                                  errorType: diagnostic.errorType, code: diagnostic.code)
                 })
-                AppTelemetry.captureSyncIssues(count: lastSync?.issues.count ?? 0)
                 checkLoginEnvironment()
                 if limitSession.acceptLog(lastSync?.scan?.currentLimits, generation: limitGeneration,
                                           now: Date().timeIntervalSince1970),

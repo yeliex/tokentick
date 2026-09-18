@@ -1,9 +1,45 @@
 import Foundation
 import GRDB
 import Testing
+import Synchronization
 @testable import TokenTickCore
 
 struct CodexAPITests {
+    @Test(arguments: ["Codex.app", "ChatGPT.app"])
+    func discoversBundledExecutableWithoutPATH(app: String) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let system = root.appendingPathComponent("Applications")
+        let user = root.appendingPathComponent("User/Applications")
+        let cli = user.appendingPathComponent("\(app)/Contents/Resources/codex")
+        try FileManager.default.createDirectory(at: cli.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("#!/bin/sh\n".utf8).write(to: cli)
+        #expect(throws: CodexAPIError.self) {
+            try CodexAPIClient.resolveExecutable(path: "", applicationDirectories: [system, user])
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: cli.path)
+        #expect(try CodexAPIClient.resolveExecutable(path: "", applicationDirectories: [system, user]) == cli)
+        #expect(throws: CodexAPIError.self) {
+            try CodexAPIClient.resolveExecutable(explicit: root.appendingPathComponent("missing"), path: "", applicationDirectories: [user])
+        }
+        let pathCLI = root.appendingPathComponent("codex")
+        try FileManager.default.copyItem(at: cli, to: pathCLI)
+        #expect(try CodexAPIClient.resolveExecutable(path: root.path, applicationDirectories: [user]) == pathCLI)
+        #expect(try CodexAPIClient.resolveExecutable(explicit: cli, path: root.path) == cli)
+    }
+
+    @Test func diagnosticsExcludePrivateErrorContentsAndKeepRPCCode() {
+        let error = NSError(domain: "secret-account", code: 42, userInfo: [NSLocalizedDescriptionKey: "secret-token /Users/private SQL"])
+        let diagnostic = SynchronizationDiagnostic(error: error, operation: "sync.logs")
+        #expect(diagnostic.reason == "operation_failed")
+        #expect(diagnostic.code == 42)
+        #expect(!String(describing: diagnostic).contains("secret"))
+        #expect(!String(describing: diagnostic).contains("/Users"))
+        let rpc = SynchronizationDiagnostic(error: CodexAPIError.rpc(-32601), operation: "api.daily_usage")
+        #expect(rpc.reason == "rpc_error")
+        #expect(rpc.code == -32601)
+    }
+
     static let limits = #"{"accountId":"account-a","rateLimits":{"limitId":"legacy","primary":{"usedPercent":99,"windowDurationMins":300,"resetsAt":40000}},"rateLimitsByLimitId":{"codex":{"limitId":"codex","primary":{"usedPercent":12,"windowDurationMins":300,"resetsAt":20000},"secondary":{"usedPercent":23,"windowDurationMins":10080,"resetsAt":800000}}}}"#
     static let daily = #"{"summary":{"lifetimeTokens":9007199254740993},"dailyUsageBuckets":[{"startDate":"2026-09-09","tokens":400},{"startDate":"2026-09-08","tokens":200}],"threadUsage":null}"#
 
@@ -117,7 +153,16 @@ struct CodexAPITests {
         """
         try script.write(to: executable, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
-        let report = try await CodexAPIClient.synchronize(store: store, executable: executable, codexHome: root)
+        let diagnostics = Mutex<[SynchronizationDiagnostic]>([])
+        let report = try await CodexAPIClient.synchronize(store: store, executable: executable, codexHome: root,
+            onDiagnostic: { diagnostic in diagnostics.withLock { $0.append(diagnostic) } })
+        let captured = diagnostics.withLock { $0 }
+        if mode == "unsupported" {
+            #expect(captured.count == 1)
+            #expect(captured.first?.operation == "api.daily_usage")
+            #expect(captured.first?.code == -32601)
+        } else if mode == "success" { #expect(captured.isEmpty) }
+        else { #expect(captured.first?.reason == "account_changed") }
         #expect((report.issue == nil) == (mode == "success"))
         #expect(report.issue?.contains("secret-must-not-leak") != true)
         #expect(report.accountEmail == (mode == "switched" ? nil : "member@example.com"))

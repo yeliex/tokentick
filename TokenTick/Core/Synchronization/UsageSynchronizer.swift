@@ -32,7 +32,8 @@ public struct UsageSynchronizer: Sendable {
                             codexExecutable: URL? = nil,
                             onProgress: (@Sendable (SynchronizationProgress) -> Void)? = nil,
                             onCurrentLimits: (@Sendable (CurrentLimitSnapshot?) async -> Void)? = nil,
-                            onAPIFailure: (@Sendable () async -> Void)? = nil) async throws -> SynchronizationReport {
+                            onAPIFailure: (@Sendable () async -> Void)? = nil,
+                            onDiagnostic: (@Sendable (SynchronizationDiagnostic) -> Void)? = nil) async throws -> SynchronizationReport {
         let task = Task.detached(priority: .utility) {
             var report = SynchronizationReport(scope: scope, startedAt: Date().timeIntervalSince1970)
             if scope == .all || scope == .api || scope == .remote {
@@ -47,10 +48,12 @@ public struct UsageSynchronizer: Sendable {
                                 onCurrentLimits: onCurrentLimits, onFailure: {
                                     if let onAPIFailure { await onAPIFailure() }
                                     else { await onCurrentLimits?(nil) }
-                                })
+                                }, onDiagnostic: onDiagnostic)
                             report.api = result
                             if let issue = result.issue { report.issues.append(issue) }
-                            if !result.accountAvailable { report.issues.append(String(localized: "The server did not provide a verifiable account identity.", bundle: .module)) }
+                            if !result.accountAvailable {
+                                onDiagnostic?(SynchronizationDiagnostic(operation: "api.account", reason: "missing_account"))
+                                report.issues.append(String(localized: "The server did not provide a verifiable account identity.", bundle: .module)) }
                         } catch {
                             try Task.checkCancellation()
                             report.issues.append(String(localized: "Server: \(error.localizedDescription)", bundle: .module))
@@ -66,9 +69,12 @@ public struct UsageSynchronizer: Sendable {
                             report.scan = try LocalUsageScanner(store: store).scan(codexHome: codexHome) { progress in
                                 onProgress?(SynchronizationProgress(stage: .scanning, scan: progress))
                             }
-                            if let count = report.scan?.issueCount, count > 0 { report.issues.append(String(localized: "Log scan issues: \(count). Successfully collected data was kept.", bundle: .module)) }
+                            if let count = report.scan?.issueCount, count > 0 {
+                                onDiagnostic?(SynchronizationDiagnostic(operation: "sync.logs", reason: "scan_issues"))
+                                report.issues.append(String(localized: "Log scan issues: \(count). Successfully collected data was kept.", bundle: .module)) }
                         } catch {
                             try Task.checkCancellation()
+                            onDiagnostic?(SynchronizationDiagnostic(error: error, operation: "sync.logs"))
                             report.issues.append(String(localized: "Logs: \(error.localizedDescription)", bundle: .module))
                         }
                     }
@@ -89,6 +95,7 @@ public struct UsageSynchronizer: Sendable {
                     report.prices = prices
                 } catch {
                     try Task.checkCancellation()
+                    onDiagnostic?(SynchronizationDiagnostic(error: error, operation: "sync.prices"))
                     report.issues.append(String(localized: "Prices: \(error.localizedDescription)", bundle: .module))
                 }
             }
@@ -102,13 +109,17 @@ public struct UsageSynchronizer: Sendable {
                     }
                 } catch {
                     try Task.checkCancellation()
+                    onDiagnostic?(SynchronizationDiagnostic(error: error, operation: "sync.repricing"))
                     report.issues.append(String(localized: "Pricing: \(error.localizedDescription)", bundle: .module))
                 }
             }
             try Task.checkCancellation()
             onProgress?(SynchronizationProgress(stage: .statistics, scan: nil))
             do { report.statistics = try store.rebuildStatistics() }
-            catch { report.issues.append(String(localized: "Statistics: \(error.localizedDescription)", bundle: .module)) }
+            catch {
+                try Task.checkCancellation()
+                onDiagnostic?(SynchronizationDiagnostic(error: error, operation: "sync.statistics"))
+                report.issues.append(String(localized: "Statistics: \(error.localizedDescription)", bundle: .module)) }
             try Task.checkCancellation()
             report.finishedAt = Date().timeIntervalSince1970
             try store.saveSynchronizationReport(report)

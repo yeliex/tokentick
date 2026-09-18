@@ -7,52 +7,80 @@ public struct CodexAPIClient: Sendable {
     private let codexHome: URL
 
     private init(executable: URL? = nil, codexHome: URL = LocalUsageScanner.defaultCodexHome) throws {
-        let candidates = executable.map { [$0.path] } ??
-            (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map { "\($0)/codex" }
-            + ["/opt/homebrew/bin/codex", "/usr/local/bin/codex"]
+        self.executable = try Self.resolveExecutable(explicit: executable)
+        self.codexHome = codexHome
+    }
+
+    static func resolveExecutable(explicit: URL? = nil,
+                                  path: String = (ProcessInfo.processInfo.environment["PATH"] ?? "")
+                                    + ":/opt/homebrew/bin:/usr/local/bin",
+                                  applicationDirectories: [URL] = [
+                                    URL(fileURLWithPath: "/Applications"),
+                                    FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications")
+                                  ]) throws -> URL {
+        // An explicit CLI selection must not silently fall back to a different installation.
+        let candidates = explicit.map { [$0.path] } ??
+            path.split(separator: ":").map { "\($0)/codex" }
+            + applicationDirectories.flatMap { directory in
+                ["Codex.app", "ChatGPT.app"].map {
+                    directory.appendingPathComponent("\($0)/Contents/Resources/codex").path
+                }
+            }
         guard let path = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
             throw CodexAPIError.missingExecutable
         }
-        self.executable = URL(fileURLWithPath: path)
-        self.codexHome = codexHome
+        return URL(fileURLWithPath: path)
     }
 
     public static func synchronize(store: UsageStore, executable: URL? = nil,
                                    codexHome: URL = LocalUsageScanner.defaultCodexHome,
                                    onCurrentLimits: (@Sendable (CurrentLimitSnapshot?) async -> Void)? = nil,
-                                   onFailure: (@Sendable () async -> Void)? = nil) async throws -> APISyncReport {
+                                   onFailure: (@Sendable () async -> Void)? = nil,
+                                   onDiagnostic: (@Sendable (SynchronizationDiagnostic) -> Void)? = nil) async throws -> APISyncReport {
         let task = Task.detached(priority: .utility) {
+            var operation = "api.executable"
             do {
                 let client = try Self(executable: executable, codexHome: codexHome)
+                operation = "api.initialize"
                 let session = try CodexAPISession(executable: client.executable, codexHome: client.codexHome)
                 defer { session.close() }
+                operation = "api.limits"
                 let before: CodexRateLimits = try session.request("account/rateLimits/read")
                 var daily: CodexDailyUsage?
                 var issue: String?
+                operation = "api.daily_usage"
                 do {
                     daily = try session.request("account/usage/read")
                 }
-                catch let error as CodexAPIError { issue = error.localizedDescription }
+                catch let error as CodexAPIError {
+                    issue = error.localizedDescription
+                    onDiagnostic?(SynchronizationDiagnostic(error: error, operation: "api.daily_usage"))
+                }
+                operation = "api.limits"
                 // Email is display-only; failure to fetch it must not block limit or usage synchronization.
                 let account: CodexAccountResponse? = try? session.request("account/read", params: ["refreshToken": false])
                 // Bracket accountless daily buckets with account-bearing observations to detect login changes.
                 let after: CodexRateLimits = try session.request("account/rateLimits/read")
                 if before.accountId != after.accountId {
                     daily = nil
+                    onDiagnostic?(SynchronizationDiagnostic(operation: "api.account", reason: "account_changed"))
                     issue = String(localized: "The account changed during the request. These daily buckets were discarded.", bundle: .module)
                 }
                 try Task.checkCancellation()
                 let observedAt = Date()
+                operation = "api.validation"
                 let report = try UsageStore.prepareAPIObservation(limits: after, daily: daily, observedAt: observedAt, issue: issue,
                                                     limitsSourceJSON: session.lastResponseJSON,
                                                     accountEmail: account?.subscriptionEmail(before: before, after: after))
                 // Display validated limits before waiting for the log scanner's database write lock.
                 await onCurrentLimits?(report.currentLimits)
                 try Task.checkCancellation()
+                operation = "api.storage"
                 try store.saveAPIObservation(report, daily: daily, observedAt: observedAt)
                 return report
             } catch {
                 try Task.checkCancellation()
+                onDiagnostic?(SynchronizationDiagnostic(error: error, operation: operation))
                 await onFailure?()
                 try store.saveAPIFailure(error.localizedDescription)
                 throw error

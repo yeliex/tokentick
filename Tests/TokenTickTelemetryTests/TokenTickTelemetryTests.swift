@@ -4,6 +4,17 @@ import Testing
 @testable import TokenTickTelemetry
 
 struct TokenTickTelemetryTests {
+    @Test func syncIssuesKeepReasonsAndSeparateFailures() {
+        let missing = AppTelemetry.sanitize(AppTelemetry.syncIssueEvent(operation: "api.executable",
+            reason: "missing_executable", errorType: "CodexAPIError", code: 1))
+        let rpc = AppTelemetry.syncIssueEvent(operation: "api.daily_usage", reason: "rpc_error",
+            errorType: "CodexAPIError", code: -32601)
+        #expect(missing.tags?["reason"] == "missing_executable")
+        #expect(missing.message?.formatted.contains("missing_executable") == true)
+        #expect(rpc.tags?["error_code"] == "-32601")
+        #expect(missing.fingerprint != rpc.fingerprint)
+    }
+
     @Test func cancellationIsNotAnError() {
         #expect(AppTelemetry.errorEvent(CancellationError(), operation: "sync") == nil)
         #expect(AppTelemetry.errorEvent(URLError(.cancelled), operation: "sync") == nil)

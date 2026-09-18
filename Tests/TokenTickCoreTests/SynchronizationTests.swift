@@ -97,11 +97,12 @@ struct SynchronizationTests {
         """.write(to: executable, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
         let scanned = Mutex(false)
+        let diagnostics = Mutex<[SynchronizationDiagnostic]>([])
         let task = Task {
             try await UsageSynchronizer(store: store).synchronize(codexHome: root,
                 codexExecutable: executable, onProgress: { progress in
                     if progress.scan != nil { scanned.withLock { $0 = true } }
-                })
+                }, onDiagnostic: { diagnostic in diagnostics.withLock { $0.append(diagnostic) } })
         }
         let deadline = Date().addingTimeInterval(5)
         while Date() < deadline {
@@ -117,6 +118,7 @@ struct SynchronizationTests {
         } catch is CancellationError { }
         #expect(try store.tableCounts()["usage"] == 1)
         #expect(try store.lastSynchronizationReport() == nil)
+        #expect(diagnostics.withLock { $0.isEmpty })
     }
 
     @Test func apiFailureIsDistinctFromConfirmedMissingAccount() async throws {
@@ -124,10 +126,15 @@ struct SynchronizationTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
         let failed = Mutex(false)
+        let diagnostics = Mutex<[SynchronizationDiagnostic]>([])
         let report = try await UsageSynchronizer(store: store).synchronize(scope: .api, codexHome: root,
             codexExecutable: root.appendingPathComponent("missing-codex"),
             onCurrentLimits: { _ in Issue.record("A transport failure must not clear cached display data") },
-            onAPIFailure: { failed.withLock { $0 = true } })
+            onAPIFailure: { failed.withLock { $0 = true } },
+            onDiagnostic: { diagnostic in diagnostics.withLock { $0.append(diagnostic) } })
+        #expect(diagnostics.withLock { $0.count } == 1)
+        #expect(diagnostics.withLock { $0.first?.reason } == "missing_executable")
+        #expect(diagnostics.withLock { $0.first?.operation } == "api.executable")
         #expect(failed.withLock { $0 })
         #expect(report.api == nil && !report.issues.isEmpty)
     }

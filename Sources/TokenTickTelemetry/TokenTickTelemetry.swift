@@ -42,13 +42,18 @@ public enum AppTelemetry {
         SentrySDK.capture(event: event)
     }
 
-    public static func captureSyncIssues(count: Int) {
-        guard count > 0 else { return }
+    public static func captureSyncIssue(operation: String, reason: String, errorType: String?, code: Int?) {
+        SentrySDK.capture(event: syncIssueEvent(operation: operation, reason: reason, errorType: errorType, code: code))
+    }
+
+    static func syncIssueEvent(operation: String, reason: String, errorType: String?, code: Int?) -> Event {
         let event = Event(level: .error)
-        event.message = SentryMessage(formatted: "Synchronization completed with issues")
-        event.fingerprint = ["synchronization.partial"]
-        event.tags = ["operation": "synchronization.partial", "issue_count": String(count)]
-        SentrySDK.capture(event: event)
+        event.message = SentryMessage(formatted: "\(operation) failed: \(reason)" + (code.map { " (code \($0))" } ?? ""))
+        event.fingerprint = [operation, reason, errorType ?? "none", code.map(String.init) ?? "none"]
+        event.tags = ["operation": operation, "reason": reason]
+        event.tags?["error_type"] = errorType
+        event.tags?["error_code"] = code.map(String.init)
+        return event
     }
 
     static func errorEvent(_ error: any Error, operation: StaticString) -> Event? {
