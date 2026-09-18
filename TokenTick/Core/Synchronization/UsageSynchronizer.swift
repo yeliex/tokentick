@@ -71,7 +71,9 @@ public struct UsageSynchronizer: Sendable {
                             }
                             if let count = report.scan?.issueCount, count > 0 {
                                 for (reason, count) in report.scan?.diagnosticCounts.sorted(by: { $0.key < $1.key }) ?? [] {
-                                    onDiagnostic?(SynchronizationDiagnostic(operation: "sync.logs", reason: reason, count: count))
+                                    let sample = report.scan?.diagnosticSamples[reason]
+                                    let message = sample.map { "\($0.fileName)" + ($0.line.map { ":\($0)" } ?? "") + ": \($0.message)" }
+                                    onDiagnostic?(SynchronizationDiagnostic(operation: "sync.logs", reason: reason, count: count, errorMessage: message))
                                 }
                                 report.issues.append(String(localized: "Log scan issues: \(count). Successfully collected data was kept.", bundle: .module)) }
                         } catch {

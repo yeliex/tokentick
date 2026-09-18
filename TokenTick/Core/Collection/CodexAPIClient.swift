@@ -39,10 +39,12 @@ public struct CodexAPIClient: Sendable {
                                    onDiagnostic: (@Sendable (SynchronizationDiagnostic) -> Void)? = nil) async throws -> APISyncReport {
         let task = Task.detached(priority: .utility) {
             var operation = "api.executable"
+            var activeSession: CodexAPISession?
             do {
                 let client = try Self(executable: executable, codexHome: codexHome)
                 operation = "api.initialize"
                 let session = try CodexAPISession(executable: client.executable, codexHome: client.codexHome)
+                activeSession = session
                 defer { session.close() }
                 operation = "api.limits"
                 let before: CodexRateLimits = try session.request("account/rateLimits/read")
@@ -52,9 +54,11 @@ public struct CodexAPIClient: Sendable {
                 do {
                     daily = try session.request("account/usage/read")
                 }
-                catch let error as CodexAPIError {
+                catch {
+                    try Task.checkCancellation()
+                    guard error is CodexAPIError || error is DecodingError else { throw error }
                     issue = error.localizedDescription
-                    onDiagnostic?(SynchronizationDiagnostic(error: error, operation: "api.daily_usage"))
+                    onDiagnostic?(session.diagnostic(error: error, operation: "api.daily_usage"))
                 }
                 operation = "api.limits"
                 // Email is display-only; failure to fetch it must not block limit or usage synchronization.
@@ -63,7 +67,7 @@ public struct CodexAPIClient: Sendable {
                 catch {
                     try Task.checkCancellation()
                     account = nil
-                    onDiagnostic?(SynchronizationDiagnostic(error: error, operation: "api.account_profile", warning: true))
+                    onDiagnostic?(session.diagnostic(error: error, operation: "api.account_profile", warning: true))
                 }
                 // Bracket accountless daily buckets with account-bearing observations to detect login changes.
                 let after: CodexRateLimits = try session.request("account/rateLimits/read")
@@ -86,7 +90,9 @@ public struct CodexAPIClient: Sendable {
                 return report
             } catch {
                 try Task.checkCancellation()
-                onDiagnostic?(SynchronizationDiagnostic(error: error, operation: operation))
+                onDiagnostic?(operation == "api.limits"
+                    ? activeSession?.diagnostic(error: error, operation: operation) ?? SynchronizationDiagnostic(error: error, operation: operation)
+                    : SynchronizationDiagnostic(error: error, operation: operation))
                 await onFailure?()
                 try store.saveAPIFailure(error.localizedDescription)
                 throw error
@@ -97,7 +103,7 @@ public struct CodexAPIClient: Sendable {
 }
 
 enum CodexAPIError: Error, LocalizedError {
-    case missingExecutable, timeout, processExited, invalidResponse, oversizedResponse, rpc(Int), invalidStatistics
+    case missingExecutable, timeout, processExited, invalidResponse, oversizedResponse, rpc(Int, message: String? = nil), invalidStatistics
     var errorDescription: String? {
         switch self {
         case .missingExecutable: String(localized: "Codex CLI executable not found. Specify the codex path.", bundle: .module)
@@ -105,7 +111,7 @@ enum CodexAPIError: Error, LocalizedError {
         case .processExited: String(localized: "Codex app-server exited before statistics were loaded.", bundle: .module)
         case .invalidResponse: String(localized: "Codex app-server returned an unrecognized protocol response.", bundle: .module)
         case .oversizedResponse: String(localized: "The Codex statistics response exceeds the 4 MiB limit.", bundle: .module)
-        case .rpc(let code): String(localized: "The Codex statistics API returned error \(code). Existing history was kept.", bundle: .module)
+        case .rpc(let code, _): String(localized: "The Codex statistics API returned error \(code). Existing history was kept.", bundle: .module)
         case .invalidStatistics: String(localized: "Codex statistics contain invalid dates, duplicate daily buckets, or invalid values. No data was written.", bundle: .module)
         }
     }
@@ -120,6 +126,13 @@ final class CodexAPISession {
     private var nextID = 0
     private let timeout: TimeInterval
     private(set) var lastResponseJSON: String?
+    private var lastRequestMethod: String?
+    private var durationMilliseconds: Int?
+
+    func diagnostic(error: any Error, operation: String, warning: Bool = false) -> SynchronizationDiagnostic {
+        SynchronizationDiagnostic(error: error, operation: operation, warning: warning,
+                                  rpcMethod: lastRequestMethod, durationMilliseconds: durationMilliseconds)
+    }
 
     init(executable: URL, codexHome: URL, timeout: TimeInterval = 30) throws {
         self.timeout = timeout
@@ -160,6 +173,11 @@ final class CodexAPISession {
     }
 
     func request<Result: Decodable>(_ method: String, params: [String: Any] = [:]) throws -> Result {
+        // Only protocol method names are retained; request parameters and response contents are excluded.
+        lastRequestMethod = ["initialize", "account/rateLimits/read", "account/usage/read", "account/read"].contains(method) ? method : nil
+        let startedAt = ProcessInfo.processInfo.systemUptime
+        durationMilliseconds = nil
+        defer { durationMilliseconds = Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000) }
         lastResponseJSON = nil
         nextID += 1
         try write(["id": nextID, "method": method, "params": params])
@@ -171,8 +189,8 @@ final class CodexAPISession {
                 buffer.removeSubrange(...newline)
                 guard let header = try? JSONDecoder().decode(Header.self, from: line) else { throw CodexAPIError.invalidResponse }
                 guard header.id == nextID else { continue }
-                if let error = header.error { throw CodexAPIError.rpc(error.code) }
-                guard let response = try? JSONDecoder().decode(Response<Result>.self, from: line) else { throw CodexAPIError.invalidResponse }
+                if let error = header.error { throw CodexAPIError.rpc(error.code, message: error.message) }
+                let response = try JSONDecoder().decode(Response<Result>.self, from: line)
                 guard let envelope = try JSONSerialization.jsonObject(with: line) as? [String: Any],
                       let result = envelope["result"] else { throw CodexAPIError.invalidResponse }
                 lastResponseJSON = String(decoding: try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]), as: UTF8.self)
@@ -202,7 +220,7 @@ final class CodexAPISession {
     private struct Header: Decodable {
         let id: Int?
         let error: RPCError?
-        struct RPCError: Decodable { let code: Int }
+        struct RPCError: Decodable { let code: Int; let message: String? }
     }
     private struct Response<Result: Decodable>: Decodable { let result: Result }
 }

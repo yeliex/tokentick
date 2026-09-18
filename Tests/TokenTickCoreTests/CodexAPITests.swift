@@ -5,6 +5,16 @@ import Synchronization
 @testable import TokenTickCore
 
 struct CodexAPITests {
+    @Test func rpcDiagnosticsPreserveServerMessageAndDecodingCategory() {
+        let diagnostic = SynchronizationDiagnostic(error: CodexAPIError.rpc(-32603, message: "HTTP 503: upstream unavailable"), operation: "api.daily_usage")
+        #expect(diagnostic.errorMessage == "HTTP 503: upstream unavailable")
+        #expect(diagnostic.code == -32603)
+        let decoding = SynchronizationDiagnostic(error: DecodingError.typeMismatch(Int.self,
+            .init(codingPath: [], debugDescription: "Expected an integer")), operation: "api.daily_usage")
+        #expect(decoding.decodingFailure == "type_mismatch")
+        #expect(decoding.errorMessage?.contains("Expected an integer") == true)
+    }
+
     @Test(arguments: ["Codex.app", "ChatGPT.app"])
     func discoversBundledExecutableWithoutPATH(app: String) throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -36,21 +46,23 @@ struct CodexAPITests {
         #expect(SynchronizationDiagnostic(error: URLError(.cancelled), operation: "sync.prices").isCancellation)
     }
 
-    @Test func scanDiagnosticsCountAllIssuesWithoutIncludingPrivateText() {
+    @Test func scanDiagnosticsKeepOneSamplePerReason() {
         var report = ScanReport()
         for _ in 0..<150 { report.addIssue("parse", ScanIssue(fileName: "private-file", line: 1, message: "private-body")) }
         report.addIssue("empty_source", ScanIssue(fileName: "private-root", line: nil, message: "empty"))
         #expect(report.issues.count == 100)
         #expect(report.diagnosticCounts == ["parse": 150])
+        #expect(report.diagnosticSamples.count == 1)
+        #expect(report.diagnosticSamples["parse"]?.fileName == "private-file")
     }
 
-    @Test func diagnosticsExcludePrivateErrorContentsAndKeepRPCCode() {
+    @Test func diagnosticsKeepDescriptionAndRPCCodeWithoutArbitraryMetadata() {
         let error = NSError(domain: "secret-account", code: 42, userInfo: [NSLocalizedDescriptionKey: "secret-token /Users/private SQL"])
         let diagnostic = SynchronizationDiagnostic(error: error, operation: "sync.logs")
         #expect(diagnostic.reason == "operation_failed")
         #expect(diagnostic.code == 42)
-        #expect(!String(describing: diagnostic).contains("secret"))
-        #expect(!String(describing: diagnostic).contains("/Users"))
+        #expect(diagnostic.errorMessage == "secret-token /Users/private SQL")
+        #expect(!String(describing: diagnostic).contains("secret-account"))
         let rpc = SynchronizationDiagnostic(error: CodexAPIError.rpc(-32601), operation: "api.daily_usage")
         #expect(rpc.reason == "rpc_error")
         #expect(rpc.code == -32601)
@@ -177,6 +189,9 @@ struct CodexAPITests {
             #expect(captured.count == 1)
             #expect(captured.first?.operation == "api.daily_usage")
             #expect(captured.first?.code == -32601)
+            #expect(captured.first?.rpcMethod == "account/usage/read")
+            #expect((captured.first?.durationMilliseconds ?? -1) >= 0)
+            #expect(captured.first?.errorMessage != nil)
         } else if mode == "success" { #expect(captured.isEmpty) }
         else { #expect(captured.first?.reason == "account_changed") }
         #expect((report.issue == nil) == (mode == "success"))

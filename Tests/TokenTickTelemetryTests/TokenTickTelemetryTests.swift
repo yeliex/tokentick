@@ -33,20 +33,38 @@ struct TokenTickTelemetryTests {
         #expect(missing.fingerprint != rpc.fingerprint)
     }
 
+    @Test func errorDetailsKeepContextWithoutChangingGrouping() {
+        let first = AppTelemetry.syncIssueEvent(operation: "api.daily_usage", reason: "rpc_error", errorType: "CodexAPIError", code: -32603,
+            rpcMethod: "account/usage/read", durationMilliseconds: 123, errorMessage: "HTTP 503 at /tmp/cache: Authorization: Bearer abc.def.ghi")
+        let second = AppTelemetry.syncIssueEvent(operation: "api.daily_usage", reason: "rpc_error", errorType: "CodexAPIError", code: -32603,
+            durationMilliseconds: 900, errorMessage: "Another failure")
+        let event = AppTelemetry.sanitize(first)
+        #expect(event.fingerprint == second.fingerprint)
+        #expect(event.tags?["rpc_method"] == "account/usage/read")
+        #expect(event.context?["rpc"]?["duration_ms"] as? Int == 123)
+        let payload = String(describing: event.serialize())
+        #expect(payload.contains("HTTP 503 at /tmp/cache"))
+        #expect(!payload.contains("abc.def.ghi"))
+        let scrubbed = AppTelemetry.scrubErrorMessage(#"{"refresh_token":"sensitive", "api_key":"another"} https://user:pass@example.com password=hunter2"#)
+        for secret in ["sensitive", "another", "user:pass", "hunter2"] { #expect(!scrubbed.contains(secret)) }
+        #expect(AppTelemetry.scrubErrorMessage(String(repeating: "a", count: 3000)).count == 2048)
+    }
+
     @Test func cancellationIsNotAnError() {
         #expect(AppTelemetry.errorEvent(CancellationError(), operation: "sync") == nil)
         #expect(AppTelemetry.errorEvent(URLError(.cancelled), operation: "sync") == nil)
     }
 
-    @Test func handledErrorsDoNotIncludePrivateValues() throws {
+    @Test func handledErrorsRetainDescriptionsWithoutArbitraryUserInfo() throws {
         let error = NSError(domain: "private-account@example.com", code: 7, userInfo: [
-            NSLocalizedDescriptionKey: "SQL containing /Users/private and a secret token",
+            NSLocalizedDescriptionKey: "Failed to open /Users/private/usage.sqlite: password=credential-value",
             NSUnderlyingErrorKey: NSError(domain: "secret", code: 2)
         ])
         let event = try #require(AppTelemetry.errorEvent(error, operation: "database.open"))
         let payload = String(describing: event.serialize())
-        #expect(!payload.contains("private"))
-        #expect(!payload.contains("secret"))
+        #expect(payload.contains("/Users/private/usage.sqlite"))
+        #expect(!payload.contains("credential-value"))
+        #expect(!payload.contains("private-account@example.com"))
         #expect(!payload.contains("SQL"))
         #expect(event.tags?["error_code"] == "7")
         #expect(event.fingerprint?.first == "database.open")

@@ -206,6 +206,8 @@ extension AppTelemetry {
     static func capture(_ diagnostic: SynchronizationDiagnostic) {
         guard !diagnostic.isCancellation else { return }
         captureIssue(operation: diagnostic.operation, reason: diagnostic.reason, errorType: diagnostic.errorType,
-                     code: diagnostic.code, count: diagnostic.count, warning: diagnostic.warning)
+                     code: diagnostic.code, count: diagnostic.count, warning: diagnostic.warning,
+                     rpcMethod: diagnostic.rpcMethod, durationMilliseconds: diagnostic.durationMilliseconds,
+                     decodingFailure: diagnostic.decodingFailure, errorMessage: diagnostic.errorMessage)
     }
 }

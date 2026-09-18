@@ -16,6 +16,7 @@ public struct ScanReport: Codable, Sendable {
     public var issues: [ScanIssue] = []
     public var issueCount = 0
     public var diagnosticCounts: [String: Int] = [:]
+    public var diagnosticSamples: [String: ScanIssue] = [:]
     public var currentLimits: CurrentLimitSnapshot? = nil
     private enum CodingKeys: String, CodingKey {
         case discoveredFiles, scannedFiles, unchangedFiles, refreshedThreads, catalogAvailable,
@@ -23,7 +24,10 @@ public struct ScanReport: Codable, Sendable {
     }
 
     mutating func addIssue(_ reason: String, _ issue: ScanIssue) {
-        if reason != "empty_source" { diagnosticCounts[reason, default: 0] += 1 }
+        if reason != "empty_source" {
+            diagnosticCounts[reason, default: 0] += 1
+            if diagnosticSamples[reason] == nil { diagnosticSamples[reason] = issue }
+        }
         issueCount += 1
         if issues.count < 100 { issues.append(issue) }
     }

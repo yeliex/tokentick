@@ -1,26 +1,50 @@
 import Foundation
 
-/// Only fixed reasons and error metadata cross the telemetry boundary, never localized descriptions or userInfo.
+/// Structured grouping metadata and error descriptions; credentials are scrubbed at the telemetry boundary.
 public struct SynchronizationDiagnostic: Sendable {
     public let operation: String
     public let reason: String
     public let errorType: String?
     public let code: Int?
+    public let errorMessage: String?
+    public let rpcMethod: String?
+    public let durationMilliseconds: Int?
+    public let decodingFailure: String?
     public let count: Int?
     public let warning: Bool
     public let isCancellation: Bool
 
-    init(operation: String, reason: String, code: Int? = nil, count: Int? = nil, warning: Bool = false) {
+    init(operation: String, reason: String, code: Int? = nil, count: Int? = nil, warning: Bool = false, errorMessage: String? = nil) {
         self.operation = operation
         self.reason = reason
         errorType = nil
+        self.errorMessage = errorMessage
+        rpcMethod = nil
+        durationMilliseconds = nil
+        decodingFailure = nil
         self.code = code
         self.count = count
         self.warning = warning
         isCancellation = false
     }
 
-    init(error: any Error, operation: String, warning: Bool = false) {
+    init(error: any Error, operation: String, warning: Bool = false, rpcMethod: String? = nil, durationMilliseconds: Int? = nil) {
+        if case let CodexAPIError.rpc(_, message) = error {
+            errorMessage = message ?? error.localizedDescription
+        } else if error is DecodingError {
+            errorMessage = String(describing: error)
+        } else { errorMessage = error.localizedDescription }
+        self.rpcMethod = rpcMethod
+        self.durationMilliseconds = durationMilliseconds
+        if let decoding = error as? DecodingError {
+            switch decoding {
+            case .typeMismatch: decodingFailure = "type_mismatch"
+            case .valueNotFound: decodingFailure = "value_not_found"
+            case .keyNotFound: decodingFailure = "key_not_found"
+            case .dataCorrupted: decodingFailure = "data_corrupted"
+            @unknown default: decodingFailure = "unknown"
+            }
+        } else { decodingFailure = nil }
         count = nil
         self.warning = warning
         let nsError = error as NSError
@@ -35,7 +59,7 @@ public struct SynchronizationDiagnostic: Sendable {
             case .processExited: reason = "process_exited"
             case .invalidResponse: reason = "invalid_response"
             case .oversizedResponse: reason = "oversized_response"
-            case .rpc(let rpcCode): reason = "rpc_error"; code = rpcCode
+            case .rpc(let rpcCode, _): reason = "rpc_error"; code = rpcCode
             case .invalidStatistics: reason = "invalid_statistics"
             }
         } else if let price = error as? PriceSynchronizer.SyncError {

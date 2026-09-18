@@ -45,8 +45,8 @@ public enum AppTelemetry {
         submit(event)
     }
 
-    public static func captureIssue(operation: String, reason: String, errorType: String? = nil, code: Int? = nil, count: Int? = nil, warning: Bool = false) {
-        let event = syncIssueEvent(operation: operation, reason: reason, errorType: errorType, code: code)
+    public static func captureIssue(operation: String, reason: String, errorType: String? = nil, code: Int? = nil, count: Int? = nil, warning: Bool = false, rpcMethod: String? = nil, durationMilliseconds: Int? = nil, decodingFailure: String? = nil, errorMessage: String? = nil) {
+        let event = syncIssueEvent(operation: operation, reason: reason, errorType: errorType, code: code, rpcMethod: rpcMethod, durationMilliseconds: durationMilliseconds, decodingFailure: decodingFailure, errorMessage: errorMessage)
         if warning { event.level = .warning }
         if let count { event.tags?["issue_count"] = String(count) }
         submit(event)
@@ -57,13 +57,21 @@ public enum AppTelemetry {
         SentrySDK.capture(event: event)
     }
 
-    static func syncIssueEvent(operation: String, reason: String, errorType: String?, code: Int?) -> Event {
+    static func syncIssueEvent(operation: String, reason: String, errorType: String?, code: Int?, rpcMethod: String? = nil, durationMilliseconds: Int? = nil, decodingFailure: String? = nil, errorMessage: String? = nil) -> Event {
         let event = Event(level: .error)
         event.message = SentryMessage(formatted: "\(operation) failed: \(reason)" + (code.map { " (code \($0))" } ?? ""))
         event.fingerprint = [operation, reason, errorType ?? "none", code.map(String.init) ?? "none"]
         event.tags = ["operation": operation, "reason": reason]
         event.tags?["error_type"] = errorType
         event.tags?["error_code"] = code.map(String.init)
+        event.tags?["rpc_method"] = rpcMethod
+        event.tags?["decoding_failure"] = decodingFailure
+        if let durationMilliseconds {
+            event.context = ["rpc": ["duration_ms": durationMilliseconds]]
+        }
+        if let errorMessage {
+            event.context = (event.context ?? [:]).merging(["error_details": ["message": scrubErrorMessage(errorMessage)]]) { _, new in new }
+        }
         return event
     }
 
@@ -71,13 +79,31 @@ public enum AppTelemetry {
         let nsError = error as NSError
         guard !(error is CancellationError),
               !(nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled) else { return nil }
-        // Error descriptions/userInfo may contain SQL, local paths, account IDs, or API response bodies.
+        // Preserve actionable descriptions without attaching arbitrary userInfo or underlying response bodies.
         let type = String(reflecting: type(of: error))
         let event = Event(level: .error)
         event.message = SentryMessage(formatted: "\(operation) failed (\(type), code \(nsError.code))")
+        event.context = ["error_details": ["message": scrubErrorMessage(error.localizedDescription)]]
         event.fingerprint = [String(describing: operation), type, String(nsError.code)]
         event.tags = ["operation": String(describing: operation), "error_type": type, "error_code": String(nsError.code)]
         return event
+    }
+
+    /// Keep paths and diagnostic text, but redact common credential assignments and authorization values.
+    static func scrubErrorMessage(_ message: String) -> String {
+        var result = message
+        let patterns = [
+            #"(?i)\b(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]+"#,
+            #"(?i)(["']?(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|password|secret|authorization|cookie)["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;&}]+)"#,
+            #"\b(?:sk-|sk_)[A-Za-z0-9_-]{16,}"#,
+            #"(https?://)[^\s/@:]+:[^\s/@]+@"#
+        ]
+        for (index, pattern) in patterns.enumerated() {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            result = regex.stringByReplacingMatches(in: result, range: NSRange(result.startIndex..., in: result),
+                                                    withTemplate: index == 1 || index == 3 ? "$1[REDACTED]" : "[REDACTED]")
+        }
+        return String(result.prefix(2_048))
     }
 
     static func sanitize(_ event: Event) -> Event {

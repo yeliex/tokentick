@@ -9,7 +9,11 @@ struct SynchronizationTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
         try writeLog(root: root, malformed: true)
-        let report = try await UsageSynchronizer(store: store).synchronize(scope: .local, codexHome: root)
+        let diagnostics = Mutex<[SynchronizationDiagnostic]>([])
+        let report = try await UsageSynchronizer(store: store).synchronize(scope: .local, codexHome: root,
+            onDiagnostic: { diagnostic in diagnostics.withLock { $0.append(diagnostic) } })
+        #expect(diagnostics.withLock { $0.first?.reason } == "parse")
+        #expect(diagnostics.withLock { $0.first?.errorMessage?.contains(".jsonl:4:") } == true)
         #expect(report.scan?.insertedRequests == 1 && report.scan?.issueCount == 1)
         #expect(report.prices == nil && report.api == nil)
         #expect(report.statistics?.rebuilt == true && report.issues.count == 1)
