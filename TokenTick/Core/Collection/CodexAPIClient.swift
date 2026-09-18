@@ -58,12 +58,18 @@ public struct CodexAPIClient: Sendable {
                 }
                 operation = "api.limits"
                 // Email is display-only; failure to fetch it must not block limit or usage synchronization.
-                let account: CodexAccountResponse? = try? session.request("account/read", params: ["refreshToken": false])
+                let account: CodexAccountResponse?
+                do { account = try session.request("account/read", params: ["refreshToken": false]) }
+                catch {
+                    try Task.checkCancellation()
+                    account = nil
+                    onDiagnostic?(SynchronizationDiagnostic(error: error, operation: "api.account_profile", warning: true))
+                }
                 // Bracket accountless daily buckets with account-bearing observations to detect login changes.
                 let after: CodexRateLimits = try session.request("account/rateLimits/read")
                 if before.accountId != after.accountId {
                     daily = nil
-                    onDiagnostic?(SynchronizationDiagnostic(operation: "api.account", reason: "account_changed"))
+                    onDiagnostic?(SynchronizationDiagnostic(operation: "api.account", reason: "account_changed", warning: true))
                     issue = String(localized: "The account changed during the request. These daily buckets were discarded.", bundle: .module)
                 }
                 try Task.checkCancellation()

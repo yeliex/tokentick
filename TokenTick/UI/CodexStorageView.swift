@@ -1,3 +1,4 @@
+import TokenTickTelemetry
 import AppKit
 import Observation
 import SwiftUI
@@ -11,7 +12,7 @@ final class CodexStorageModel {
     var expanded: Set<String> = []
     var scrollID: String?
     @ObservationIgnored private var task: Task<Void, Never>?
-    @ObservationIgnored private let cache = LocalDisplayCache()
+    @ObservationIgnored private let cache = LocalDisplayCache(onDiagnostic: { AppTelemetry.capture($0) })
     @ObservationIgnored private var hasEnteredPage = false
 
     func loadCache() async {
@@ -36,13 +37,15 @@ final class CodexStorageModel {
             defer { isScanning = false; task = nil }
             await loadCache()
             guard !Task.isCancelled else { return }
-            let worker = Task.detached(priority: .utility) { try await CodexStorageScanner.scan(root: root) }
+            let worker = Task.detached(priority: .utility) { try await CodexStorageScanner.scan(root: root, onDiagnostic: { AppTelemetry.capture($0) }) }
             do {
                 let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                 try Task.checkCancellation()
                 snapshot = result
                 await cache.saveStorage(result)
             } catch {
+                guard !Task.isCancelled else { return }
+                AppTelemetry.capture(error, operation: "storage.scan")
                 // Keep the last snapshot when a scan cannot complete.
             }
         }

@@ -30,7 +30,9 @@ struct TokenTickApp: App {
     @NSApplicationDelegateAdaptor(TokenTickAppDelegate.self) private var delegate
     @State private var model = ApplicationModel()
     @AppStorage("limitsShowRemaining") private var showRemaining = true
-    @StateObject private var updates = UpdateController()
+    @StateObject private var updates = UpdateController(onFailure: { error, operation in
+        AppTelemetry.capture(error, operation: operation)
+    })
 
     init() {
         AppTelemetry.start()

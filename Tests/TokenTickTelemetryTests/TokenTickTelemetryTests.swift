@@ -4,6 +4,24 @@ import Testing
 @testable import TokenTickTelemetry
 
 struct TokenTickTelemetryTests {
+    @Test func rateLimiterSeparatesErrorsAndAllowsRetryAfterWindow() {
+        var limiter = EventRateLimiter()
+        let first = limiter.accept(["cache.write", "7"], now: 100)
+        #expect(first)
+        let duplicate = limiter.accept(["cache.write", "7"], now: 399)
+        #expect(!duplicate)
+        let separate = limiter.accept(["cache.write", "8"], now: 399)
+        #expect(separate)
+        let retry = limiter.accept(["cache.write", "7"], now: 400)
+        #expect(retry)
+        for index in 0..<300 {
+            let accepted = limiter.accept(["query", String(index)], now: 401)
+            #expect(accepted)
+        }
+        let recent = limiter.accept(["query", "299"], now: 402)
+        #expect(!recent)
+    }
+
     @Test func syncIssuesKeepReasonsAndSeparateFailures() {
         let missing = AppTelemetry.sanitize(AppTelemetry.syncIssueEvent(operation: "api.executable",
             reason: "missing_executable", errorType: "CodexAPIError", code: 1))

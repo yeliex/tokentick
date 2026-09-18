@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import Testing
+import Synchronization
 @testable import TokenTickCore
 
 struct CodexStorageScannerTests {
@@ -15,6 +16,21 @@ struct CodexStorageScannerTests {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(repeating: 42, count: count).write(to: url)
         return url
+    }
+
+    @Test func enumerationFailureReportsMetadataButMissingRootIsExpected() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let diagnostics = Mutex<[SynchronizationDiagnostic]>([])
+        let missing = root.appendingPathComponent("absent")
+        _ = try await CodexStorageScanner.scan(root: missing, projectlessDirectory: missing,
+            onDiagnostic: { diagnostic in diagnostics.withLock { $0.append(diagnostic) } })
+        #expect(diagnostics.withLock { $0.isEmpty })
+        let file = try write("private-file", in: root)
+        _ = try await CodexStorageScanner.scan(root: file, projectlessDirectory: missing,
+            onDiagnostic: { diagnostic in diagnostics.withLock { $0.append(diagnostic) } })
+        #expect(diagnostics.withLock { $0.first?.operation } == "storage.enumerate")
+        #expect(!diagnostics.withLock { String(describing: $0) }.contains(file.path))
     }
 
     @Test func classifiesSystemTotalsAndPreservesSourceFiles() async throws {

@@ -1,3 +1,4 @@
+import TokenTickTelemetry
 import SwiftUI
 import TokenTickCore
 import Observation
@@ -148,7 +149,11 @@ struct UsageDetailsView: View {
                 if state.options != options { state.options = options }
                 if case .value(let project) = state.filters.project, !options.projects.contains(project) { state.filters.project = .all }
                 if case .value(let model) = state.filters.model, !options.models.contains(model) { state.filters.model = .all }
-            } catch { state.dashboard.error = error.localizedDescription }
+            } catch {
+                guard !Task.isCancelled else { return }
+                AppTelemetry.capture(error, operation: "usage.filters")
+                state.dashboard.error = error.localizedDescription
+            }
         }
         .onChange(of: criteria) {
             if state.restoredCriteria == criteria { state.restoredCriteria = nil; return }

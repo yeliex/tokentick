@@ -19,12 +19,14 @@ public struct CodexLoginStamp: Codable, Equatable, Sendable {
 
 public actor LocalDisplayCache {
     private let directory: URL
+    private let onDiagnostic: (@Sendable (SynchronizationDiagnostic) -> Void)?
     private struct APIValue: Codable {
         let login: CodexLoginStamp
         let snapshot: CurrentLimitSnapshot
     }
 
-    public init(directory: URL? = nil) {
+    public init(directory: URL? = nil, onDiagnostic: (@Sendable (SynchronizationDiagnostic) -> Void)? = nil) {
+        self.onDiagnostic = onDiagnostic
         let database = ProcessInfo.processInfo.environment["TOKENTICK_DATABASE"].map { URL(fileURLWithPath: $0) }
             ?? UsageStore.defaultDatabaseURL
         self.directory = directory ?? database.deletingLastPathComponent()
@@ -32,8 +34,7 @@ public actor LocalDisplayCache {
 
     public func api(for login: CodexLoginStamp) -> CurrentLimitSnapshot? {
         guard login.hasAuthenticationFile,
-              let data = try? Data(contentsOf: directory.appendingPathComponent("api.json")),
-              let cached = try? JSONDecoder().decode(APIValue.self, from: data), cached.login == login else { return nil }
+              let cached: APIValue = read(name: "api"), cached.login == login else { return nil }
         return cached.snapshot
     }
 
@@ -47,21 +48,40 @@ public actor LocalDisplayCache {
         snapshot.resetCreditExpirations = value.resetCreditExpirations
         snapshot.creditsBalance = value.creditsBalance
         snapshot.unlimitedCredits = value.unlimitedCredits
-        write(APIValue(login: login, snapshot: snapshot), name: "api.json")
+        write(APIValue(login: login, snapshot: snapshot), name: "api")
     }
 
-    public func clearAPI() { try? FileManager.default.removeItem(at: directory.appendingPathComponent("api.json")) }
+    public func clearAPI() {
+        do { try FileManager.default.removeItem(at: directory.appendingPathComponent("api.json")) }
+        catch { report(error, operation: "cache.api.delete") }
+    }
 
     public func storage(for root: URL) -> CodexStorageSnapshot? {
-        guard let data = try? Data(contentsOf: directory.appendingPathComponent("storage.json")),
-              let value = try? JSONDecoder().decode(CodexStorageSnapshot.self, from: data),
+        guard let value: CodexStorageSnapshot = read(name: "storage"),
               value.root == root.standardizedFileURL.resolvingSymlinksInPath(),
               (value.projectlessRoot == nil || value.projectlessRoot == CodexStorageScanner.projectlessRoot(for: root)) else { return nil }
         return value
     }
 
     public func saveStorage(_ snapshot: CodexStorageSnapshot) {
-        write(snapshot, name: "storage.json")
+        write(snapshot, name: "storage")
+    }
+
+    private func read<Value: Decodable>(name: String) -> Value? {
+        let data: Data
+        do { data = try Data(contentsOf: directory.appendingPathComponent(name + ".json")) }
+        catch { report(error, operation: "cache.\(name).read"); return nil }
+        do { return try JSONDecoder().decode(Value.self, from: data) }
+        catch {
+            onDiagnostic?(SynchronizationDiagnostic(error: error, operation: "cache.\(name).decode", warning: true))
+            return nil
+        }
+    }
+
+    private func report(_ error: any Error, operation: String) {
+        let cocoa = error as NSError
+        guard !(cocoa.domain == NSCocoaErrorDomain && [NSFileReadNoSuchFileError, NSFileNoSuchFileError].contains(cocoa.code)) else { return }
+        onDiagnostic?(SynchronizationDiagnostic(error: error, operation: operation, warning: true))
     }
 
     private func write<Value: Encodable>(_ value: Value, name: String) {
@@ -69,10 +89,10 @@ public actor LocalDisplayCache {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
-            try encoder.encode(value).write(to: directory.appendingPathComponent(name), options: .atomic)
+            try encoder.encode(value).write(to: directory.appendingPathComponent(name + ".json"), options: .atomic)
         } catch {
             // A disposable display cache must not prevent live results from reaching the UI.
-            NSLog("TokenTick display cache: %@", error.localizedDescription)
+            onDiagnostic?(SynchronizationDiagnostic(error: error, operation: "cache.\(name).write", warning: true))
         }
     }
 }

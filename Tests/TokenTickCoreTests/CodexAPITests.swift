@@ -28,6 +28,22 @@ struct CodexAPITests {
         #expect(try CodexAPIClient.resolveExecutable(explicit: cli, path: root.path) == cli)
     }
 
+    @Test func priceDiagnosticsPreserveHTTPStatusAndCancellation() {
+        let failure = SynchronizationDiagnostic(error: PriceSynchronizer.SyncError.httpStatus(503), operation: "sync.prices")
+        #expect(failure.code == 503)
+        #expect(failure.reason == "http_status")
+        #expect(SynchronizationDiagnostic(error: CancellationError(), operation: "sync.prices").isCancellation)
+        #expect(SynchronizationDiagnostic(error: URLError(.cancelled), operation: "sync.prices").isCancellation)
+    }
+
+    @Test func scanDiagnosticsCountAllIssuesWithoutIncludingPrivateText() {
+        var report = ScanReport()
+        for _ in 0..<150 { report.addIssue("parse", ScanIssue(fileName: "private-file", line: 1, message: "private-body")) }
+        report.addIssue("empty_source", ScanIssue(fileName: "private-root", line: nil, message: "empty"))
+        #expect(report.issues.count == 100)
+        #expect(report.diagnosticCounts == ["parse": 150])
+    }
+
     @Test func diagnosticsExcludePrivateErrorContentsAndKeepRPCCode() {
         let error = NSError(domain: "secret-account", code: 42, userInfo: [NSLocalizedDescriptionKey: "secret-token /Users/private SQL"])
         let diagnostic = SynchronizationDiagnostic(error: error, operation: "sync.logs")

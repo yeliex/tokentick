@@ -1,3 +1,4 @@
+import TokenTickTelemetry
 import SwiftUI
 import Observation
 import TokenTickCore
@@ -128,6 +129,7 @@ struct LimitsView: View {
                 state.error = nil
             } catch {
                 guard !Task.isCancelled else { return }
+                AppTelemetry.capture(error, operation: "limits.query")
                 state.error = error.localizedDescription
             }
             state.loadedQuery = current
@@ -138,7 +140,11 @@ struct LimitsView: View {
                 let options = try await Task.detached { try store.usageFilterOptions() }.value
                 guard !Task.isCancelled else { return }
                 if state.accounts != options.accounts { state.accounts = options.accounts }
-            } catch { state.error = error.localizedDescription }
+            } catch {
+                guard !Task.isCancelled else { return }
+                AppTelemetry.capture(error, operation: "limits.filters")
+                state.error = error.localizedDescription
+            }
         }
         .onChange(of: criteria) { state.page = 0; state.selectedWindow = nil }
         .onChange(of: state.page) { state.selectedWindow = nil }

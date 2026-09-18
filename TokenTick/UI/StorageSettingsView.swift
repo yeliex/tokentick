@@ -1,3 +1,4 @@
+import TokenTickTelemetry
 import TokenTickCore
 import SwiftUI
 import AppKit
@@ -71,6 +72,7 @@ struct StorageSettingsView: View {
                 storage = result; storageError = nil
             } catch {
                 guard !Task.isCancelled else { return }
+                AppTelemetry.capture(error, operation: "database.storage")
                 storageError = error.localizedDescription
             }
         }

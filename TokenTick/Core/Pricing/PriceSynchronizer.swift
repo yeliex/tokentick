@@ -29,7 +29,7 @@ public struct PriceSynchronizer: Sendable {
         return try store.savePrices(prices, date: date)
     }
 
-    private enum SyncError: LocalizedError {
+    enum SyncError: LocalizedError {
         case httpStatus(Int), responseTooLarge
         var errorDescription: String? {
             switch self {

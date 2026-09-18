@@ -15,13 +15,15 @@ public struct ScanReport: Codable, Sendable {
     public var scannedBytes: UInt64 = 0
     public var issues: [ScanIssue] = []
     public var issueCount = 0
+    public var diagnosticCounts: [String: Int] = [:]
     public var currentLimits: CurrentLimitSnapshot? = nil
     private enum CodingKeys: String, CodingKey {
         case discoveredFiles, scannedFiles, unchangedFiles, refreshedThreads, catalogAvailable,
              insertedRequests, upgradedRequests, duplicateRequests, inheritedEvents, scannedBytes, issues, issueCount
     }
 
-    mutating func addIssue(_ issue: ScanIssue) {
+    mutating func addIssue(_ reason: String, _ issue: ScanIssue) {
+        if reason != "empty_source" { diagnosticCounts[reason, default: 0] += 1 }
         issueCount += 1
         if issues.count < 100 { issues.append(issue) }
     }
@@ -59,7 +61,7 @@ public struct LocalUsageScanner: Sendable {
             do { try CodexFastEvidence.collect(codexHome: codexHome, store: store) }
             catch {
                 try Task.checkCancellation()
-                report.addIssue(ScanIssue(fileName: "logs_*.sqlite", line: nil, message: String(localized: "Fast evidence: \(error.localizedDescription)", bundle: .module)))
+                report.addIssue("fast_evidence", ScanIssue(fileName: "logs_*.sqlite", line: nil, message: String(localized: "Fast evidence: \(error.localizedDescription)", bundle: .module)))
             }
             try store.restoreWeeklyWindows()
             let ordered = try discoverRollouts(codexHome: codexHome, report: &report)
@@ -90,7 +92,7 @@ public struct LocalUsageScanner: Sendable {
                     report.refreshedThreads = changed
                 }
             } catch {
-                report.addIssue(ScanIssue(fileName: "state_*.sqlite", line: nil, message: error.localizedDescription))
+                report.addIssue("catalog", ScanIssue(fileName: "state_*.sqlite", line: nil, message: error.localizedDescription))
             }
             try store.saveCompletedWeeklyCycles()
             return report
@@ -107,14 +109,14 @@ public struct LocalUsageScanner: Sendable {
             guard FileManager.default.fileExists(atPath: root.path) else { continue }
             guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey],
                                                                   options: [.skipsHiddenFiles], errorHandler: { url, error in
-                report.addIssue(ScanIssue(fileName: url.lastPathComponent, line: nil, message: error.localizedDescription))
+                report.addIssue("enumeration", ScanIssue(fileName: url.lastPathComponent, line: nil, message: error.localizedDescription))
                 return true
             }) else { continue }
             for case let url as URL in enumerator {
                 guard let identity = RolloutIdentity(fileName: url.lastPathComponent) else {
                     let name = url.lastPathComponent
                     if name.hasPrefix("rollout-"), name.hasSuffix(".jsonl") || name.hasSuffix(".jsonl.zst") {
-                        report.addIssue(ScanIssue(fileName: name, line: nil, message: String(localized: "Unable to identify the rollout file. No conversation ID was inferred.", bundle: .module)))
+                        report.addIssue("invalid_filename", ScanIssue(fileName: name, line: nil, message: String(localized: "Unable to identify the rollout file. No conversation ID was inferred.", bundle: .module)))
                     }
                     continue
                 }
@@ -124,7 +126,7 @@ public struct LocalUsageScanner: Sendable {
             }
         }
         if candidates.isEmpty {
-            report.addIssue(ScanIssue(fileName: codexHome.lastPathComponent, line: nil, message: String(localized: "No recognizable rollout logs found.", bundle: .module)))
+            report.addIssue("empty_source", ScanIssue(fileName: codexHome.lastPathComponent, line: nil, message: String(localized: "No recognizable rollout logs found.", bundle: .module)))
         }
         return candidates.values.sorted { $0[0].1.fileName < $1[0].1.fileName }
     }
@@ -136,12 +138,12 @@ public struct LocalUsageScanner: Sendable {
             let first = try contentDigest(url: url, identity: identity)
             for (otherURL, otherIdentity) in sorted.dropFirst() {
                 if try contentDigest(url: otherURL, identity: otherIdentity) != first {
-                    report.addIssue(ScanIssue(fileName: identity.fileName, line: nil, message: String(localized: "Conflicting copies of this rollout were found. Existing usage was kept and updates to this rollout were stopped.", bundle: .module)))
+                    report.addIssue("conflicting_copies", ScanIssue(fileName: identity.fileName, line: nil, message: String(localized: "Conflicting copies of this rollout were found. Existing usage was kept and updates to this rollout were stopped.", bundle: .module)))
                     return false
                 }
             }
         } catch {
-            report.addIssue(ScanIssue(fileName: identity.fileName, line: nil, message: error.localizedDescription))
+            report.addIssue("copy_read", ScanIssue(fileName: identity.fileName, line: nil, message: error.localizedDescription))
             return false
         }
         return true
@@ -171,7 +173,7 @@ public struct LocalUsageScanner: Sendable {
             }
             reader = try RolloutLineReader(url: url, compressed: identity.isCompressed, offset: offset)
         } catch {
-            report.addIssue(ScanIssue(fileName: identity.fileName, line: nil, message: error.localizedDescription))
+            report.addIssue("file_read", ScanIssue(fileName: identity.fileName, line: nil, message: error.localizedDescription))
             return
         }
         report.scannedFiles += 1
@@ -200,7 +202,7 @@ public struct LocalUsageScanner: Sendable {
                 if !hasLine { break }
             } catch {
                 parser.state = previousState
-                report.addIssue(ScanIssue(fileName: identity.fileName, line: line + 1,
+                report.addIssue("parse", ScanIssue(fileName: identity.fileName, line: line + 1,
                                           message: String(localized: "Parsing stopped: \(error.localizedDescription)", bundle: .module)))
                 failed = true
                 break

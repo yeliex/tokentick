@@ -52,7 +52,7 @@ public struct UsageSynchronizer: Sendable {
                             report.api = result
                             if let issue = result.issue { report.issues.append(issue) }
                             if !result.accountAvailable {
-                                onDiagnostic?(SynchronizationDiagnostic(operation: "api.account", reason: "missing_account"))
+                                onDiagnostic?(SynchronizationDiagnostic(operation: "api.account", reason: "missing_account", warning: true))
                                 report.issues.append(String(localized: "The server did not provide a verifiable account identity.", bundle: .module)) }
                         } catch {
                             try Task.checkCancellation()
@@ -70,7 +70,9 @@ public struct UsageSynchronizer: Sendable {
                                 onProgress?(SynchronizationProgress(stage: .scanning, scan: progress))
                             }
                             if let count = report.scan?.issueCount, count > 0 {
-                                onDiagnostic?(SynchronizationDiagnostic(operation: "sync.logs", reason: "scan_issues"))
+                                for (reason, count) in report.scan?.diagnosticCounts.sorted(by: { $0.key < $1.key }) ?? [] {
+                                    onDiagnostic?(SynchronizationDiagnostic(operation: "sync.logs", reason: reason, count: count))
+                                }
                                 report.issues.append(String(localized: "Log scan issues: \(count). Successfully collected data was kept.", bundle: .module)) }
                         } catch {
                             try Task.checkCancellation()
@@ -106,6 +108,12 @@ public struct UsageSynchronizer: Sendable {
                     if try store.needsRepricing() {
                         onProgress?(SynchronizationProgress(stage: .repricing, scan: nil))
                         report.reprice = try store.repriceUsage()
+                        if let count = report.reprice?.invalidUsage, count > 0 {
+                            onDiagnostic?(SynchronizationDiagnostic(operation: "sync.repricing", reason: "invalid_usage", count: count))
+                        }
+                        if let count = report.reprice?.overflow, count > 0 {
+                            onDiagnostic?(SynchronizationDiagnostic(operation: "sync.repricing", reason: "amount_overflow", count: count))
+                        }
                     }
                 } catch {
                     try Task.checkCancellation()

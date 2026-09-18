@@ -1,3 +1,4 @@
+import TokenTickTelemetry
 import SwiftUI
 import ServiceManagement
 import TokenTickCore
@@ -84,7 +85,10 @@ private struct GeneralSettingsView: View {
                             if enabled { try SMAppService.mainApp.register() }
                             else { try SMAppService.mainApp.unregister() }
                             loginError = nil
-                        } catch { loginError = error.localizedDescription }
+                        } catch {
+                            AppTelemetry.capture(error, operation: "settings.login_item", warning: true)
+                            loginError = error.localizedDescription
+                        }
                         loginStatus = SMAppService.mainApp.status
                     }
                 ))
@@ -178,6 +182,7 @@ private struct CLISettingsSection: View {
         let manager = FileManager.default
         let executable = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/tokentick")
         guard manager.isExecutableFile(atPath: executable.path) else {
+            AppTelemetry.captureIssue(operation: "cli.install", reason: "missing_helper")
             installationStatus = String(localized: "The bundled CLI is missing. Reinstall TokenTick.")
             return
         }
@@ -199,6 +204,7 @@ private struct CLISettingsSection: View {
             try manager.createSymbolicLink(at: destination, withDestinationURL: executable)
             installationStatus = String(localized: "Installed: \(destination.path)")
         } catch {
+            AppTelemetry.capture(error, operation: "cli.install", warning: true)
             installationStatus = "\(destination.path): \(error.localizedDescription)"
         }
     }

@@ -1,3 +1,4 @@
+import TokenTickTelemetry
 import SwiftUI
 import TokenTickCore
 
@@ -78,6 +79,7 @@ struct UsageSummaryInspector: View {
                     if models != report.rows { models = report.rows }; modelError = nil
                 } catch {
                     guard !Task.isCancelled else { return }
+                    AppTelemetry.capture(error, operation: "usage.models")
                     models = []; modelError = error.localizedDescription
                 }
             }

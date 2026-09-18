@@ -34,6 +34,25 @@ jobs:
         env:
           VERSION: ${{ github.ref_name }}
         run: ./script/package_release.sh "${VERSION#v}" "$GITHUB_RUN_NUMBER"
+      - name: Preserve release debug symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-debug-symbols
+          path: .build/ReleaseDerivedData/Build/Products/Release/TokenTick.app.dSYM
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload Sentry debug symbols
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: yeliex
+          SENTRY_PROJECT: tokentick
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ]; then
+            echo "::warning::SENTRY_AUTH_TOKEN is not configured; debug symbols are retained as a workflow artifact."
+            exit 0
+          fi
+          brew install getsentry/tools/sentry-cli
+          sentry-cli debug-files upload --wait .build/ReleaseDerivedData/Build/Products/Release/TokenTick.app.dSYM
       - name: Generate release notes
         env:
           VERSION: ${{ github.ref_name }}

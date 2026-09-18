@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import Synchronization
 @testable import TokenTickCore
 
 struct LocalDisplayCacheTests {
@@ -16,6 +17,28 @@ struct LocalDisplayCacheTests {
         value.planType = "pro"
         value.creditsBalance = "12.50"
         return value
+    }
+
+    @Test func diagnosticsIgnoreMissingFilesAndReportCorruptionAndWriteFailure() async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let diagnostics = Mutex<[SynchronizationDiagnostic]>([])
+        let cache = LocalDisplayCache(directory: root, onDiagnostic: { diagnostic in diagnostics.withLock { $0.append(diagnostic) } })
+        #expect(await cache.storage(for: root) == nil)
+        await cache.clearAPI()
+        #expect(diagnostics.withLock { $0.isEmpty })
+        try Data("private-invalid-json".utf8).write(to: root.appendingPathComponent("storage.json"))
+        #expect(await cache.storage(for: root) == nil)
+        #expect(diagnostics.withLock { $0.first?.operation } == "cache.storage.decode")
+        #expect(diagnostics.withLock { $0.first?.reason } == "invalid_document")
+        let file = root.appendingPathComponent("not-a-directory")
+        try Data().write(to: file)
+        try Data("private-auth".utf8).write(to: root.appendingPathComponent("auth.json"))
+        let unwritable = LocalDisplayCache(directory: file, onDiagnostic: { diagnostic in diagnostics.withLock { $0.append(diagnostic) } })
+        await unwritable.saveAPI(snapshot(), login: CodexLoginStamp(home: root))
+        #expect(diagnostics.withLock { $0.last?.operation } == "cache.api.write")
+        #expect(!diagnostics.withLock { String(describing: $0) }.contains("private"))
+        #expect(!diagnostics.withLock { String(describing: $0) }.contains(root.path))
     }
 
     @Test func apiCacheSurvivesRestartAndRejectsChangedLogin() async throws {

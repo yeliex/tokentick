@@ -72,14 +72,23 @@ public enum CodexStorageScanner {
         return fallback.resolvingSymlinksInPath()
     }
 
-    public static func scan(root: URL, projectlessDirectory: URL? = nil) async throws -> CodexStorageSnapshot {
+    public static func scan(root: URL, projectlessDirectory: URL? = nil,
+                            onDiagnostic: (@Sendable (SynchronizationDiagnostic) -> Void)? = nil) async throws -> CodexStorageSnapshot {
         try Task.checkCancellation()
         let started = Date()
         let root = root.standardizedFileURL.resolvingSymlinksInPath()
         let projectless = (projectlessDirectory ?? projectlessRoot(for: root)).standardizedFileURL.resolvingSymlinksInPath()
-        var urls = ((try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])) ?? [])
-            .map { $0.standardizedFileURL }
-            .sorted { $0.path < $1.path }
+        var urls: [URL]
+        do {
+            urls = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                .map { $0.standardizedFileURL }.sorted { $0.path < $1.path }
+        } catch {
+            let nsError = error as NSError
+            if !(nsError.domain == NSCocoaErrorDomain && [NSFileReadNoSuchFileError, NSFileNoSuchFileError].contains(nsError.code)) {
+                onDiagnostic?(SynchronizationDiagnostic(error: error, operation: "storage.enumerate", warning: true))
+            }
+            urls = []
+        }
         // Include the external task folder in the same system scan. A missing folder uses zero bytes.
         if projectless != root, !urls.contains(projectless), FileManager.default.fileExists(atPath: projectless.path) {
             urls.append(projectless)
@@ -135,6 +144,10 @@ public enum CodexStorageScanner {
                 }
             }
             if process.terminationStatus != 0 && issueCount == 0 { issueCount = 1 }
+            if issueCount > 0 {
+                onDiagnostic?(SynchronizationDiagnostic(operation: "storage.scan", reason: "partial_scan",
+                    code: Int(process.terminationStatus), count: issueCount, warning: true))
+            }
         }
         try Task.checkCancellation()
         // When configured inside CODEX_HOME, move its bytes out of the containing category.

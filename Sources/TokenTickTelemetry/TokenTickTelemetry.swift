@@ -1,7 +1,9 @@
 import Foundation
 import Sentry
+import Synchronization
 
 public enum AppTelemetry {
+    private static let limiter = Mutex(EventRateLimiter())
     public static func start() {
         let environment = ProcessInfo.processInfo.environment
         guard environment["XCODE_RUNNING_FOR_PREVIEWS"] != "1",
@@ -37,13 +39,22 @@ public enum AppTelemetry {
         options.beforeSend = { event in sanitize(event) }
     }
 
-    public static func capture(_ error: any Error, operation: StaticString) {
+    public static func capture(_ error: any Error, operation: StaticString, warning: Bool = false) {
         guard let event = errorEvent(error, operation: operation) else { return }
-        SentrySDK.capture(event: event)
+        if warning { event.level = .warning }
+        submit(event)
     }
 
-    public static func captureSyncIssue(operation: String, reason: String, errorType: String?, code: Int?) {
-        SentrySDK.capture(event: syncIssueEvent(operation: operation, reason: reason, errorType: errorType, code: code))
+    public static func captureIssue(operation: String, reason: String, errorType: String? = nil, code: Int? = nil, count: Int? = nil, warning: Bool = false) {
+        let event = syncIssueEvent(operation: operation, reason: reason, errorType: errorType, code: code)
+        if warning { event.level = .warning }
+        if let count { event.tags?["issue_count"] = String(count) }
+        submit(event)
+    }
+
+    private static func submit(_ event: Event) {
+        guard limiter.withLock({ $0.accept(event.fingerprint ?? [], now: ProcessInfo.processInfo.systemUptime) }) else { return }
+        SentrySDK.capture(event: event)
     }
 
     static func syncIssueEvent(operation: String, reason: String, errorType: String?, code: Int?) -> Event {
@@ -86,5 +97,20 @@ public enum AppTelemetry {
             for exception in exceptions { exception.value = "Exception details omitted" }
         }
         return event
+    }
+}
+
+/// Bound both event volume and memory without suppressing unrelated failures or native crashes.
+struct EventRateLimiter {
+    private var sent: [[String]: TimeInterval] = [:]
+
+    mutating func accept(_ fingerprint: [String], now: TimeInterval) -> Bool {
+        sent = sent.filter { now - $0.value < 300 }
+        guard sent[fingerprint] == nil else { return false }
+        if sent.count >= 256, let oldest = sent.min(by: { $0.value < $1.value })?.key {
+            sent.removeValue(forKey: oldest)
+        }
+        sent[fingerprint] = now
+        return true
     }
 }

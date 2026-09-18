@@ -1,3 +1,4 @@
+import TokenTickTelemetry
 import AppKit
 import Foundation
 import TokenTickCore
@@ -11,6 +12,7 @@ final class AutomaticSyncController {
     private var observers: [NSObjectProtocol] = []
     private var home: URL?
     private var suspended = false
+    private var watcherFailed = false
 
     init(app: ApplicationModel) { self.app = app }
 
@@ -53,9 +55,12 @@ final class AutomaticSyncController {
             watcher = try CodexLogWatcher(codexHome: home) { [weak self] in
                 Task { @MainActor in self?.changed() }
             }
+            watcherFailed = false
             app?.automaticSyncIssue = nil
             schedule.watcherAvailable(true)
         } catch {
+            if !watcherFailed { AppTelemetry.capture(error, operation: "sync.watcher", warning: true) }
+            watcherFailed = true
             app?.automaticSyncIssue = error.localizedDescription
             schedule.watcherAvailable(false)
         }
