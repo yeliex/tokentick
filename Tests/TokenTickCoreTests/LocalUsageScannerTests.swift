@@ -6,6 +6,26 @@ import Testing
 @testable import TokenTickCore
 
 struct LocalUsageScannerTests {
+    @Test func sourceDatabaseFailuresKeepCollectedUsageAndActionableDiagnostics() throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        _ = try fixture.write(fixture.header + fixture.turn + fixture.count(1))
+        for name in ["state_5.sqlite", "logs_2.sqlite"] {
+            try FileManager.default.createDirectory(at: fixture.root.appendingPathComponent(name), withIntermediateDirectories: true)
+        }
+        let report = try fixture.scan()
+        #expect(report.insertedRequests == 1)
+        #expect(try fixture.total() == 120)
+        #expect(!report.catalogAvailable)
+        for (reason, name) in [("catalog", "state_5.sqlite"), ("fast_evidence", "logs_2.sqlite")] {
+            #expect(report.diagnosticCounts[reason] == 1)
+            let message = try #require(report.diagnosticSamples[reason]?.message)
+            #expect(message.contains(fixture.root.appendingPathComponent(name).path))
+            #expect(message.contains("directory=true"))
+            #expect(message.contains("SQLite open failed"))
+        }
+    }
+
     @Test func codexHomeReadsRuntimeEnvironmentEachTime() {
         let saved = getenv("CODEX_HOME").map { String(cString: $0) }
         defer {

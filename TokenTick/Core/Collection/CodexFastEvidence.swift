@@ -72,10 +72,7 @@ struct CodexFastEvidence: Codable {
             .filter { $0.lastPathComponent.hasPrefix("logs_") && $0.pathExtension == "sqlite" }.sorted { $0.path < $1.path }
         for url in urls {
             try Task.checkCancellation()
-            var configuration = Configuration()
-            configuration.readonly = true
-            configuration.busyMode = .timeout(0.25)
-            let source = try DatabaseQueue(path: url.path, configuration: configuration)
+            let source = try CodexSourceDatabase.open(url, busyTimeout: 0.25)
             defer { try? source.close() }
             let file = try FileSnapshot(url: url, compressed: false)
             let key = "fast_trace_cursor:" + url.standardizedFileURL.path

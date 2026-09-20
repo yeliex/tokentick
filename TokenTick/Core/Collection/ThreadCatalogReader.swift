@@ -13,10 +13,7 @@ struct ThreadCatalogReader {
         }.sorted { $0.0 > $1.0 }
         guard let url = databases.first?.1 else { return nil }
         let desktop = try DesktopProjectCatalog.read(codexHome: codexHome)
-        var configuration = Configuration()
-        configuration.readonly = true
-        configuration.busyMode = .timeout(2)
-        let source = try DatabaseQueue(path: url.path, configuration: configuration)
+        let source = try CodexSourceDatabase.open(url, busyTimeout: 2)
         return try source.read { db in
             let columns = Set(try db.columns(in: "threads").map(\.name))
             guard columns.contains("id"), columns.contains("title") else { throw CatalogError.unsupportedSchema }

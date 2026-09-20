@@ -92,6 +92,45 @@ struct TokenTickTelemetryTests {
         #expect(sanitized.exceptions?.first?.value == "Exception details omitted")
     }
 
+    @Test func wrappedDownloadFailureKeepsSafeNetworkCause() throws {
+        let underlying = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut, userInfo: [
+            NSLocalizedDescriptionKey: "Request timed out: token=private-token https://user:password@github.com/appcast.xml?signature=private-signature#private-fragment",
+            NSLocalizedFailureReasonErrorKey: "Unable to fetch update metadata",
+            NSURLErrorFailingURLErrorKey: URL(string: "https://user:password@github.com/yeliex/tokentick/appcast.xml?signature=private-signature#private-fragment")!,
+            "response": "private-response-body"
+        ])
+        let error = NSError(domain: "SUSparkleErrorDomain", code: 2001, userInfo: [
+            NSLocalizedDescriptionKey: "An error occurred while downloading the update.",
+            NSUnderlyingErrorKey: underlying
+        ])
+        let event = AppTelemetry.sanitize(try #require(AppTelemetry.errorEvent(error, operation: "update.download")))
+        let causes = try #require(event.context?["error_details"]?["causes"] as? [[String: Any]])
+        #expect(causes.count == 2)
+        #expect(causes[0]["domain"] as? String == "SUSparkleErrorDomain")
+        #expect(causes[1]["domain"] as? String == NSURLErrorDomain)
+        #expect(causes[1]["code"] as? Int == NSURLErrorTimedOut)
+        #expect(causes[1]["failure_reason"] as? String == "Unable to fetch update metadata")
+        #expect(causes[1]["url"] as? String == "https://github.com/yeliex/tokentick/appcast.xml")
+        let other = try #require(AppTelemetry.errorEvent(NSError(domain: "SUSparkleErrorDomain", code: 2001), operation: "update.download"))
+        #expect(event.fingerprint == other.fingerprint)
+        let payload = String(describing: event.serialize())
+        for secret in ["private-token", "private-signature", "private-fragment", "private-response-body", "user:password"] {
+            #expect(!payload.contains(secret))
+        }
+    }
+
+    @Test func errorCauseChainIsBounded() throws {
+        var error = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)
+        for _ in 0..<10 {
+            error = NSError(domain: "Wrapper", code: 1, userInfo: [NSUnderlyingErrorKey: error,
+                NSLocalizedDescriptionKey: String(repeating: "a", count: 3000)])
+        }
+        let event = try #require(AppTelemetry.errorEvent(error, operation: "update.download"))
+        let causes = try #require(event.context?["error_details"]?["causes"] as? [[String: Any]])
+        #expect(causes.count == 4)
+        #expect(causes.allSatisfy { ($0["message"] as? String)?.count == 2048 })
+    }
+
     @Test func releaseUsesInstalledBundleVersion() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".bundle")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

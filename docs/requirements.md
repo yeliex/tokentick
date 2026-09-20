@@ -39,6 +39,8 @@ The macOS app reports crashes, sanitized operational errors, and foreground sess
 
 Report operational failures across queries, synchronization, storage, caches, settings and updates with fixed stages/reasons, error types and numeric codes. Preserve actual HTTP/RPC status and aggregate invalid-data counts without usage records. Rate-limit identical handled errors and exclude expected cancellation, cache misses, empty source folders and normal updater outcomes. Include actionable error descriptions, RPC error messages, and relevant file locations after credential redaction, bounded to 2,048 characters. Include RPC method and elapsed time, and retain one representative error per scan reason. Do not attach Codex identity, conversation contents, usage records, credentials, arbitrary error userInfo, or full API response bodies. Automatic network and UI breadcrumbs, tracing, profiling, replay, and app-hang tracking are not required for this scope.
 
+Handled errors include a bounded chain of underlying causes so wrapped update and network failures remain actionable. Source database open failures include the actual file location and access conditions without reading database contents for diagnostics.
+
 ## Costs and prices
 
 Prices come from the OpenAI portion of models.dev, with a bundled JSON catalog for offline and historical coverage. A successful refresh is needed at most once per day; unchanged prices do not create another dated snapshot.
