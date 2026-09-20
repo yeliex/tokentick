@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 
 struct ScanCursor {
+    let path: String?
     let line: Int
     let offset: UInt64
     let file: FileSnapshot

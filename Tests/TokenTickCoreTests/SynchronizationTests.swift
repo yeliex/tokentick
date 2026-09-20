@@ -22,6 +22,7 @@ struct SynchronizationTests {
         #expect(try store.lastSynchronizationReport()?.scan?.issueCount == 1)
         let repeated = try await UsageSynchronizer(store: store).synchronize(scope: .local, codexHome: root)
         #expect(repeated.scan?.insertedRequests == 0)
+        #expect(repeated.statistics?.rebuilt == false)
         #expect(try store.usageSummaries(grouping: .total).first?.totalTokens == 10)
     }
 

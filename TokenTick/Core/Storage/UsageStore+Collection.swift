@@ -30,7 +30,7 @@ extension UsageStore {
                   let fileJSON: String = row["file_state_json"], let stateJSON: String = row["parser_state_json"],
                   let file = try? JSONDecoder().decode(FileSnapshot.self, from: Data(fileJSON.utf8)),
                   let state = try? JSONDecoder().decode(RolloutParserState.self, from: Data(stateJSON.utf8)) else { return nil }
-            return ScanCursor(line: row["scanned_line"], offset: row["scanned_offset"], file: file, state: state)
+            return ScanCursor(path: row["current_path"], line: row["scanned_line"], offset: row["scanned_offset"], file: file, state: state)
         }
     }
 

@@ -26,14 +26,14 @@ extension UsageStore {
         }
     }
 
-    public func rebuildStatistics(timezone identifier: String? = nil) throws -> StatisticsRebuildReport {
+    public func rebuildStatistics(timezone identifier: String? = nil, onlyIfNeeded: Bool = false) throws -> StatisticsRebuildReport {
         let identifier = try identifier ?? statisticsTimezone()
         guard let timezone = TimeZone(identifier: identifier) else { throw UsageQueryError.invalidTimezone }
-        return try rebuildStatistics(timezone: timezone, onlyIfNeeded: false)
+        return try rebuildStatistics(timezone: timezone, onlyIfNeeded: onlyIfNeeded)
     }
 
-    func rebuildStatistics(timezone: TimeZone, onlyIfNeeded: Bool) throws -> StatisticsRebuildReport {
-        try FileWriteLock(url: databaseURL.appendingPathExtension("write.lock")).withLock(nonBlocking: onlyIfNeeded) {
+    func rebuildStatistics(timezone: TimeZone, onlyIfNeeded: Bool, nonBlocking: Bool = false) throws -> StatisticsRebuildReport {
+        try FileWriteLock(url: databaseURL.appendingPathExtension("write.lock")).withLock(nonBlocking: nonBlocking) {
             try Task.checkCancellation()
             return try pool.write { db in
                 let revision = try Self.statisticsRevision(db)

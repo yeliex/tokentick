@@ -165,7 +165,7 @@ public struct LocalUsageScanner: Sendable {
             snapshot = try FileSnapshot(url: url, compressed: identity.isCompressed)
             if let cursor, cursor.state.version == RolloutParserState.currentVersion,
                cursor.file.sameFile(as: snapshot) {
-                try store.updateScanPath(rolloutID: key, url: url)
+                if cursor.path != url.path { try store.updateScanPath(rolloutID: key, url: url) }
                 report.unchangedFiles += 1
                 return
             }

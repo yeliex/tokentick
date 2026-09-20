@@ -224,6 +224,8 @@ Apply intersections, literal search, stable sorting, and pagination in SQL. Coun
 
 Only one synchronization runs at a time; additional work is coalesced. Current-schema WAL readers query committed facts without waiting for a complete scan. Cache rebuilds and schema recreation retain cross-process write coordination.
 
+Unchanged rollout files retain their scan checkpoints without writes; moving a file updates its source path. Synchronization refreshes statistics only when their revision is stale, rebuilding affected dates through the existing invalidation markers. Explicit statistics rebuilds still replace the full cache. Synchronization waits for the write lock, while UI queries fall back to committed facts if another writer holds it.
+
 ## UI and localization
 
 General settings stores `appTheme` in UserDefaults through `@AppStorage`. `AppTheme` applies the selected appearance through `NSApp.appearance` at launch and when the picker changes; nil restores system appearance across windows and the menu-bar panel. Debug-only `TOKENTICK_APPEARANCE` overrides remain process-local.

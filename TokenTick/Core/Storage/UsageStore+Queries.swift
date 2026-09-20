@@ -12,7 +12,7 @@ extension UsageStore {
         let identifier = try query.timezone ?? statisticsTimezone()
         guard let timezone = TimeZone(identifier: identifier) else { throw UsageQueryError.invalidTimezone }
         if try query.filters.isEmpty && !pool.read({ try Self.statisticsAreCurrent($0, timezone: timezone.identifier) }) {
-            do { _ = try rebuildStatistics(timezone: timezone, onlyIfNeeded: true) }
+            do { _ = try rebuildStatistics(timezone: timezone, onlyIfNeeded: true, nonBlocking: true) }
             catch FileWriteLock.LockError.busy {
                 // Read committed facts while the scanner holds the process lock instead of blocking the UI for the full scan.
             }

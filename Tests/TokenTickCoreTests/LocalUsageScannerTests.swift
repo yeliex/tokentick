@@ -66,6 +66,8 @@ struct LocalUsageScannerTests {
         let archived = fixture.root.appendingPathComponent("archived_sessions/" + original.lastPathComponent)
         try FileManager.default.moveItem(at: original, to: archived)
         #expect(try fixture.scan().unchangedFiles == 1)
+        let storedPath = try #require(fixture.store.pool.read { try String.fetchOne($0, sql: "SELECT current_path FROM scan_files") })
+        #expect(URL(fileURLWithPath: storedPath).resolvingSymlinksInPath() == archived.resolvingSymlinksInPath())
         let compressed = archived.appendingPathExtension("zst")
         try compress(Data(text.utf8)).write(to: compressed)
         try FileManager.default.removeItem(at: archived)
@@ -74,6 +76,23 @@ struct LocalUsageScannerTests {
         #expect(try fixture.store.tableCounts()["scan_files"] == 1)
         try FileManager.default.removeItem(at: compressed)
         _ = try fixture.scan()
+        #expect(try fixture.total() == 120)
+    }
+
+    @Test func unchangedFilesDoNotRewriteScanCheckpoints() throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        _ = try fixture.write(fixture.header + fixture.turn + fixture.count(1))
+        _ = try fixture.scan()
+        try fixture.store.pool.write { db in
+            try db.execute(sql: """
+                CREATE TRIGGER reject_checkpoint_update BEFORE UPDATE ON scan_files
+                BEGIN SELECT RAISE(ABORT, 'Unchanged checkpoints must not be written'); END
+                """)
+        }
+        let report = try fixture.scan()
+        #expect(report.unchangedFiles == 1 && report.scannedBytes == 0)
+        #expect(report.issueCount == 0)
         #expect(try fixture.total() == 120)
     }
 

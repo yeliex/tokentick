@@ -125,7 +125,7 @@ public struct UsageSynchronizer: Sendable {
             }
             try Task.checkCancellation()
             onProgress?(SynchronizationProgress(stage: .statistics, scan: nil))
-            do { report.statistics = try store.rebuildStatistics() }
+            do { report.statistics = try store.rebuildStatistics(onlyIfNeeded: true) }
             catch {
                 try Task.checkCancellation()
                 onDiagnostic?(SynchronizationDiagnostic(error: error, operation: "sync.statistics"))

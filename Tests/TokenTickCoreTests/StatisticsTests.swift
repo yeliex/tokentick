@@ -78,7 +78,7 @@ struct StatisticsTests {
         #expect(try fixture.store.usageReport(UsageQuery(grouping: .total, timezone: "UTC")).rows.first?.totalTokens == 160)
     }
 
-    @Test func failedRebuildRollsBackCacheAndOverflowCannotBecomeFloatingPointMoney() throws {
+    @Test(arguments: [false, true]) func failedRebuildRollsBackCacheAndOverflowCannotBecomeFloatingPointMoney(onlyIfNeeded: Bool) throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
         _ = try fixture.store.rebuildStatistics(timezone: "UTC")
@@ -86,11 +86,41 @@ struct StatisticsTests {
         try fixture.store.pool.write { db in
             try db.execute(sql: "UPDATE usage SET input_amount = ?, output_amount = 1, amount = NULL WHERE rollout_id = 'a'", arguments: [Int64.max])
         }
-        #expect(throws: (any Error).self) { try fixture.store.rebuildStatistics(timezone: "UTC") }
+        #expect(throws: (any Error).self) { try fixture.store.rebuildStatistics(timezone: "UTC", onlyIfNeeded: onlyIfNeeded) }
         let after = try fixture.store.pool.read { db in try Row.fetchAll(db, sql: "SELECT * FROM statistics ORDER BY account_key, date, dimension, dimension_value") }
         #expect(before == after)
         #expect(try fixture.store.pool.read { try !UsageStore.statisticsAreCurrent($0, timezone: TimeZone(identifier: "UTC")!.identifier) })
         #expect(throws: (any Error).self) { try fixture.store.usageReport(UsageQuery(timezone: "UTC")) }
+    }
+
+    @Test func incrementalRebuildPreservesUnchangedDatesAndMatchesFullRebuild() throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        try fixture.store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO usage(source_line,rollout_id,occurred_at,usage_date,total_tokens,source)
+                VALUES (1,'old',1735689600,'2025-01-01',50,'local')
+                """)
+        }
+        _ = try fixture.store.rebuildStatistics(timezone: "UTC")
+        try fixture.store.pool.write { db in
+            try db.execute(sql: """
+                CREATE TRIGGER preserve_old_statistics BEFORE DELETE ON statistics
+                WHEN OLD.date = '2025-01-01'
+                BEGIN SELECT RAISE(ABORT, 'Unchanged dates must not be rebuilt'); END;
+                UPDATE usage SET total_tokens = 120 WHERE rollout_id = 'a';
+                """)
+        }
+        #expect(try fixture.store.rebuildStatistics(timezone: "UTC", onlyIfNeeded: true).rebuilt)
+        let incremental = try fixture.store.pool.read {
+            try Row.fetchAll($0, sql: "SELECT * FROM statistics ORDER BY timezone,account_key,date,dimension,dimension_value")
+        }
+        try fixture.store.pool.write { try $0.execute(sql: "DROP TRIGGER preserve_old_statistics") }
+        _ = try fixture.store.rebuildStatistics(timezone: "UTC")
+        let full = try fixture.store.pool.read {
+            try Row.fetchAll($0, sql: "SELECT * FROM statistics ORDER BY timezone,account_key,date,dimension,dimension_value")
+        }
+        #expect(incremental == full)
     }
 
     @Test func badFiltersAreRejectedBeforeChangingCache() throws {
