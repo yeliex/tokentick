@@ -73,7 +73,8 @@ public enum CodexStorageScanner {
     }
 
     public static func scan(root: URL, projectlessDirectory: URL? = nil,
-                            onDiagnostic: (@Sendable (SynchronizationDiagnostic) -> Void)? = nil) async throws -> CodexStorageSnapshot {
+                            onDiagnostic: (@Sendable (SynchronizationDiagnostic) -> Void)? = nil,
+                            onProgress: (@Sendable (CodexStorageSnapshot) async -> Void)? = nil) async throws -> CodexStorageSnapshot {
         try Task.checkCancellation()
         let started = Date()
         let root = root.standardizedFileURL.resolvingSymlinksInPath()
@@ -101,6 +102,8 @@ public enum CodexStorageScanner {
         }
         var issues: [String] = []
         var issueCount = 0
+        var completed: Set<String> = []
+        var lastProgress: ContinuousClock.Instant?
         if !urls.isEmpty {
             let process = Process()
             let pipe = Pipe()
@@ -109,7 +112,7 @@ public enum CodexStorageScanner {
             process.standardOutput = pipe
             process.standardError = pipe
             process.standardInput = FileHandle.nullDevice
-            let output = try await withTaskCancellationHandler {
+            try await withTaskCancellationHandler {
                 try Task.checkCancellation()
                 try process.run()
                 try pipe.fileHandleForWriting.close()
@@ -118,30 +121,44 @@ public enum CodexStorageScanner {
                     process.waitUntilExit()
                     try? pipe.fileHandleForReading.close()
                 }
-                try Task.checkCancellation()
-                let data = try pipe.fileHandleForReading.readToEnd() ?? Data()
+                var pending = Data()
+                while true {
+                    try Task.checkCancellation()
+                    let chunk = pipe.fileHandleForReading.availableData
+                    pending.append(chunk)
+                    // Decode complete lines so pipe reads cannot split a UTF-8 path.
+                    while let newline = pending.firstIndex(of: 10) ?? (chunk.isEmpty && !pending.isEmpty ? pending.endIndex : nil) {
+                        let line = String(decoding: pending[..<newline], as: UTF8.self)
+                        pending.removeSubrange(pending.startIndex..<(newline == pending.endIndex ? newline : pending.index(after: newline)))
+                        try Task.checkCancellation()
+                        let fields = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
+                        guard fields.count == 2, let blocks = Int64(fields[0]), blocks >= 0, blocks <= Int64.max / 1024 else {
+                            issueCount += 1
+                            if issues.count < 20 { issues.append(line) }
+                            continue
+                        }
+                        let path = String(fields[1])
+                        let bytes = blocks * 1024
+                        if entries[path] != nil {
+                            entries[path]?.allocatedBytes = bytes
+                            completed.insert(path)
+                        } else {
+                            let url = URL(fileURLWithPath: path)
+                            let parent = url.deletingLastPathComponent().path
+                            entries[parent]?.children.append(CodexStorageEntry(url: url, isDirectory: true, allocatedBytes: bytes))
+                        }
+                    }
+                    if !chunk.isEmpty, let onProgress, lastProgress.map({ $0.duration(to: .now) >= .milliseconds(200) }) ?? true {
+                        await onProgress(snapshot(root: root, projectless: projectless, started: started,
+                            entries: entries, completed: completed, issueCount: issueCount, issues: issues, scanning: true))
+                        lastProgress = .now
+                    }
+                    if chunk.isEmpty { break }
+                }
                 process.waitUntilExit()
                 try Task.checkCancellation()
-                return data
             } onCancel: {
                 if process.isRunning { process.terminate() }
-            }
-            for line in String(decoding: output, as: UTF8.self).split(separator: "\n") {
-                let fields = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
-                guard fields.count == 2, let blocks = Int64(fields[0]), blocks >= 0, blocks <= Int64.max / 1024 else {
-                    issueCount += 1
-                    if issues.count < 20 { issues.append(String(line)) }
-                    continue
-                }
-                let path = String(fields[1])
-                let bytes = blocks * 1024
-                if entries[path] != nil {
-                    entries[path]?.allocatedBytes = bytes
-                } else {
-                    let url = URL(fileURLWithPath: path)
-                    let parent = url.deletingLastPathComponent().path
-                    entries[parent]?.children.append(CodexStorageEntry(url: url, isDirectory: true, allocatedBytes: bytes))
-                }
             }
             if process.terminationStatus != 0 && issueCount == 0 { issueCount = 1 }
             if issueCount > 0 {
@@ -150,9 +167,22 @@ public enum CodexStorageScanner {
             }
         }
         try Task.checkCancellation()
+        return snapshot(root: root, projectless: projectless, started: started, entries: entries,
+                        completed: completed, issueCount: issueCount, issues: issues, scanning: false)
+    }
+
+    private static func snapshot(root: URL, projectless: URL, started: Date,
+                                 entries: [String: CodexStorageEntry], completed: Set<String>,
+                                 issueCount: Int, issues: [String], scanning: Bool) -> CodexStorageSnapshot {
+        var entries = entries
+        // Until du emits a parent's total, its completed children provide a lower bound.
+        for path in entries.keys where !completed.contains(path) {
+            let bytes = entries[path]?.children.reduce(0) { $0 + $1.allocatedBytes } ?? 0
+            entries[path]?.allocatedBytes = bytes
+        }
         // When configured inside CODEX_HOME, move its bytes out of the containing category.
         if let taskEntry = entries[projectless.path], projectless.path.hasPrefix(root.path + "/") {
-            for path in Array(entries.keys) where path != projectless.path && projectless.path.hasPrefix(path + "/") {
+            for path in Array(entries.keys) where path != projectless.path && projectless.path.hasPrefix(path + "/") && completed.contains(path) {
                 let remaining = max(0, (entries[path]?.allocatedBytes ?? 0) - taskEntry.allocatedBytes)
                 entries[path]?.allocatedBytes = remaining
                 entries[path]?.children.removeAll { $0.url == projectless }
@@ -160,20 +190,22 @@ public enum CodexStorageScanner {
         }
         var grouped: [CodexStorageCategory: [CodexStorageEntry]] = [:]
         for var entry in entries.values {
-            entry.incomplete = issueCount > 0
-            entry.children.sort(by: largerFirst)
+            entry.incomplete = issueCount > 0 || (scanning && !completed.contains(entry.url.path))
+            entry.children.sort { scanning ? $0.id < $1.id : largerFirst($0, $1) }
             if entry.url != projectless && CodexStorageCategory.classify(entry.url.lastPathComponent) != .worktrees { entry.children = [] }
             grouped[entry.url == projectless ? .projectless : CodexStorageCategory.classify(entry.url.lastPathComponent), default: []].append(entry)
         }
         var groups: [CodexStorageGroup] = []
         for category in CodexStorageCategory.allCases {
-            groups.append(CodexStorageGroup(category: category, entries: (grouped[category] ?? []).sorted(by: largerFirst)))
+            groups.append(CodexStorageGroup(category: category, entries: (grouped[category] ?? []).sorted { scanning ? $0.id < $1.id : largerFirst($0, $1) }))
         }
-        groups.sort {
-            if $0.category == .other { return false }
-            if $1.category == .other { return true }
-            if $0.allocatedBytes == $1.allocatedBytes { return $0.category.rawValue < $1.category.rawValue }
-            return $0.allocatedBytes > $1.allocatedBytes
+        if !scanning {
+            groups.sort {
+                if $0.category == .other { return false }
+                if $1.category == .other { return true }
+                if $0.allocatedBytes == $1.allocatedBytes { return $0.category.rawValue < $1.category.rawValue }
+                return $0.allocatedBytes > $1.allocatedBytes
+            }
         }
         return CodexStorageSnapshot(root: root, projectlessRoot: projectless, startedAt: started, finishedAt: Date(), groups: groups,
                                     issueCount: issueCount, issues: issues)

@@ -146,6 +146,45 @@ struct CodexStorageScannerTests {
         catch { #expect(error is CancellationError) }
     }
 
+    @Test func publishesChildTotalsBeforeParentCompletesAndParsesMultiplePipeReads() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        for index in 0..<150 {
+            _ = try write("worktrees/目录-\(index)-😀/file", in: root)
+        }
+        let progress = Mutex<[CodexStorageSnapshot]>([])
+        let result = try await CodexStorageScanner.scan(root: root, projectlessDirectory: root.appendingPathComponent("absent"),
+            onProgress: { snapshot in progress.withLock { $0.append(snapshot) } })
+        let first = try #require(progress.withLock { $0.first })
+        let parent = try #require(first.groups.first { $0.category == .worktrees }?.entries.first)
+        #expect(parent.incomplete)
+        #expect(!parent.children.isEmpty && parent.children.count < 150)
+        #expect(parent.allocatedBytes == parent.children.reduce(0) { $0 + $1.allocatedBytes })
+        #expect(first.allocatedBytes > 0 && first.allocatedBytes < result.allocatedBytes)
+        let finalParent = try #require(result.groups.first { $0.category == .worktrees }?.entries.first)
+        #expect(!finalParent.incomplete)
+        #expect(finalParent.children.count == 150)
+        #expect(finalParent.children.allSatisfy { $0.url.lastPathComponent.hasSuffix("-😀") })
+        #expect(result.issueCount == 0)
+    }
+
+    @Test func cancellationAfterProgressDoesNotReturnSuccess() async throws {
+        let root = try temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        _ = try write("worktrees/tree/file", in: root)
+        let progressCount = Mutex(0)
+        let task = Task {
+            try await CodexStorageScanner.scan(root: root, projectlessDirectory: root.appendingPathComponent("absent"),
+                onProgress: { _ in
+                    progressCount.withLock { $0 += 1 }
+                    withUnsafeCurrentTask { $0?.cancel() }
+                })
+        }
+        do { _ = try await task.value; Issue.record("Expected cancellation after progress") }
+        catch { #expect(error is CancellationError) }
+        #expect(progressCount.withLock { $0 } == 1)
+    }
+
     @Test func largeTreeRetainsOnlyShallowDirectoryTotals() async throws {
         let root = try temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }

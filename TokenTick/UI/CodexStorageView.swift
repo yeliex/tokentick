@@ -6,7 +6,9 @@ import TokenTickCore
 
 @MainActor @Observable
 final class CodexStorageModel {
-    private(set) var snapshot: CodexStorageSnapshot?
+    private var completedSnapshot: CodexStorageSnapshot?
+    private var progressSnapshot: CodexStorageSnapshot?
+    var snapshot: CodexStorageSnapshot? { progressSnapshot ?? completedSnapshot }
     private(set) var isScanning = false
     private(set) var root = LocalUsageScanner.defaultCodexHome
     var expanded: Set<String> = []
@@ -18,7 +20,7 @@ final class CodexStorageModel {
     func loadCache() async {
         guard snapshot == nil else { return }
         let cached = await cache.storage(for: root)
-        if snapshot == nil { snapshot = cached }
+        if completedSnapshot == nil { completedSnapshot = cached }
     }
 
     func enterPage() {
@@ -30,18 +32,24 @@ final class CodexStorageModel {
     func scan() {
         guard task == nil else { return }
         root = LocalUsageScanner.defaultCodexHome
-        if snapshot?.root != root.standardizedFileURL.resolvingSymlinksInPath() { snapshot = nil }
+        if snapshot?.root != root.standardizedFileURL.resolvingSymlinksInPath() { completedSnapshot = nil }
         let root = root
         isScanning = true
         task = Task {
-            defer { isScanning = false; task = nil }
+            defer { progressSnapshot = nil; isScanning = false; task = nil }
             await loadCache()
             guard !Task.isCancelled else { return }
-            let worker = Task.detached(priority: .utility) { try await CodexStorageScanner.scan(root: root, onDiagnostic: { AppTelemetry.capture($0) }) }
+            let worker = Task.detached(priority: .utility) {
+                try await CodexStorageScanner.scan(root: root, onDiagnostic: { AppTelemetry.capture($0) }, onProgress: { progress in
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run { self.progressSnapshot = progress }
+                })
+            }
             do {
                 let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                 try Task.checkCancellation()
-                snapshot = result
+                completedSnapshot = result
+                progressSnapshot = nil
                 await cache.saveStorage(result)
             } catch {
                 guard !Task.isCancelled else { return }
@@ -186,7 +194,10 @@ struct CodexStorageView: View {
         .onAppear { model.enterPage() }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                if let snapshot = model.snapshot {
+                if model.isScanning {
+                    Text(String(localized: "Scanning storage…"))
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if let snapshot = model.snapshot {
                     Text(String(localized: "Last scanned: \(snapshot.finishedAt.formatted(date: .abbreviated, time: .standard))"))
                         .font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
                 }

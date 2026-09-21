@@ -7,7 +7,7 @@ A native macOS app and CLI for tracking **Codex usage limits, token usage, estim
 - Estimate when limits will run out or how much allowance will remain at reset, starting with the current cycle's average pace and adapting as new usage observations arrive.
 - View available reset credits, their expiry dates, and the credits balance returned by Codex.
 - Compare usage by model, usage mode, and reasoning effort.
-- Inspect Codex disk usage by category and browse worktree and projectless task directories.
+- Inspect Codex disk usage by category and browse worktree and projectless task directories, with results updating during scans.
 - Check recent activity from the menu bar.
 - Export detailed usage as JSON with the CLI.
 - Background CPU usage below 1%, with peak memory usage just one-fifth that of comparable tools.
