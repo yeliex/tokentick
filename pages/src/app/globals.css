@@ -2,41 +2,22 @@
 @import "tw-animate-css";
 
 :root {
-  color-scheme: light;
-  --background: #faf8f4;
-  --foreground: #34352e;
-  --primary: #474439;
-  --primary-foreground: #faf8f4;
-  --secondary: #f1e6d4;
-  --secondary-foreground: #474439;
-  --muted: #f0ede7;
-  --muted-foreground: #6d6a61;
-  --accent: #f1e6d4;
-  --accent-foreground: #474439;
-  --border: #e3dfd5;
-  --input: #d9d4c8;
-  --ring: #b97530;
-  --brand: #956025;
+  color-scheme: only dark;
+  --background: #15231f;
+  --foreground: #edf2ec;
+  --primary: #d8e9dc;
+  --primary-foreground: #15231f;
+  --secondary: #2d4039;
+  --secondary-foreground: #edf2ec;
+  --muted: #22332c;
+  --muted-foreground: #afbeb5;
+  --accent: #2d4039;
+  --accent-foreground: #edf2ec;
+  --border: #34473e;
+  --input: #40564e;
+  --ring: #a9cdb8;
+  --brand: #a9cdb8;
   --radius: 0.65rem;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --background: #15231f;
-    --foreground: #edf2ec;
-    --primary: #d8e9dc;
-    --primary-foreground: #15231f;
-    --secondary: #2d4039;
-    --secondary-foreground: #edf2ec;
-    --muted: #22332c;
-    --muted-foreground: #afbeb5;
-    --accent: #2d4039;
-    --accent-foreground: #edf2ec;
-    --border: #34473e;
-    --input: #40564e;
-    --ring: #a9cdb8;
-    --brand: #a9cdb8;
-  }
 }
 @theme inline {
   --color-background: var(--background);
@@ -113,17 +94,6 @@
 .brand-icon {
   display: grid;
   place-items: center;
-}
-.dark-asset {
-  display: none;
-}
-@media (prefers-color-scheme: dark) {
-  .light-asset {
-    display: none;
-  }
-  .dark-asset {
-    display: block;
-  }
 }
 .hero {
   display: grid;
