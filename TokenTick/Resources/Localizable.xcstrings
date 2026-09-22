@@ -3319,6 +3319,204 @@
           }
         }
       }
+    },
+    "Notification only": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅通知"
+          }
+        }
+      }
+    },
+    "Confetti": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "彩纸"
+          }
+        }
+      }
+    },
+    "Fireworks": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "烟花"
+          }
+        }
+      }
+    },
+    "Random": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "随机"
+          }
+        }
+      }
+    },
+    "Reset reminders": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重置提醒"
+          }
+        }
+      }
+    },
+    "Remind me when limits reset": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "额度重置时提醒"
+          }
+        }
+      }
+    },
+    "Reminder method": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提醒方式"
+          }
+        }
+      }
+    },
+    "Notifications are disabled in System Settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系统设置中已关闭通知权限。"
+          }
+        }
+      }
+    },
+    "Open Notification Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开通知设置"
+          }
+        }
+      }
+    },
+    "Allow notifications": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许通知"
+          }
+        }
+      }
+    },
+    "Could not request notification permission. Try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法请求通知权限，请重试。"
+          }
+        }
+      }
+    },
+    "Codex limits reset": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codex 额度已重置"
+          }
+        }
+      }
+    },
+    "Test reminder": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "测试提醒"
+          }
+        }
+      }
+    },
+    "Reset reminder preview": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重置提醒预览"
+          }
+        }
+      }
+    },
+    "This is a test. Your Codex limits have not changed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这是一条测试提醒，Codex 额度并未发生变化。"
+          }
+        }
+      }
+    },
+    "Weekly limit reset · %@%% remaining": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每周额度已重置 · 剩余 %@%%"
+          }
+        }
+      }
+    },
+    "5-hour limit reset · %@%% remaining": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "5 小时额度已重置 · 剩余 %@%%"
+          }
+        }
+      }
+    },
+    "Animations are not controlled by Do Not Disturb and may interrupt screen sharing or meetings. We recommend “Notification only”.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "动画不受勿扰模式控制，在投屏、会议时可能造成干扰，建议使用“仅通知”。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

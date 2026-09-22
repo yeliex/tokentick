@@ -97,6 +97,7 @@ private struct GeneralSettingsView: View {
                 }
                 if let loginError { Text(loginError).foregroundStyle(.secondary).textSelection(.enabled) }
             }
+            ResetReminderSettingsSection()
             CLISettingsSection()
             Section(String(localized: "Limit display")) {
                 Picker(String(localized: "Display"), selection: $limitsShowRemaining) {
@@ -206,6 +207,56 @@ private struct CLISettingsSection: View {
         } catch {
             AppTelemetry.capture(error, operation: "cli.install", warning: true)
             installationStatus = "\(destination.path): \(error.localizedDescription)"
+        }
+    }
+}
+
+private struct ResetReminderSettingsSection: View {
+    @Environment(ApplicationModel.self) private var app
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("resetRemindersEnabled") private var enabled = false
+    @AppStorage("resetReminderMethod") private var method: ResetReminderController.Method = .notification
+
+    var body: some View {
+        Section {
+            Toggle(String(localized: "Remind me when limits reset"), isOn: $enabled)
+                .disabled(app.resetReminders.requestingPermission)
+            if enabled {
+                Picker(String(localized: "Reminder method"), selection: $method) {
+                    ForEach(ResetReminderController.Method.allCases, id: \.self) { value in
+                        Text(value.title).tag(value)
+                    }
+                }.pickerStyle(.menu)
+                if app.resetReminders.authorization == .denied {
+                    Text(String(localized: "Notifications are disabled in System Settings."))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button(String(localized: "Open Notification Settings")) {
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!)
+                    }
+                } else if app.resetReminders.authorization == .notDetermined {
+                    Button(String(localized: "Allow notifications")) {
+                        Task { await app.resetReminders.requestPermissions() }
+                    }.disabled(app.resetReminders.requestingPermission)
+                }
+                Button(String(localized: "Test reminder")) {
+                    Task { await app.resetReminders.testReminder() }
+                }.disabled(app.resetReminders.requestingPermission)
+                if let error = app.resetReminders.permissionError {
+                    Text(error).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text(String(localized: "Reset reminders"))
+        } footer: {
+            Text(String(localized: "Animations are not controlled by Do Not Disturb and may interrupt screen sharing or meetings. We recommend “Notification only”."))
+        }
+        .task { await app.resetReminders.refreshPermissions() }
+        .onChange(of: enabled) {
+            app.resetReminders.invalidate()
+            if enabled { Task { await app.resetReminders.requestPermissions() } }
+        }
+        .onChange(of: scenePhase) {
+            if scenePhase == .active { Task { await app.resetReminders.refreshPermissions() } }
         }
     }
 }

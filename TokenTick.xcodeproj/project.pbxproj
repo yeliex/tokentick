@@ -5,6 +5,10 @@
 	"objectVersion" = "56";
 	"archiveVersion" = "1";
 	"objects" = {
+        "CE2200000000000000000011" = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TokenTick/UI/ResetCelebrationController.swift"; sourceTree = "<group>"; };
+        "CE2200000000000000000012" = { isa = PBXBuildFile; fileRef = "CE2200000000000000000011"; };
+        "CE2200000000000000000001" = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TokenTick/UI/ResetReminderController.swift"; sourceTree = "<group>"; };
+        "CE2200000000000000000002" = { isa = PBXBuildFile; fileRef = "CE2200000000000000000001"; };
         "CE1600000000000000000001" = { isa = XCSwiftPackageProductDependency; package = "E795003646D4952330D66DC9"; productName = TokenTickTelemetry; };
         "CE1600000000000000000002" = { isa = PBXBuildFile; productRef = "CE1600000000000000000001"; };
         "C11000000000000000000004" = {
@@ -232,6 +236,8 @@
 				"AB1457BBEEAB123456789013",
 				"A5077C071927F890C4537C32",
 				"8C201586ED70116E47042557",
+				"CE2200000000000000000002",
+				"CE2200000000000000000012",
 				"70B1D599F03C479E45144952",
 				"12F57F06E90963792A0B7A4F",
 				"2D82C6F909FB45BBA6FF9C4A",
@@ -507,6 +513,8 @@
 				"0BFFF1C249F1AE32AAED9616",
 				"5E04063F6B044BDC4F4869F1",
 				"8A3F357787FB01C35ACE25F6",
+				"CE2200000000000000000001",
+				"CE2200000000000000000011",
 				"E63A6DE30A98D855FA167F2C",
 				"958778895F030AAA42825BFF",
 				"739E83C01C9D47EAAF16F6A2",

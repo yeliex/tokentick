@@ -10,6 +10,7 @@ final class ApplicationModel {
     @ObservationIgnored private var automatic: AutomaticSyncController?
     private var started = false
     let storage = CodexStorageModel()
+    let resetReminders = ResetReminderController()
     var requestedPage: AppPage?
     var isRefreshingAPI = false
     @ObservationIgnored private let displayCache = LocalDisplayCache(onDiagnostic: { AppTelemetry.capture($0) })
@@ -146,6 +147,10 @@ final class ApplicationModel {
         isRefreshingAPI = false
         guard generation == limitSession.generation else { return }
         let accepted = limitSession.acceptAPI(snapshot, generation: generation, now: Date().timeIntervalSince1970)
+        if accepted, let snapshot {
+            await resetReminders.receive(snapshot)
+        }
+        guard generation == limitSession.generation else { return }
         if accepted, let snapshot, let stamp = loginStamp {
             await displayCache.saveAPI(snapshot, login: stamp)
         } else if limitSession.snapshot == nil {
@@ -159,6 +164,7 @@ final class ApplicationModel {
         guard stamp != loginStamp else { return false }
         loginStamp = stamp
         limitSession.invalidate()
+        resetReminders.invalidate()
         return true
     }
 

@@ -4,6 +4,7 @@ A native macOS app and CLI for tracking **Codex usage limits, token usage, estim
 
 - Explore usage by day, task, project, and model.
 - Monitor current limits and review completed weekly windows.
+- Get system notifications when limits reset, with optional confetti or fireworks.
 - Estimate when limits will run out or how much allowance will remain at reset, starting with the current cycle's average pace and adapting as new usage observations arrive.
 - View available reset credits, their expiry dates, and the credits balance returned by Codex.
 - Compare usage by model, usage mode, and reasoning effort.
