@@ -223,6 +223,9 @@ export function Home({ locale }: { locale: Locale }) {
         <div>
           <Brand />
           <p className="mt-3 text-xs text-muted-foreground">
+            © {new Date().getFullYear()} <a href="https://github.com/yeliex">@yeliex</a>
+          </p>
+          <p className="mt-3 text-xs text-muted-foreground">
             {t.disclaimer}
           </p>
         </div>
