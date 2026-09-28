@@ -1,0 +1,260 @@
+import SwiftUI
+import UniformTypeIdentifiers
+import TokenTickCore
+
+struct RemoteDevicesSettingsView: View {
+    @Environment(ApplicationModel.self) private var app
+    let model: RemoteDevicesModel
+    @State private var editing: RemoteDevice?
+    @State private var editorPresented = false
+    @State private var removing: RemoteDevice?
+    @State private var deleteUsage = false
+    @State private var actionError: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Text(String(localized: "Remote Devices")).font(.title2.weight(.semibold))
+                    Spacer()
+                    Button(String(localized: "Add Device"), systemImage: "plus") {
+                        editing = nil; editorPresented = true
+                    }
+                }
+                Text(String(localized: "Sync Codex usage over SSH or from a folder."))
+                    .font(.callout).foregroundStyle(.secondary)
+                if let error = model.error ?? actionError { Text(error).foregroundStyle(.red).textSelection(.enabled) }
+                if model.newRemoteHintCount > 0 {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(String(localized: "Codex remote environments detected"), systemImage: "network")
+                            .font(.callout.weight(.medium))
+                        Text(String(localized: "Add a connection to sync their usage."))
+                            .font(.caption).foregroundStyle(.secondary)
+                        HStack {
+                            Button(String(localized: "Add Device")) { editing = nil; editorPresented = true }
+                            Button(String(localized: "Dismiss")) { model.dismissRemoteHints() }
+                        }.controlSize(.small)
+                    }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+                }
+                if model.configuration.devices.isEmpty {
+                    ContentUnavailableView(String(localized: "No remote devices"), systemImage: "desktopcomputer",
+                        description: Text(String(localized: "Add a connection to include its Codex usage.")))
+                        .frame(maxWidth: .infinity)
+                }
+                ForEach(model.configuration.devices) { device in
+                    card(device)
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
+        }
+        .task { await model.refreshRemoteHints() }
+        .sheet(isPresented: $editorPresented) { RemoteDeviceEditor(model: model, existing: editing) }
+        .sheet(item: $removing) { device in
+            VStack(alignment: .leading, spacing: 18) {
+                Text(String(localized: "Remove Device")).font(.title2.weight(.semibold))
+                Text(device.name).font(.headline)
+                Text(String(localized: "Remove this connection? Collected usage will be kept unless you choose to delete it."))
+                Toggle(String(localized: "Delete collected usage from this device"), isOn: $deleteUsage)
+                HStack {
+                    Spacer()
+                    Button(String(localized: "Cancel")) { removing = nil }.keyboardShortcut(.cancelAction)
+                    Button(String(localized: "Remove"), role: .destructive) {
+                        Task {
+                            do { try await app.removeDevice(device, deleteUsage: deleteUsage); removing = nil }
+                            catch { actionError = error.localizedDescription; removing = nil }
+                        }
+                    }
+                }
+            }.padding(24).frame(width: 430)
+        }
+    }
+
+    private func card(_ device: RemoteDevice) -> some View {
+        let status = model.statuses[device.id]
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                Image(systemName: device.connection.kind == "directory" ? "folder" : "desktopcomputer").font(.title2).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(device.name).font(.headline).textSelection(.enabled)
+                    Text(device.connection.displayAddress).font(.caption).foregroundStyle(.secondary)
+                        .lineLimit(2).help(device.connection.displayAddress).textSelection(.enabled)
+                }
+                Spacer()
+                if status?.busy == true { ProgressView().controlSize(.small) }
+                Text(device.connection.kind == "directory" ? String(localized: "Folder") : "SSH")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            if let progress = status?.progress, status?.busy == true {
+                ProgressView(value: Double(progress.completedFiles), total: Double(max(1, progress.totalFiles)))
+                Text(String(localized: "Scanning files: \(progress.completedFiles)/\(progress.totalFiles)")).font(.caption)
+            } else if let error = status?.error {
+                Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
+            } else {
+                Text(statusText(device, status)).font(.callout).foregroundStyle(.secondary)
+            }
+            if let error = status?.connectionTestError {
+                Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
+            } else if let test = status?.connectionTest {
+                Text(String(localized: "Connection available")).font(.callout).foregroundStyle(.secondary)
+                Text(test.root).font(.caption).textSelection(.enabled)
+                Text(test.accountEmail ?? String(localized: "Unknown account")).font(.caption).foregroundStyle(.secondary)
+            }
+            if let date = model.collectionDates[device.id], status?.result != nil || !device.enabled {
+                LabeledContent(String(localized: "Last sync"), value: date.formatted(date: .abbreviated, time: .standard))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if let result = status?.result {
+                Text(result.accountEmail ?? String(localized: "Unknown account")).font(.caption).foregroundStyle(.secondary)
+                DisclosureGroup(String(localized: "Connection details")) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(result.root).textSelection(.enabled)
+                        Text(result.finishedAt.formatted(date: .abbreviated, time: .standard))
+                        if let scan = result.scan {
+                            Text(String(localized: "Files: \(scan.discoveredFiles) · New events: \(scan.insertedRequests)"))
+                            if scan.pendingFiles > 0 {
+                                Text(String(localized: "Files awaiting check: \(scan.pendingFiles)"))
+                            }
+                            if scan.pendingMetadata {
+                                Text(String(localized: "Syncing task names and projects…"))
+                            }
+                            ForEach(Array(scan.issues.prefix(3).enumerated()), id: \.offset) { _, issue in Text(issue.message) }
+                        }
+                    }.font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 6)
+                }.font(.caption)
+            }
+            Divider()
+            HStack {
+                Button(String(localized: "Test Connection")) { model.test(device) }.disabled(status?.busy == true)
+                Button(String(localized: "Sync Now")) { model.run(device) }.disabled(status?.busy == true)
+                if status?.busy == true {
+                    Button(String(localized: "Cancel")) { Task { await model.cancel(device.id) } }
+                }
+                Spacer()
+                Menu {
+                    Button(device.enabled ? String(localized: "Pause") : String(localized: "Resume")) {
+                        Task {
+                            var changed = device; changed.enabled.toggle()
+                            do { try await model.save(changed, adding: false) }
+                            catch { actionError = error.localizedDescription }
+                        }
+                    }
+                    Button(String(localized: "Edit…")) { editing = device; editorPresented = true }
+                    Divider()
+                    Button(String(localized: "Remove…"), role: .destructive) { deleteUsage = false; removing = device }
+                } label: { Image(systemName: "ellipsis") }
+                    .menuStyle(.borderlessButton).fixedSize().accessibilityLabel(String(localized: "Device actions"))
+            }.controlSize(.small)
+        }
+        .padding(16)
+        .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.primary.opacity(0.08)))
+    }
+
+    private func statusText(_ device: RemoteDevice, _ status: RemoteDevicesModel.Status?) -> String {
+        if status?.busy == true { return status?.testing == true ? String(localized: "Testing connection…") : String(localized: "Syncing…") }
+        if !device.enabled { return String(localized: "Paused") }
+        guard let result = status?.result else {
+            if let date = model.collectionDates[device.id] {
+                return String(localized: "Last updated: \(date.formatted(date: .abbreviated, time: .standard))")
+            }
+            return String(localized: "Not synced yet")
+        }
+        guard let scan = result.scan else { return String(localized: "Connection available") }
+        if scan.issueCount > 0 { return String(localized: "Partially synced") }
+        if scan.pendingFiles > 0 || scan.pendingMetadata { return String(localized: "Importing history…") }
+        return scan.discoveredFiles == 0 ? String(localized: "No logs found") : String(localized: "Up to date")
+    }
+}
+
+private struct RemoteDeviceEditor: View {
+    let model: RemoteDevicesModel
+    let existing: RemoteDevice?
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var address = ""
+    @State private var directory: URL?
+    @State private var bookmark: Data?
+    @State private var picker = false
+    @State private var saving = false
+    @State private var saveTask: Task<Void, Never>?
+    @State private var error: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(existing == nil ? String(localized: "Add Device") : String(localized: "Edit Device")).font(.title2.weight(.semibold))
+            Form {
+                Section {
+                    TextField(String(localized: "Name"), text: $name)
+                    TextField(String(localized: "Address"), text: $address)
+                        .autocorrectionDisabled()
+                    if let parsed = try? ParsedDeviceConnection(address: address) {
+                        Text(parsed.connection.displayAddress)
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                        if let duplicate = model.configuration.devices.first(where: {
+                            $0.id != existing?.id && $0.connection.displayAddress == parsed.connection.displayAddress
+                        }) {
+                            Text(String(localized: "This address is already configured as \(duplicate.name). You can use the existing device."))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Button(String(localized: "Use Local Folder")) { picker = true }
+                } footer: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(String(localized: "Enter an SSH URL or choose the Codex folder."))
+                        Text(verbatim: "ssh://my-server\nssh://user@host/absolute/path/.codex\n/Volumes/Remote/codex")
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                    }.font(.caption).foregroundStyle(.secondary)
+                }
+            }.formStyle(.grouped)
+                .disabled(saving)
+            if let error { Text(error).font(.callout).foregroundStyle(.red) }
+            HStack {
+                Spacer()
+                Button(String(localized: "Cancel")) { saveTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction)
+                Button(String(localized: "Save")) { save() }.keyboardShortcut(.defaultAction)
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)
+            }
+        }.padding(24).frame(width: 500)
+        .fileImporter(isPresented: $picker, allowedContentTypes: [.folder]) { result in
+            do {
+                let url = try result.get()
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                bookmark = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+                directory = url
+                address = url.path
+            } catch { self.error = error.localizedDescription }
+        }
+        .onDisappear { saveTask?.cancel() }
+        .onAppear {
+            guard let existing else { return }
+            name = existing.name
+            address = existing.address ?? existing.connection.displayAddress
+            if case .directory(let path, let saved) = existing.connection {
+                directory = URL(fileURLWithPath: path)
+                bookmark = saved
+            }
+        }
+    }
+
+    private func save() {
+        do {
+            let parsed = try ParsedDeviceConnection(address: address)
+            let connection: DeviceConnection
+            if case .directory(let path, _) = parsed.connection {
+                connection = .directory(path: path, bookmark: directory?.path == path ? bookmark : nil)
+            } else { connection = parsed.connection }
+            var device = existing ?? RemoteDevice(name: name, connection: connection)
+            device.edit(name: name.trimmingCharacters(in: .whitespacesAndNewlines), connection: connection, enabled: device.enabled)
+            device.address = address
+            saving = true
+            saveTask = Task {
+                defer { saving = false; saveTask = nil }
+                do { try await model.save(device, adding: existing == nil); dismiss() }
+                catch is CancellationError { }
+                catch { self.error = error.localizedDescription }
+            }
+        } catch { self.error = error.localizedDescription }
+    }
+}

@@ -62,6 +62,16 @@ struct UsageDetailsView: View {
                                             periods: [.today, .week, .month, .quarter, .year, .all], timezone: timezone)
                         TextField(String(localized: "Search task title or ID"), text: $state.filters.search)
                             .textFieldStyle(.roundedBorder).frame(width: 130)
+                        if !(app.devices.configuration.devices.isEmpty && app.devices.configuration.removedNames.isEmpty) {
+                            Picker(String(localized: "Device"), selection: $state.filters.device) {
+                                Text(String(localized: "All devices")).tag(UsageValueFilter.all)
+                                ForEach(Array(Set((state.options?.devices ?? []) + ["local"]
+                                    + app.devices.configuration.devices.map(\.id)
+                                    + Array(app.devices.configuration.removedNames.keys))).sorted(), id: \.self) { id in
+                                    Text(app.devices.name(id)).tag(UsageValueFilter.value(id))
+                                }
+                            }.labelsHidden().frame(width: 120)
+                        }
                         Picker(String(localized: "Project"), selection: $state.filters.project) {
                             Text(String(localized: "All projects")).tag(UsageValueFilter.all)
                             ForEach(state.options?.projects ?? [], id: \.self) { Text(UsageFormatting.project($0)).tag(UsageValueFilter.value($0)) }
@@ -147,6 +157,10 @@ struct UsageDetailsView: View {
                 let options = try await Task.detached { try store.usageFilterOptions(scope) }.value
                 guard !Task.isCancelled else { return }
                 if state.options != options { state.options = options }
+                if case .value(let id) = state.filters.device, id != "local",
+                   app.devices.configuration.name(for: id) == nil, !options.devices.contains(id) {
+                    state.filters.device = .all
+                }
                 if case .value(let project) = state.filters.project, !options.projects.contains(project) { state.filters.project = .all }
                 if case .value(let model) = state.filters.model, !options.models.contains(model) { state.filters.model = .all }
             } catch {

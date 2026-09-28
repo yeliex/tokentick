@@ -67,7 +67,9 @@ final class DashboardModel {
                 try Task.checkCancellation()
                 let report = try store.usageReport(query)
                 try Task.checkCancellation()
-                let names = query.grouping == .thread ? try store.threadInfo(ids: report.rows.compactMap(\.group)) : [:]
+                let selectedDevice: String?
+                if case .value(let id) = query.filters.device { selectedDevice = id } else { selectedDevice = nil }
+                let names = query.grouping == .thread ? try store.threadInfo(ids: report.rows.compactMap(\.group), device: selectedDevice) : [:]
                 let rows = report.rows.map { UsageDisplayRow(summary: $0, thread: $0.group.flatMap { names[$0] }, grouping: query.grouping) }
                 var totalQuery = query
                 totalQuery.grouping = .total

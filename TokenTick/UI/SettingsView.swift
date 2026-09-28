@@ -5,12 +5,13 @@ import TokenTickCore
 import TokenTickUpdates
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
-    case general, data, about
+    case general, data, devices, about
     var id: Self { self }
     var title: String {
         switch self {
         case .general: String(localized: "General")
         case .data: String(localized: "Data")
+        case .devices: String(localized: "Remote Devices")
         case .about: String(localized: "About")
         }
     }
@@ -19,6 +20,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .general: "gearshape"
         case .data: "externaldrive"
+        case .devices: "network"
         case .about: "info.circle"
         }
     }
@@ -46,6 +48,7 @@ struct SettingsView: View {
                 case .general: GeneralSettingsView()
                 case .data: Form { DataStatusView() }.formStyle(.grouped)
                 case .about: AboutSettingsView()
+                case .devices: RemoteDevicesSettingsView(model: app.devices)
                 }
             }
             .navigationTitle("")

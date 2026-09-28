@@ -14,7 +14,7 @@ extension UsageSort {
 
 extension UsageFilters {
     var summary: String {
-        [(String(localized: "Task"), thread), (String(localized: "Project"), project), (String(localized: "Model"), model), (String(localized: "Day"), day)].enumerated().compactMap { index, entry in
+        [(String(localized: "Task"), thread), (String(localized: "Project"), project), (String(localized: "Model"), model), (String(localized: "Day"), day), (String(localized: "Device"), device)].enumerated().compactMap { index, entry in
             let (name, filter) = entry
             return switch filter {
             case .all: nil

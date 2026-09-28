@@ -81,10 +81,14 @@ final class AutomaticSyncController {
         arm()
     }
 
-    private func suspend() { suspended = true; timer?.cancel(); timer = nil }
+    private func suspend() {
+        suspended = true; timer?.cancel(); timer = nil
+        app?.devices.suspend()
+    }
     private func recover() {
         guard home != nil else { return }
         suspended = false
+        app?.devices.recovered()
         refreshHome()
         watch()
         schedule.recovered()
@@ -93,12 +97,12 @@ final class AutomaticSyncController {
 
     private func arm() {
         timer?.cancel(); timer = nil
-        guard home != nil, !suspended, let app, !app.isSyncing else { return }
+        guard home != nil, !suspended, let app, !app.isSyncing, !app.isDeletingDeviceData else { return }
         // Check process environment and watcher state only; do not scan directories at this frequency.
         let delay = min(30, max(0.01, schedule.nextCheck.timeIntervalSinceNow))
         timer = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
-            guard let self, let app = self.app, !app.isSyncing, !self.suspended else { return }
+            guard let self, let app = self.app, !app.isSyncing, !app.isDeletingDeviceData, !self.suspended else { return }
             self.refreshHome()
             if self.watcher == nil { self.watch() }
             if let scope = self.schedule.takeDueScope() { app.synchronize(scope) }

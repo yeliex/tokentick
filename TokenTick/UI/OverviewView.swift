@@ -12,23 +12,40 @@ struct OverviewView: View {
     @State private var loading = false
     @State private var error: String?
     @State private var refreshedAt = Date()
-    private struct Request: Hashable { let period: OverviewPeriod; let refresh: Int; let timezone: String; let now: Date }
+    private struct Request: Hashable { let period: OverviewPeriod; let refresh: Int; let timezone: String; let now: Date; let device: UsageValueFilter }
     private var timezone: String { app.status?.timezone ?? TimeZone.current.identifier }
-    private var request: Request { Request(period: period, refresh: app.usageRefreshID, timezone: timezone, now: refreshedAt) }
+    private var request: Request { Request(period: period, refresh: app.usageRefreshID, timezone: timezone, now: refreshedAt, device: app.selectedDevice) }
+    private var selectionChanged: Bool { loadedPeriod != period || report?.query.filters.device != app.selectedDevice }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 30) {
                 CurrentLimitsView()
+                if !app.devices.coverageGaps.isEmpty {
+                    Text(String(localized: "Device history has not been fully collected: \(app.devices.coverageGaps.map { app.devices.name($0) }.joined(separator: ", ")). Sync available sources to complete the history."))
+                        .font(.callout).foregroundStyle(.secondary)
+                }
                 HStack {
                     Text(String(localized: "Usage")).font(.title2.weight(.semibold))
                     Spacer()
+                    if !app.devices.configuration.devices.isEmpty || !app.devices.configuration.removedNames.isEmpty {
+                        Picker(String(localized: "Device"), selection: Binding(get: { app.selectedDevice }, set: { app.selectedDevice = $0 })) {
+                            Text(String(localized: "All devices")).tag(UsageValueFilter.all)
+                            Text(String(localized: "Local")).tag(UsageValueFilter.value("local"))
+                            ForEach(app.devices.configuration.devices) { device in
+                                Text(device.name).tag(UsageValueFilter.value(device.id))
+                            }
+                            ForEach(app.devices.configuration.removedNames.keys.sorted(), id: \.self) { id in
+                                Text(app.devices.name(id)).tag(UsageValueFilter.value(id))
+                            }
+                        }.labelsHidden().frame(width: 140)
+                    }
                     Picker(String(localized: "Period"), selection: Binding(get: { period }, set: { storedPeriod = $0.rawValue })) {
                         ForEach(OverviewPeriod.allCases) { Text($0.title).tag($0) }
                     }.pickerStyle(.segmented).labelsHidden().controlSize(.regular)
-                        .fixedSize(horizontal: true, vertical: true).frame(width: 410, alignment: .trailing)
+                        .fixedSize(horizontal: true, vertical: true)
                 }
-                if loading && (report == nil || loadedPeriod != period) {
+                if selectionChanged && (loading || report != nil) {
                     ProgressView(String(localized: "Summarizing usage")).frame(maxWidth: .infinity, minHeight: 260)
                 } else if let error {
                     ContentUnavailableView(String(localized: "Unable to load usage"), systemImage: "exclamationmark.triangle", description: Text(error))
@@ -103,7 +120,7 @@ struct OverviewView: View {
                     ContentUnavailableView(String(localized: "No usage in the selected period"), systemImage: "chart.bar")
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
-                if report?.total == nil || error != nil || (loading && loadedPeriod != period) {
+                if report?.total == nil || error != nil || (selectionChanged && (loading || report != nil)) {
                     CodexStorageSummaryView()
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
@@ -112,10 +129,10 @@ struct OverviewView: View {
         .task(id: request) {
             guard let store = app.store else { return }
             let current = request
-            loading = report == nil || loadedPeriod != current.period; error = nil
+            loading = report == nil || selectionChanged; error = nil
             do {
                 let worker = Task.detached(priority: .userInitiated) {
-                    try store.overviewReport(period: current.period, now: current.now, timezone: current.timezone)
+                    try store.overviewReport(period: current.period, now: current.now, timezone: current.timezone, device: current.device)
                 }
                 let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                 guard !Task.isCancelled else { return }

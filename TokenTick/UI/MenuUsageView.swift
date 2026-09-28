@@ -12,8 +12,8 @@ struct MenuUsageView: View {
     @State private var hoveredDate: Date?
     private let periods: [OverviewPeriod] = [.day, .week, .month, .quarter]
     private var timezone: String { app.status?.timezone ?? TimeZone.current.identifier }
-    private struct Request: Hashable { let refresh: Int; let timezone: String; let now: Date }
-    private var request: Request { Request(refresh: app.usageRefreshID, timezone: timezone, now: now) }
+    private struct Request: Hashable { let refresh: Int; let timezone: String; let now: Date; let device: UsageValueFilter }
+    private var request: Request { Request(refresh: app.usageRefreshID, timezone: timezone, now: now, device: app.selectedDevice) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -21,7 +21,7 @@ struct MenuUsageView: View {
                 Text(String(localized: "Unable to load usage")).font(.headline)
                 Text(error).font(.caption).foregroundStyle(.secondary).lineLimit(2).help(error)
                 Button(String(localized: "Retry")) { now = Date() }
-            } else if let month {
+            } else if let month, month.query.filters.device == app.selectedDevice {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 14) {
                     ForEach(periods) { period in
                         VStack(alignment: .leading, spacing: 4) {
@@ -45,10 +45,11 @@ struct MenuUsageView: View {
                 let worker = Task.detached(priority: .utility) {
                     var totals: [OverviewPeriod: UsageSummary] = [:]
                     for period in [OverviewPeriod.day, .week, .quarter] {
-                        let query = period.query(now: current.now, timezone: current.timezone)
+                        var query = period.query(now: current.now, timezone: current.timezone)
+                        query.filters.device = current.device
                         totals[period] = try store.usageReport(query).rows.first
                     }
-                    let month = try store.overviewReport(period: .month, now: current.now, timezone: current.timezone)
+                    let month = try store.overviewReport(period: .month, now: current.now, timezone: current.timezone, device: current.device)
                     totals[.month] = month.total
                     return (totals, month)
                 }
