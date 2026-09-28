@@ -17,10 +17,10 @@ public struct CurrentLimitSnapshot: Codable, Sendable {
     public var turnID: String? = nil
     public var historyExclusion: String? = nil
 
-    static func log(raw: SourceJSON, observedAt: Double, threadID: String, fileName: String, line: Int) throws -> Self {
+    static func log(raw: SourceJSON, observedAt: Double, threadID: String, fileName: String, line: Int, accountID: String? = nil) throws -> Self {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(raw)
-        var result = try parse(data, accountID: nil, observedAt: observedAt, source: "local", scopeKey: "thread:" + threadID, snakeCase: true)
+        var result = try parse(data, accountID: accountID, observedAt: observedAt, source: "local", scopeKey: "thread:" + threadID, snakeCase: true)
         result.fileName = fileName; result.line = line
         return result
     }

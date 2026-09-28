@@ -113,7 +113,7 @@ struct UsageScanner: Sendable {
             report.unchangedFiles += 1
             return false
         }
-        var scan = RolloutScan(identity: identity, accountID: accountID)
+        var scan = RolloutScan(identity: identity, accountID: cursor?.state.accountID ?? accountID)
         if let cursor, cursor.state.version == RolloutParserState.currentVersion,
            !identity.isCompressed, !cursor.file.compressed, cursor.offset > 0,
            cursor.file.sourceIdentity == file.identity, file.size >= cursor.offset,

@@ -28,7 +28,7 @@ The app supports multiple user-configured SSH connections and selected Codex fol
 - Preserve real source identifiers. Missing historical IDs remain null; do not generate a response ID from a turn or ordinal.
 - Across tasks containing the same turn, retain only the source task created earliest. A fork's new turns count normally. Discovering the original later changes ownership transactionally without adding duplicate consumption.
 - Count old and new reports of the same consumption once. Equal token counts alone do not make two distinct responses duplicates.
-- Include unknown-account usage in global totals. Local and remote collection use the same task-account rule. Remote sources use their own login, never the built-in local login. Keep the resolved account when resuming an existing task.
+- Include unknown-account usage in global totals. Local and remote collection use the same task-account rule. Remote sources use their own login, never the built-in local login. Keep the resolved account when resuming an existing task. Historical limit cycles use the same task account: copies from the same account merge, while different accounts remain separate.
 - Keep unknown models in token totals and expose incomplete pricing. Missing values and zero are different.
 - Use the latest task title and project mapping. Project renames or reassignment update historical grouping without changing tokens or timestamps. Projects with the same resolved name share a group.
 - Resolve projects from Codex's saved projects and explicit task assignments. An arbitrary working-directory basename is not a project. Explicit projectless tasks use the `Chat` group; missing information alone is not proof of projectless status.

@@ -53,7 +53,19 @@ extension UsageStore {
             for window in state.weeklyWindows ?? [] { checkpoint.merge(window) }
             let counts = try pool.write { db in
                 let counts = try Self.collectTurns(usages, session: state.session, device: device, priority: priority, db: db)
+                var repairedCycles = 0
                 for snapshot in try Self.acceptedWeeklyLimits(limits, db: db) {
+                    if snapshot.accountID != nil, let file = snapshot.fileName {
+                        for window in snapshot.windows where window.limitID == "codex" && window.durationMinutes == 10_080 {
+                            guard let reset = window.resetsAt else { continue }
+                            // Match the replayed source even if another file has a newer observation.
+                            try db.execute(sql: """
+                                DELETE FROM weekly_limit_cycles WHERE account_id IS NULL AND source_file=?
+                                    AND ABS(scheduled_reset_at-?)<=60
+                                """, arguments: [file, reset])
+                            repairedCycles += db.changesCount
+                        }
+                    }
                     updated.consume(snapshot)
                     checkpoint.consume(snapshot)
                 }
@@ -63,7 +75,7 @@ extension UsageStore {
                 }
                 let stateJSON = String(decoding: try encoder.encode(savedState), as: UTF8.self)
                 let changed = try updated.saveCompleted(db: db, now: Date().timeIntervalSince1970)
-                if changed > 0 {
+                if changed > 0 || repairedCycles > 0 {
                     try db.execute(sql: "DELETE FROM app_metadata WHERE key='weekly_cycles_revision'")
                 }
                 let threadID = identity.threadID.uuidString.lowercased()

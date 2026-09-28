@@ -236,6 +236,67 @@ struct DeviceUsageScannerTests {
         #expect(try fixture.store.usageRecords().rows.allSatisfy { $0.accountID == "source-login" })
     }
 
+    @Test func localAndRemoteCyclesMergeOnlyWithinTheSameAccount() async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let reset: Int64 = 1_789_084_800
+        let limits = """
+        {"timestamp":"2026-09-09T00:00:02Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"secondary":{"used_percent":40,"window_minutes":10080,"resets_at":\(reset)}}}}
+
+        """
+        let first = header.replacingOccurrences(of: "\"id\":", with: "\"creator_account_id\":\"a\",\"id\":") + record(1) + limits
+        let source = Source(data: Data(first.utf8), database: fixture.store.databaseURL)
+        _ = try await UsageScanner(store: fixture.store, device: .local(root: fixture.root), priority: DevicePriority())
+            .scan(source: source)
+        _ = try await UsageScanner(store: fixture.store, device: fixture.device, priority: DevicePriority())
+            .scan(source: source)
+        try fixture.store.saveCompletedWeeklyCycles()
+        var rows = try fixture.store.weeklyLimitHistory().rows
+        #expect(rows.count == 1)
+        #expect(rows.first?.accountID == "a" && rows.first?.totalTokens == 120)
+        let second = first.replacingOccurrences(of: "\"creator_account_id\":\"a\"", with: "\"creator_account_id\":\"b\"")
+            .replacingOccurrences(of: "00000000-0000-0000-0000-000000000001", with: "00000000-0000-0000-0000-000000000002")
+            .replacingOccurrences(of: "turn-1", with: "turn-2")
+        await source.setOlderLog(Data(second.utf8))
+        _ = try await UsageScanner(store: fixture.store, device: fixture.device, priority: DevicePriority()).scan(source: source)
+        try fixture.store.saveCompletedWeeklyCycles()
+        rows = try fixture.store.weeklyLimitHistory().rows
+        #expect(Set(rows.compactMap(\.accountID)) == ["a", "b"])
+        #expect(rows.allSatisfy { $0.totalTokens == 120 && $0.requestCount == 1 })
+    }
+
+    @Test func replayRepairsLegacyCyclesUsingSavedAccount() async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let log = header + record(1) + """
+        {"timestamp":"2026-09-09T00:00:02Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"secondary":{"used_percent":40,"window_minutes":10080,"resets_at":1789084800}}}}
+
+        """
+        let source = Source(data: Data(log.utf8), database: fixture.store.databaseURL)
+        _ = try await UsageScanner(store: fixture.store, device: fixture.device, priority: DevicePriority(), accountID: "original")
+            .scan(source: source)
+        try await fixture.store.pool.write { db in
+            try db.execute(sql: "UPDATE weekly_limit_cycles SET account_id=NULL,id='unknown:codex:1789084800'")
+            try db.execute(sql: """
+                INSERT INTO weekly_limit_cycles(id,account_id,limit_id,started_at,scheduled_reset_at,ended_at,
+                    reset_kind,last_observed_at,last_used_percent,source_file)
+                VALUES ('unknown:codex:1788479900',NULL,'codex',1787875100,1788479900,1788479900,
+                    'natural',1788479000,80,'unavailable.jsonl')
+                """)
+            try db.execute(sql: "UPDATE scan_files SET parser_state_json=json_set(parser_state_json,'$.version',10)")
+        }
+        let reopened = try UsageStore(databaseURL: fixture.store.databaseURL)
+        let scanner = UsageScanner(store: reopened, device: fixture.device, priority: DevicePriority(), accountID: "new-login")
+        _ = try await scanner.scan(source: source)
+        try reopened.saveCompletedWeeklyCycles()
+        let rows = try reopened.weeklyLimitHistory(LimitQuery(account: .account("original"))).rows
+        #expect(try reopened.weeklyLimitHistory().rows.count == 2)
+        #expect(rows.count == 1 && rows.first?.accountID == "original")
+        #expect(rows.first?.totalTokens == 120 && rows.first?.requestCount == 1)
+        #expect(try await scanner.scan(source: source).unchangedFiles == 1)
+        #expect(try reopened.weeklyLimitHistory(LimitQuery(account: .account("original"))).rows == rows)
+    }
+
     private struct Fixture {
         let root: URL
         let store: UsageStore
