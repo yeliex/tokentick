@@ -6,6 +6,16 @@ import Testing
 
 @MainActor
 struct UpdateDiagnosticsTests {
+    #if DEBUG
+    @MainActor @Test func debugBuildDoesNotEnableUpdateChecks() {
+        let updates = UpdateController()
+        updates.setAutomaticallyChecksForUpdates(true)
+        updates.checkForUpdates()
+        #expect(!updates.canCheckForUpdates)
+        #expect(!updates.automaticallyChecksForUpdates)
+    }
+    #endif
+
     @Test func ignoresExpectedOutcomesAndClassifiesUpdateFailures() {
         let reported = Mutex<[(String, Int)]>([])
         let diagnostics = UpdateDiagnostics { error, operation in

@@ -148,6 +148,7 @@ private struct AboutSettingsView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 16)
 
+                #if !DEBUG
                 VStack(spacing: 12) {
                     Toggle(String(localized: "Check for updates automatically"), isOn: Binding(
                         get: { updates.automaticallyChecksForUpdates },
@@ -156,6 +157,7 @@ private struct AboutSettingsView: View {
                     Button(String(localized: "Check for Updates…"), action: updates.checkForUpdates)
                         .disabled(!updates.canCheckForUpdates)
                 }
+                #endif
 
                 StorageSettingsView()
             }

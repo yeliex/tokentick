@@ -33,19 +33,28 @@ struct FileSnapshot: Codable {
             && inode == other.inode && device == other.device && compressed == other.compressed
     }
 
-    func canResume(url: URL, snapshot: Self, offset: UInt64) throws -> Bool {
+    func canResume(url: URL, snapshot: Self, offset: UInt64, source: any RolloutFileSource) throws -> Bool {
         guard !compressed, !snapshot.compressed, offset > 0, snapshot.size >= offset,
               inode == snapshot.inode, device == snapshot.device,
               snapshot.size > size || (snapshot.size == size && snapshot.modifiedAt == modifiedAt) else { return false }
-        return try Self.hash(url: url, offset: 0, count: Int(min(offset, 4_096))) == prefixHash
-            && Self.hash(url: url, offset: offset - min(offset, 4_096), count: Int(min(offset, 4_096))) == tailHash
+        return try Self.hash(url: url, offset: 0, count: Int(min(offset, 4_096)), source: source) == prefixHash
+            && Self.hash(url: url, offset: offset - min(offset, 4_096), count: Int(min(offset, 4_096)), source: source) == tailHash
     }
 
-    static func hash(url: URL, offset: UInt64, count: Int) throws -> String {
-        let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
-        try handle.seek(toOffset: offset)
-        let data = try handle.read(upToCount: count) ?? Data()
+    func checkpoint(url: URL, offset: UInt64, completed: Bool, source: any RolloutFileSource) throws -> Self {
+        var file = self
+        file.completed = completed
+        if !compressed {
+            file.prefixHash = try Self.hash(url: url, offset: 0, count: Int(min(offset, 4_096)), source: source)
+            file.tailHash = try Self.hash(url: url, offset: offset - min(offset, 4_096), count: Int(min(offset, 4_096)), source: source)
+        }
+        return file
+    }
+
+    static func hash(url: URL, offset: UInt64, count: Int, source: any RolloutFileSource) throws -> String {
+        let handle = try source.open(url)
+        try handle.seek(to: offset)
+        let data = try handle.read(upToCount: count)
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }

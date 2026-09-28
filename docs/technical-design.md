@@ -127,6 +127,14 @@ Bind `thread_settings_applied` settings at the next task/turn start. A persisten
 
 If tier evidence is missing, read matching top-level `response.create.service_tier` or actual TurnInput/UserInput evidence from Codex `logs_*.sqlite`. Match task and turn, not nearby timestamps or nested body fields. A settings submission ID is not a turn ID. Incremental trace cursors track database/WAL changes; SHM-only changes must not trigger a self-sustaining scan loop. Late evidence reprices affected usage.
 
+### Collection boundaries
+
+`RolloutFileSource` provides directory enumeration (including its error callback), regular-file checks, file snapshots, and open seekable byte streams. `LocalRolloutFileSource` is the only implementation. It preserves FileManager enumeration order/options and one FileHandle per stream; reads are bounded and may reach EOF without filling the requested count. `RolloutLineReader` retains the shared line filtering, size limits, decompression, and decompressed offsets. File identity and resume hashes keep their existing serialized representation.
+
+`RolloutScan` owns parser state, pending usage/weekly observations, and committed line/offset advancement. The scanner checks cancellation at the same boundaries and submits every 512 lines plus the final batch. Collection prepares checkpoint hashes immediately before each destination transaction, opening the source separately for each hash as before. `UsageStore.commitScan` receives that prepared checkpoint and atomically writes usage, weekly-cycle state, and the cursor; it does not read source bytes. Failed reads or transactions cannot advance a durable checkpoint.
+
+The public local scanner, write-lock scope, diagnostics, and progress callbacks remain unchanged. Thread/project catalogs and Fast trace collection retain their existing local read-only SQLite queries and batches; their already separate mapping and evidence parsers can be reused without introducing a metadata paging contract here. No device identity, connection configuration, or remote scheduling is part of these boundaries.
+
 Task mappings read the newest Codex state database and desktop project catalog. Explicit projectless IDs resolve to `Chat`; explicit project assignments precede historical projectless output-directory hints. Otherwise match saved project roots, preferring the most specific unambiguous root. Do not infer projects from arbitrary cwd basenames. Preserve remote Windows/UNC paths as remote paths rather than resolving them on the local filesystem.
 
 ## Pricing
@@ -323,6 +331,8 @@ The app target depends on the distinctly named `TokenTickCLI` target to avoid bu
 Packaging builds arm64 Release app/CLI, signs and verifies them, and generates a full distribution plus `TokenTick-<version>.zip` containing only the app, with SHA-256 files. The full distribution includes the CLI's Core resource bundle, dependency licenses, signature details, and `BUILD.txt` recording revision, dirty state, toolchain, and architecture.
 
 The packaging script extracts **`## Installation`** from the root README through the next level-two heading. Keep that section self-contained, preserve the extraction contract, and update the script if the heading changes.
+
+Debug builds do not create a Sparkle updater and omit update controls from the app menu and About settings. Release builds retain automatic and manual update checks.
 
 Sparkle handles app updates using the feed configured in `TokenTick/Resources/Info.plist`, with hourly checks enabled by default. The app-linked CLI updates with Sparkle; independently copied CLI installations are updated manually. A feed URL in source is not proof that a release has been published.
 

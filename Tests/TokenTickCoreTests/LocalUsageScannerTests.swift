@@ -382,6 +382,74 @@ struct LocalUsageScannerTests {
         #expect(try fixture.rows().count == 1)
     }
 
+    @Test func failedCheckpointCommitKeepsEarlierBatchAndRestartResumes() throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let padding = String(repeating: "{\"type\":\"ignored\"}\n", count: 509)
+        _ = try fixture.write(fixture.header + fixture.turn + fixture.count(1) + padding + fixture.count(2))
+        try fixture.store.pool.write { db in
+            try db.execute(sql: """
+                CREATE TRIGGER reject_later_checkpoint BEFORE UPDATE ON scan_files
+                WHEN NEW.scanned_line > 512 BEGIN SELECT RAISE(ABORT, 'Injected commit failure'); END
+                """)
+        }
+        #expect(throws: (any Error).self) { try fixture.scan() }
+        #expect(try fixture.total() == 120)
+        #expect(try fixture.store.pool.read { try Int.fetchOne($0, sql: "SELECT scanned_line FROM scan_files") } == 512)
+        try fixture.store.pool.write { try $0.execute(sql: "DROP TRIGGER reject_later_checkpoint") }
+        let reopened = try UsageStore(databaseURL: fixture.database)
+        #expect(try LocalUsageScanner(store: reopened).scan(codexHome: fixture.root).insertedRequests == 1)
+        #expect(try fixture.total() == 240)
+        #expect(try fixture.scan().unchangedFiles == 1)
+    }
+
+    @Test func cancellationAfterCommittedFileKeepsCheckpointForRestart() async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        _ = try fixture.write(fixture.header + fixture.turn + fixture.count(1))
+        let store = fixture.store
+        let root = fixture.root
+        let task = Task {
+            try LocalUsageScanner(store: store).scan(codexHome: root) { _ in
+                withUnsafeCurrentTask { $0?.cancel() }
+            }
+        }
+        do {
+            _ = try await task.value
+            Issue.record("Expected cancellation")
+        } catch is CancellationError {}
+        #expect(try fixture.total() == 120)
+        let reopened = try UsageStore(databaseURL: fixture.database)
+        #expect(try LocalUsageScanner(store: reopened).scan(codexHome: root).unchangedFiles == 1)
+        #expect(try fixture.total() == 120)
+    }
+
+    @Test func pricedUsageAndClearedCatalogSurviveRepeatedScans() throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let prices = #"{"openai":{"models":{"gpt-test":{"id":"gpt-test","cost":{"input":1.25,"output":2.5,"cache_read":0.125,"cache_write":1.25}}}}}"#
+        _ = try fixture.store.savePrices(ModelsDevPrices.decode(Data(prices.utf8), date: "2026-09-09"), date: "2026-09-09")
+        _ = try fixture.write(fixture.header + fixture.turn + fixture.record(1) + "{\"type\":\"future_event\",\"payload\":{\"unknown\":true}}\n")
+        let source = try DatabaseQueue(path: fixture.root.appendingPathComponent("state_5.sqlite").path)
+        try source.write { db in
+            try db.execute(sql: "CREATE TABLE threads(id TEXT PRIMARY KEY, title TEXT, project_id TEXT); CREATE TABLE projects(id TEXT PRIMARY KEY, name TEXT)")
+            try db.execute(sql: "INSERT INTO projects VALUES ('p', 'Project'); INSERT INTO threads VALUES (?, 'Title', 'p')", arguments: [fixture.thread])
+        }
+        _ = try fixture.scan()
+        _ = try fixture.store.repriceUsage()
+        let before = try fixture.rows()
+        #expect((before.first?["amount"] as Int64?) == 107_500)
+        #expect((before.first?["account_id"] as String?) == nil)
+        try source.write { try $0.execute(sql: "UPDATE threads SET title=NULL, project_id=NULL") }
+        #expect(try fixture.scan().refreshedThreads == 1)
+        #expect(try fixture.store.pool.read { db in
+            let row = try Row.fetchOne(db, sql: "SELECT title,project_name FROM threads")
+            return (row?["title"] as String?) == nil && (row?["project_name"] as String?) == nil
+        })
+        #expect(try fixture.rows() == before)
+        #expect(try fixture.scan().unchangedFiles == 1)
+    }
+
     private func compress(_ data: Data) throws -> Data {
         var output = Data(count: ZSTD_compressBound(data.count))
         let count = output.withUnsafeMutableBytes { target in

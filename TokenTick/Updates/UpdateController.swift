@@ -5,10 +5,13 @@ import Sparkle
 public final class UpdateController: ObservableObject {
     @Published public private(set) var canCheckForUpdates = false
     @Published public private(set) var automaticallyChecksForUpdates = false
+    #if !DEBUG
     private let diagnostics: UpdateDiagnostics
     private let controller: SPUStandardUpdaterController
+    #endif
 
     public init(onFailure: @escaping @Sendable (any Error, StaticString) -> Void = { _, _ in }) {
+        #if !DEBUG
         diagnostics = UpdateDiagnostics(onFailure: onFailure)
         controller = SPUStandardUpdaterController(
             startingUpdater: true,
@@ -19,15 +22,20 @@ public final class UpdateController: ObservableObject {
             .assign(to: &$canCheckForUpdates)
         controller.updater.publisher(for: \.automaticallyChecksForUpdates)
             .assign(to: &$automaticallyChecksForUpdates)
+        #endif
     }
 
     public func checkForUpdates() {
+        #if !DEBUG
         controller.checkForUpdates(nil)
+        #endif
     }
 
     public func setAutomaticallyChecksForUpdates(_ enabled: Bool) {
+        #if !DEBUG
         // Use Sparkle's persisted preference to avoid overwriting the user's choice on restart.
         controller.updater.automaticallyChecksForUpdates = enabled
+        #endif
     }
 }
 

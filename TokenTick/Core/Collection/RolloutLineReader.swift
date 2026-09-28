@@ -14,7 +14,7 @@ final class RolloutLineReader {
         }
     }
 
-    private let handle: FileHandle
+    private let handle: any RolloutFileReading
     private let stream: OpaquePointer?
     private var input = Data()
     private var inputPosition = 0
@@ -25,8 +25,9 @@ final class RolloutLineReader {
     private let maximumLineBytes: Int
     private(set) var offset: UInt64
 
-    init(url: URL, compressed: Bool, offset: UInt64 = 0, maximumLineBytes: Int = 16 * 1_024 * 1_024) throws {
-        handle = try FileHandle(forReadingFrom: url)
+    init(url: URL, compressed: Bool, offset: UInt64 = 0, maximumLineBytes: Int = 16 * 1_024 * 1_024,
+         source: any RolloutFileSource = LocalRolloutFileSource()) throws {
+        handle = try source.open(url)
         self.maximumLineBytes = maximumLineBytes
         self.offset = offset
         if compressed {
@@ -48,13 +49,12 @@ final class RolloutLineReader {
             self.offset = 0
         } else {
             stream = nil
-            try handle.seek(toOffset: offset)
+            try handle.seek(to: offset)
         }
     }
 
     deinit {
         if let stream { ZSTD_freeDStream(stream) }
-        try? handle.close()
     }
 
     /// Leave incomplete trailing JSONL lines for the next read without advancing the committed cursor.
@@ -102,10 +102,10 @@ final class RolloutLineReader {
     }
 
     func nextChunk() throws -> Data {
-        guard let stream else { return try handle.read(upToCount: 64 * 1_024) ?? Data() }
+        guard let stream else { return try handle.read(upToCount: 64 * 1_024) }
         while true {
             if inputPosition == input.count {
-                input = try handle.read(upToCount: 64 * 1_024) ?? Data()
+                input = try handle.read(upToCount: 64 * 1_024)
                 inputPosition = 0
                 if input.isEmpty {
                     guard readCompressedBytes, frameRemaining == 0 else { throw ReadError.truncatedCompression }

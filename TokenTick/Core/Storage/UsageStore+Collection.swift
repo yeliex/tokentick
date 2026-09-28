@@ -42,13 +42,7 @@ extension UsageStore {
     }
 
     func commitScan(_ usages: [CollectedUsage], limits: [CurrentLimitSnapshot] = [], identity: RolloutIdentity, url: URL, line: Int, offset: UInt64,
-                    file: FileSnapshot, state: inout RolloutParserState, completed: Bool, report: inout ScanReport) throws {
-        var file = file
-        file.completed = completed
-        if !file.compressed {
-            file.prefixHash = try FileSnapshot.hash(url: url, offset: 0, count: Int(min(offset, 4_096)))
-            file.tailHash = try FileSnapshot.hash(url: url, offset: offset - min(offset, 4_096), count: Int(min(offset, 4_096)))
-        }
+                    file: FileSnapshot, state: inout RolloutParserState, report: inout ScanReport) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let fileJSON = String(decoding: try encoder.encode(file), as: UTF8.self)

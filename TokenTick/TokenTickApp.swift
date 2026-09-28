@@ -57,10 +57,12 @@ struct TokenTickApp: App {
                 Button(String(localized: "Close Window")) { NSApp.keyWindow?.performClose(nil) }
                     .keyboardShortcut("w")
             }
+            #if !DEBUG
             CommandGroup(after: .appInfo) {
                 Button(String(localized: "Check for Updates…"), action: updates.checkForUpdates)
                     .disabled(!updates.canCheckForUpdates)
             }
+            #endif
         }
 
         Settings {

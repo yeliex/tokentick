@@ -48,7 +48,13 @@ public struct ScanProgress: Sendable {
 
 public struct LocalUsageScanner: Sendable {
     public let store: UsageStore
-    public init(store: UsageStore) { self.store = store }
+    private let source: any RolloutFileSource
+    public init(store: UsageStore) { self.init(store: store, source: LocalRolloutFileSource()) }
+
+    init(store: UsageStore, source: any RolloutFileSource) {
+        self.store = store
+        self.source = source
+    }
 
     public static var defaultCodexHome: URL {
         if let value = getenv("CODEX_HOME"), !String(cString: value).isEmpty {
@@ -110,21 +116,17 @@ public struct LocalUsageScanner: Sendable {
         var candidates: [UUID: [(URL, RolloutIdentity)]] = [:]
         for directory in ["sessions", "archived_sessions"] {
             let root = codexHome.appendingPathComponent(directory, isDirectory: true)
-            guard FileManager.default.fileExists(atPath: root.path) else { continue }
-            guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey],
-                                                                  options: [.skipsHiddenFiles], errorHandler: { url, error in
+            try source.enumerate(at: root, onError: { url, error in
                 report.addIssue("enumeration", ScanIssue(fileName: url.lastPathComponent, line: nil, message: error.localizedDescription))
-                return true
-            }) else { continue }
-            for case let url as URL in enumerator {
+            }) { url in
                 guard let identity = RolloutIdentity(fileName: url.lastPathComponent) else {
                     let name = url.lastPathComponent
                     if name.hasPrefix("rollout-"), name.hasSuffix(".jsonl") || name.hasSuffix(".jsonl.zst") {
                         report.addIssue("invalid_filename", ScanIssue(fileName: name, line: nil, message: String(localized: "Unable to identify the rollout file. No conversation ID was inferred.", bundle: .module)))
                     }
-                    continue
+                    return
                 }
-                guard try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else { continue }
+                guard try source.isRegularFile(url) else { return }
                 candidates[identity.rolloutID, default: []].append((url, identity))
                 report.discoveredFiles += 1
             }
@@ -158,11 +160,9 @@ public struct LocalUsageScanner: Sendable {
         let cursor = try store.scanCursor(rolloutID: key)
         let snapshot: FileSnapshot
         let reader: RolloutLineReader
-        var parser = RolloutParser(state: RolloutParserState(), identity: identity)
-        var line = 0
-        var offset: UInt64 = 0
+        var scan = RolloutScan(identity: identity)
         do {
-            snapshot = try FileSnapshot(url: url, compressed: identity.isCompressed)
+            snapshot = try source.snapshot(url, compressed: identity.isCompressed)
             if let cursor, cursor.state.version == RolloutParserState.currentVersion,
                cursor.file.sameFile(as: snapshot) {
                 if cursor.path != url.path { try store.updateScanPath(rolloutID: key, url: url) }
@@ -170,63 +170,48 @@ public struct LocalUsageScanner: Sendable {
                 return
             }
             if let cursor, cursor.state.version == RolloutParserState.currentVersion,
-               try cursor.file.canResume(url: url, snapshot: snapshot, offset: cursor.offset) {
-                parser.state = cursor.state
-                line = cursor.line
-                offset = cursor.offset
+               try cursor.file.canResume(url: url, snapshot: snapshot, offset: cursor.offset, source: source) {
+                scan = RolloutScan(identity: identity, cursor: cursor)
             }
-            reader = try RolloutLineReader(url: url, compressed: identity.isCompressed, offset: offset)
+            reader = try RolloutLineReader(url: url, compressed: identity.isCompressed, offset: scan.offset, source: source)
         } catch {
             report.addIssue("file_read", ScanIssue(fileName: identity.fileName, line: nil, message: error.localizedDescription))
             return
         }
         report.scannedFiles += 1
-        let inheritedBefore = parser.inheritedEvents
-        let startingOffset = offset
-        var batch: [CollectedUsage] = []
-        var quotaBatch: [CurrentLimitSnapshot] = []
-        var linesSinceCommit = 0
+        let inheritedBefore = scan.inheritedEvents
+        let startingOffset = scan.offset
         var failed = false
         while true {
-            if linesSinceCommit == 0 { try Task.checkCancellation() }
-            let previousState = parser.state
+            if scan.pendingLines == 0 { try Task.checkCancellation() }
             do {
                 let hasLine = try autoreleasepool {
                     guard let data = try reader.nextLine() else { return false }
-                    if let usage = try parser.consume(data, line: line + 1) { batch.append(usage) }
-                    if let limits = parser.currentLimits {
-                        if limits.windows.contains(where: { $0.durationMinutes == 10_080 }) { quotaBatch.append(limits) }
-                        if limits.historyExclusion == nil, report.currentLimits.map({ limits.observedAt > $0.observedAt }) ?? true { report.currentLimits = limits }
-                    }
-                    line += 1
-                    offset = reader.offset
-                    linesSinceCommit += 1
+                    try scan.consume(data, endingAt: reader.offset, report: &report)
                     return true
                 }
                 if !hasLine { break }
             } catch {
-                parser.state = previousState
-                report.addIssue("parse", ScanIssue(fileName: identity.fileName, line: line + 1,
+                report.addIssue("parse", ScanIssue(fileName: identity.fileName, line: scan.line + 1,
                                           message: String(localized: "Parsing stopped: \(error.localizedDescription)", bundle: .module)))
                 failed = true
                 break
             }
-            if linesSinceCommit >= 512 {
-                try store.commitScan(batch, limits: quotaBatch, identity: identity, url: url, line: line, offset: offset,
-                                     file: snapshot, state: &parser.state, completed: false, report: &report)
-                batch.removeAll(keepingCapacity: true)
-                quotaBatch.removeAll(keepingCapacity: true)
-                linesSinceCommit = 0
+            if scan.batchReady {
+                try scan.commit(store: store, identity: identity, url: url,
+                                checkpoint: snapshot.checkpoint(url: url, offset: scan.offset, completed: false, source: source),
+                                report: &report)
             }
         }
-        try store.commitScan(batch, limits: quotaBatch, identity: identity, url: url, line: line, offset: offset,
-                             file: snapshot, state: &parser.state, completed: !failed, report: &report)
-        report.scannedBytes += offset - startingOffset
-        report.inheritedEvents += parser.inheritedEvents - inheritedBefore
+        try scan.commit(store: store, identity: identity, url: url,
+                        checkpoint: snapshot.checkpoint(url: url, offset: scan.offset, completed: !failed, source: source),
+                        report: &report)
+        report.scannedBytes += scan.offset - startingOffset
+        report.inheritedEvents += scan.inheritedEvents - inheritedBefore
     }
 
     private func contentDigest(url: URL, identity: RolloutIdentity) throws -> String {
-        let reader = try RolloutLineReader(url: url, compressed: identity.isCompressed)
+        let reader = try RolloutLineReader(url: url, compressed: identity.isCompressed, source: source)
         var hash = SHA256()
         while try autoreleasepool(invoking: {
             try Task.checkCancellation()
