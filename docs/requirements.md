@@ -10,13 +10,25 @@ The current app has three main pages: Overview, Usage details, and Plan usage, p
 
 The scope excludes other model providers, Intel support, a cross-platform CLI, a cloud synchronization service, and an independent background daemon. Amounts are estimates based on public model prices, not subscription charges.
 
+## Remote devices
+
+The app supports multiple user-configured SSH connections and selected Codex folders. They share local parsing, pricing, historical-cycle recovery, and deduplication. Remote configuration and collection are app-only. Current-account limits and daily API reference data use the built-in local login; other accounts' server usage is future work. Storage analysis remains local-only.
+
+- Settings presents one card per device, with a name, address, connection test, sync, pause, edit, and removal actions. One plain-text address field accepts an SSH URL or the path filled by Use Local Folder. Saved displays hide the password. Codex remote discovery supplies dismissible reminders; connection addresses always come from the user.
+- Save the original URL, including an optional password, in the connection configuration. Use existing system SSH settings. An explicit SSH path wins; otherwise use the remote `CODEX_HOME`, then the remote user's `.codex`. Use selected folders exactly as chosen, without searching for a nested `.codex`. Accessible empty directories are successful empty results. Selected SMB mounts cannot supply the required SQLite access and report an actionable error.
+- The built-in source is `local`; every added source has a stable device ID, even a folder on this Mac. Editing preserves the ID and history. Changing the endpoint invalidates reading progress; renaming or changing only the password preserves it. Device identity describes the collected source, not a proven execution location.
+- Deduplicate usage globally, excluding device identity. Prefer local copies, then the earliest configured device, with stable IDs breaking ties. Keep titles and projects separately for each task and device, including reassignment and clearing. Device account names are display-only; absent account evidence remains unknown.
+- Overview and usage details support device filters carried into drill-down and export. Include configured devices without usage and removed devices with retained history. Removing the selected device's history resets the filter to all devices. Only reveal logs in Finder for accessible local or configured-folder sources.
+- Connection tests are one-time access and identity checks, independent of collection, saved facts, synchronization status, and polling schedules. Background collection reads incrementally, backs off when unchanged or unavailable, and resumes interrupted history import. Show partial coverage and errors without discarding collected data.
+- Removing a connection offers to retain all collected data or delete that device's data. Retention preserves facts, task mappings, checkpoints, completion records, and the display name; both choices remove connection details and stored credentials. Remaining sources can collect shared events again after deletion. Pausing retains data. Rebuilding the database preserves configuration and reports sources whose history has not been restored.
+
 ## Usage records and attribution
 
 - Retain each valid usage event with its available response ID, turn ID, source ordinal, timestamp, UTC date/hour/minute, model, token components, applied prices, and source location.
 - Preserve real source identifiers. Missing historical IDs remain null; do not generate a response ID from a turn or ordinal.
 - Across tasks containing the same turn, retain only the source task created earliest. A fork's new turns count normally. Discovering the original later changes ownership transactionally without adding duplicate consumption.
 - Count old and new reports of the same consumption once. Equal token counts alone do not make two distinct responses duplicates.
-- Include unknown-account usage in global totals. Account filters include only matching evidence; the current login does not fill historical account gaps.
+- Include unknown-account usage in global totals. Account filters include only matching evidence; the current login does not fill historical account gaps. Remote-device collection preserves this policy: device identity is independent of account attribution, and device login snapshots are display-only.
 - Keep unknown models in token totals and expose incomplete pricing. Missing values and zero are different.
 - Use the latest task title and project mapping. Project renames or reassignment update historical grouping without changing tokens or timestamps. Projects with the same resolved name share a group.
 - Resolve projects from Codex's saved projects and explicit task assignments. An arbitrary working-directory basename is not a project. Explicit projectless tasks use the `Chat` group; missing information alone is not proof of projectless status.
@@ -125,7 +137,7 @@ The compact menu panel shares current main-limit data and shows Today/7/30/90-da
 
 ### Settings, language, and presentation
 
-Settings has General, Data, and About sections for login items, limit display, synchronization and prices, update controls, CLI installation, and paths/database size. General includes a persistent theme preference: Follow System (default), Light, or Dark. Changes apply immediately to the main window, Settings, and menu-bar panel. General settings creates `/usr/local/bin/tokentick` as a symbolic link to the bundled CLI without administrator privileges. Existing files and other links are never overwritten; installation reports conflicts and permission failures. The linked CLI updates with the app. App usage follows system timezone changes and automatic synchronization is part of normal operation.
+Settings has General, Data, Remote Devices, and About sections for login items, limit display, synchronization and prices, update controls, CLI installation, and paths/database size. General includes a persistent theme preference: Follow System (default), Light, or Dark. Changes apply immediately to the main window, Settings, and menu-bar panel. General settings creates `/usr/local/bin/tokentick` as a symbolic link to the bundled CLI without administrator privileges. Existing files and other links are never overwritten; installation reports conflicts and permission failures. The linked CLI updates with the app. App usage follows system timezone changes and automatic synchronization is part of normal operation.
 
 General includes an opt-in reset reminder switch and a method picker: Notification only (default), Confetti, Fireworks, or Random (chooses one of the two effects). All methods send normal system notifications, subject to macOS permission and delivery settings. Request notification permission when enabling reminders, show a System Settings action after denial, and refresh permission state on activation. A Test reminder action previews the selected delivery without changing usage or reset detection.
 

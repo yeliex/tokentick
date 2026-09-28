@@ -32,6 +32,12 @@ Collection, Pricing, Synchronization, Storage, and UI have separate responsibili
 - Historical cycle aggregates belong in `weekly_limit_cycles` and update during synchronization. Cross-dimensional usage filters aggregate `usage`; do not precompute every filter combination.
 - Read Codex source files without modifying them. Store statistical fields and source locations, not bodies, tool output, or credentials. Let Codex manage authentication.
 
+## Remote collection maintenance
+
+Keep source access separate from shared parsing, pricing, deduplication, and storage. Device identity must not enter semantic usage deduplication; task metadata and reading checkpoints remain device-specific. Connection tests must not update collection facts or scheduling state. See [architecture and maintenance](docs/technical-design.md) for transport and lifecycle details.
+
+Use synthetic data and the isolated Docker SSH fixture for automated tests. Never embed or connect to personal devices, credentials, or private paths in test fixtures. Preserve the user's SSH configuration and clean up only subprocesses owned by TokenTick.
+
 ## Pre-release simplicity
 
 The app has not launched. Do not preserve old TokenTick preferences, internal Chinese identifiers, output formats, or schema versions through compatibility shims. Use English identifiers and localized display labels. Keep one current schema and rebuild development databases from logs when it changes.
