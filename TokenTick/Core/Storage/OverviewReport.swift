@@ -60,15 +60,16 @@ public struct OverviewReport: Sendable {
     public func hasSameContent(as other: Self) -> Bool {
         total == other.total && models == other.models && modes == other.modes && efforts == other.efforts && trend == other.trend
             && conversations == other.conversations && unknownDateTokens == other.unknownDateTokens
-            && hourly == other.hourly && query.timezone == other.query.timezone
+            && hourly == other.hourly && query.timezone == other.query.timezone && query.filters.device == other.query.filters.device
     }
 }
 
 extension UsageStore {
     /// Read overview sections in one snapshot so concurrent syncs cannot produce inconsistent totals and charts.
-    public func overviewReport(period: OverviewPeriod, now: Date, timezone identifier: String) throws -> OverviewReport {
+    public func overviewReport(period: OverviewPeriod, now: Date, timezone identifier: String, device: UsageValueFilter = .all) throws -> OverviewReport {
         guard let timezone = TimeZone(identifier: identifier) else { throw UsageQueryError.invalidTimezone }
-        let query = period.query(now: now, timezone: identifier)
+        var query = period.query(now: now, timezone: identifier)
+        query.filters.device = device
         try query.validate()
         return try pool.read { db in
             StatisticsSQL.prepare(db, timezone: timezone)
@@ -103,7 +104,7 @@ extension UsageStore {
                 return try Row.fetchAll(db, sql: """
                     SELECT \(expression) AS name, SUM(u.total_tokens) AS tokens,
                         SUM(tokentick_known_amount(u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount)) AS amount
-                    FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id
+                    FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id AND t.device = u.device
                     WHERE (u.source = 'local' OR u.thread_id IS NOT NULL) AND (\(filters.predicate))
                     GROUP BY name ORDER BY tokens DESC, name ASC
                     """, arguments: filters.arguments).map { OverviewUsageShare(name: $0["name"], tokens: $0["tokens"], amount: $0["amount"]) }
@@ -112,7 +113,7 @@ extension UsageStore {
             let efforts = try shares(effortExpression)
             let recent = try Row.fetchAll(db, sql: """
                 SELECT u.thread_id, t.title, t.project_name, MAX(u.occurred_at) AS last_active
-                FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id
+                FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id AND t.device = u.device
                 WHERE u.thread_id IS NOT NULL AND u.occurred_at IS NOT NULL AND (\(filters.predicate))
                 GROUP BY u.thread_id ORDER BY last_active DESC, u.thread_id ASC LIMIT 10
                 """, arguments: filters.arguments)

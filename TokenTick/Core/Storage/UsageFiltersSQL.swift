@@ -9,7 +9,7 @@ struct UsageFiltersSQL {
         var parts: [String] = []
         var values = StatementArguments()
         for (key, column, filter) in [
-            ("thread", "u.thread_id", filters.thread), ("project", "t.project_name", filters.project),
+            ("device", "u.device", filters.device), ("thread", "u.thread_id", filters.thread), ("project", "t.project_name", filters.project),
             ("model", "u.model", filters.model), ("day", "NULLIF(\(StatisticsSQL.dayExpression), 'unknown')", filters.day)
         ] {
             switch filter {

@@ -4,36 +4,36 @@ import Testing
 @testable import TokenTickCore
 
 struct SettingsAttributionTests {
-    @Test func settingsAndTurnStartPriceUsageBeforeContextAndSurviveRestart() throws {
+    @Test func settingsAndTurnStartPriceUsageBeforeContextAndSurviveRestart() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
         _ = try fixture.store.savePrices(ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: "2026-09-09"), date: "2026-09-09")
         try fixture.write(fixture.header + fixture.context("old") + fixture.settings(tier: "priority")
                           + fixture.started("new") + fixture.record(1, turn: "new"))
-        #expect(try fixture.scan().insertedRequests == 1)
+        #expect(try await fixture.scan().insertedRequests == 1)
         var rows = try fixture.rows()
         #expect(rows[0]["model"] as String? == "gpt-6-astra" && rows[0]["tier"] as String? == "fast")
         #expect(rows[0]["amount"] as Int64? == 2_920_000)
         try fixture.append(fixture.context("new") + fixture.record(2, turn: "new"))
         let reopened = try UsageStore(databaseURL: fixture.store.databaseURL)
-        #expect(try LocalUsageScanner(store: reopened).scan(codexHome: fixture.root).insertedRequests == 1)
+        #expect(try await LocalUsageScanner(store: reopened).scan(codexHome: fixture.root).insertedRequests == 1)
         rows = try fixture.rows()
         #expect(rows.allSatisfy { $0["tier"] as String? == "fast" })
         #expect(rows.reduce(Int64(0)) { $0 + ($1["total_tokens"] as Int64) } == 240)
     }
 
-    @Test func futureSettingsDoNotChangeCurrentTurnAndModelSwitchBeforeContextStaysAmbiguous() throws {
+    @Test func futureSettingsDoNotChangeCurrentTurnAndModelSwitchBeforeContextStaysAmbiguous() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
         try fixture.write(fixture.header + fixture.settings(tier: "default") + fixture.started("a") + fixture.context("a")
                           + fixture.settings(model: "gpt-5.6-sol", tier: "priority"))
-        _ = try fixture.scan()
+        _ = try await fixture.scan()
         try fixture.append(fixture.record(1, turn: "a")
                           + fixture.started("b") + fixture.record(2, turn: "b")
                           + fixture.context("b", model: "gpt-5.6-sol") + fixture.record(3, turn: "b")
                           + fixture.record(4, turn: "unrelated"))
         let reopened = try UsageStore(databaseURL: fixture.store.databaseURL)
-        _ = try LocalUsageScanner(store: reopened).scan(codexHome: fixture.root)
+        _ = try await LocalUsageScanner(store: reopened).scan(codexHome: fixture.root)
         let rows = try fixture.rows()
         #expect(rows[0]["model"] as String? == "gpt-6-astra" && rows[0]["tier"] as String? == "standard")
         #expect(rows[1]["model"] as String? == nil && rows[1]["tier"] as String? == "fast")
@@ -41,40 +41,40 @@ struct SettingsAttributionTests {
         #expect(rows[3]["model"] as String? == nil && rows[3]["tier"] as String? == nil)
     }
 
-    @Test func wrongOwnerAndInheritedSnapshotsCannotSetChildModelOrFast() throws {
+    @Test func wrongOwnerAndInheritedSnapshotsCannotSetChildModelOrFast() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
         let header = fixture.event("session_meta", #"{"id":"\#(fixture.thread)","forked_from_id":"parent","subagent_history_start_ordinal":10}"#, ordinal: 0)
         try fixture.write(header + fixture.settings(tier: "priority", owner: nil, ordinal: 1)
                           + fixture.settings(tier: "priority", owner: "parent", ordinal: 11)
                           + fixture.started("new", ordinal: 12) + fixture.record(1, turn: "new", ordinal: 13))
-        _ = try fixture.scan()
+        _ = try await fixture.scan()
         let row = try #require(fixture.rows().first)
         #expect(row["model"] as String? == nil && row["tier"] as String? == nil)
     }
 
-    @Test func missingContextTierPreservesBoundSnapshotButExplicitNullClearsIt() throws {
+    @Test func missingContextTierPreservesBoundSnapshotButExplicitNullClearsIt() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
         try fixture.write(fixture.header + fixture.settings(tier: "priority", owner: nil) + fixture.started("new", alias: true)
                           + fixture.context("new") + fixture.record(1, turn: "new")
                           + fixture.context("new", tier: "null") + fixture.record(2, turn: "new"))
-        _ = try fixture.scan()
+        _ = try await fixture.scan()
         let rows = try fixture.rows()
         #expect(rows[0]["tier"] as String? == "fast")
         #expect(rows[1]["tier"] as String? == nil)
     }
 
-    @Test func conflictingKnownMetadataRollsBackWithoutOverwritingFacts() throws {
+    @Test func conflictingKnownMetadataRollsBackWithoutOverwritingFacts() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
         try fixture.write(fixture.header + fixture.settings(tier: "priority") + fixture.started("new") + fixture.record(1, turn: "new"))
-        _ = try fixture.scan()
-        try fixture.store.pool.write { db in
+        _ = try await fixture.scan()
+        try await fixture.store.pool.write { db in
             try db.execute(sql: "UPDATE usage SET model = 'conflicting-known-model'; UPDATE scan_files SET parser_state_json = json_set(parser_state_json, '$.version', 1)")
         }
         let before = try fixture.rows()
-        #expect(throws: (any Error).self) { try fixture.scan() }
+        await #expect(throws: (any Error).self) { try await fixture.scan() }
         #expect(try fixture.rows() == before)
     }
 
@@ -112,7 +112,7 @@ struct SettingsAttributionTests {
             defer { try? handle.close() }
             try handle.seekToEnd(); try handle.write(contentsOf: Data(text.utf8))
         }
-        func scan() throws -> ScanReport { try LocalUsageScanner(store: store).scan(codexHome: root) }
+        func scan() async throws -> ScanReport { try await LocalUsageScanner(store: store).scan(codexHome: root) }
         func rows() throws -> [Row] { try store.pool.read { try Row.fetchAll($0, sql: "SELECT * FROM usage ORDER BY id") } }
         func clean() { try? FileManager.default.removeItem(at: root) }
     }

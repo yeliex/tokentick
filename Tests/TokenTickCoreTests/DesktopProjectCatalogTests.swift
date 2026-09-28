@@ -56,18 +56,19 @@ struct DesktopProjectCatalogTests {
         #expect(DesktopProjectCatalog.folderName("D:\\") == nil)
     }
 
-    @Test func movingThreadReassignsAllHistoryAndInvalidatesCachedProjectTotals() throws {
+    @Test func movingThreadReassignsAllHistoryAndInvalidatesCachedProjectTotals() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
         let source = try DatabaseQueue(path: root.appendingPathComponent("state_5.sqlite").path)
-        try source.write { db in
+        try await source.write { db in
             try db.execute(sql: "CREATE TABLE threads(id TEXT PRIMARY KEY,title TEXT,cwd TEXT); INSERT INTO threads VALUES ('t','标题','/old/worktree')")
         }
-        try store.pool.write { db in
+        try await store.pool.write { db in
             try db.execute(sql: "INSERT INTO usage(source_line,rollout_id,thread_id,source,usage_date,total_tokens,pricing_source) VALUES (1,'one','t','local','2026-09-01',100,'{}'),(1,'two','t','local','2026-09-02',200,'{}')")
         }
-        let facts = try store.pool.read { try Row.fetchAll($0, sql: "SELECT * FROM usage ORDER BY id") }
+        func facts() throws -> [Row] { try store.pool.read { try Row.fetchAll($0, sql: "SELECT * FROM usage ORDER BY id") } }
+        let originalFacts = try facts()
         for project in ["A", "B", "Chat", "A"] {
             let assignments = project == "Chat" ? [:] : ["t": ["projectKind": "local", "projectId": project]]
             let catalog: [String: Any] = [
@@ -77,16 +78,16 @@ struct DesktopProjectCatalogTests {
                 "projectless-thread-ids": project == "Chat" ? ["t"] : []
             ]
             try JSONSerialization.data(withJSONObject: catalog).write(to: root.appendingPathComponent(".codex-global-state.json"))
-            #expect(try ThreadCatalogReader().refresh(codexHome: root, store: store) == 1)
-            #expect(try !store.pool.read { try UsageStore.statisticsAreCurrent($0, timezone: "UTC") })
+            #expect(try await LocalUsageScanner(store: store).scan(codexHome: root).refreshedThreads == 1)
+            #expect(try await !store.pool.read { try UsageStore.statisticsAreCurrent($0, timezone: "UTC") })
             let query = UsageQuery(grouping: .project, timezone: "UTC")
             let direct = try store.usageReport(query)
             #expect(direct.rows.count == 1 && direct.rows[0].group == project && direct.rows[0].totalTokens == 300)
             _ = try store.rebuildStatistics(timezone: "UTC")
             #expect(try store.usageReport(query).rows == direct.rows)
             #expect(try store.usageRecords().rows.allSatisfy { $0.projectName == project })
-            #expect(try store.pool.read { try Row.fetchAll($0, sql: "SELECT * FROM usage ORDER BY id") } == facts)
-            #expect(try ThreadCatalogReader().refresh(codexHome: root, store: store) == 0)
+            #expect(try facts() == originalFacts)
+            #expect(try await LocalUsageScanner(store: store).scan(codexHome: root).refreshedThreads == 0)
         }
     }
 }

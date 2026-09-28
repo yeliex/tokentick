@@ -8,15 +8,19 @@ enum StoreSchema {
         var migrator = DatabaseMigrator()
         // Pre-release: rebuild changed schemas from source logs without a historical migration chain.
         migrator.eraseDatabaseOnSchemaChange = true
-        migrator.registerMigration("schema.3") { db in
+        migrator.registerMigration("schema.5") { db in
             try db.execute(sql: """
                 CREATE TABLE threads (
-                    thread_id TEXT PRIMARY KEY NOT NULL,
+                    thread_id TEXT NOT NULL,
+                    device TEXT NOT NULL DEFAULT 'local',
                     title TEXT,
-                    project_name TEXT
+                    project_name TEXT,
+                    PRIMARY KEY (thread_id, device)
                 );
                 CREATE TABLE scan_files (
-                    rollout_id TEXT PRIMARY KEY NOT NULL,
+                    rollout_id TEXT NOT NULL,
+                    device TEXT NOT NULL DEFAULT 'local',
+                    source_revision INTEGER NOT NULL DEFAULT 0,
                     thread_id TEXT NOT NULL,
                     file_name TEXT NOT NULL,
                     current_path TEXT,
@@ -24,7 +28,8 @@ enum StoreSchema {
                     scanned_offset INTEGER NOT NULL DEFAULT 0 CHECK (scanned_offset >= 0),
                     last_scanned_at REAL,
                     file_state_json TEXT,
-                    parser_state_json TEXT
+                    parser_state_json TEXT,
+                    PRIMARY KEY (device, rollout_id)
                 );
                 CREATE INDEX scan_files_thread ON scan_files(thread_id);
                 CREATE TABLE prices (
@@ -43,6 +48,7 @@ enum StoreSchema {
                 );
                 CREATE TABLE usage (
                     id INTEGER PRIMARY KEY,
+                    device TEXT NOT NULL DEFAULT 'local',
                     account_id TEXT,
                     thread_id TEXT,
                     turn_id TEXT,
@@ -92,9 +98,11 @@ enum StoreSchema {
                 CREATE INDEX usage_account_time ON usage(account_id,occurred_at);
                 CREATE INDEX usage_model_time ON usage(model,occurred_at);
                 CREATE INDEX usage_day_hour_minute ON usage(usage_date,hour,minute);
-                CREATE INDEX usage_source_position ON usage(rollout_id,source_line);
+                CREATE INDEX usage_source_position ON usage(device,rollout_id,source_line);
+                CREATE INDEX usage_device_time ON usage(device,occurred_at);
                 CREATE UNIQUE INDEX usage_turn_response ON usage(turn_key,response_id) WHERE response_id IS NOT NULL;
                 CREATE TABLE statistics (
+                    device TEXT NOT NULL DEFAULT 'local',
                     account_key TEXT NOT NULL,
                     date TEXT NOT NULL,
                     timezone TEXT NOT NULL,
@@ -114,7 +122,7 @@ enum StoreSchema {
                     unpriced_tokens INTEGER NOT NULL,
                     unattributed_tokens INTEGER NOT NULL,
                     record_count INTEGER NOT NULL, known_amount INTEGER, unpriced_records INTEGER NOT NULL DEFAULT 0,
-                    PRIMARY KEY (account_key, date, timezone, dimension, dimension_value)
+                    PRIMARY KEY (device, account_key, date, timezone, dimension, dimension_value)
                 );
                 CREATE TABLE app_metadata (
                     key TEXT PRIMARY KEY NOT NULL,

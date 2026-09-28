@@ -9,7 +9,7 @@ struct LimitQueryTests {
             windows: [.init(limitID: "codex", kind: "secondary", usedPercent: percent, durationMinutes: 10080, resetsAt: reset)], sourceJSON: "{}")
     }
 
-    @Test func currentWindowIsMemoryOnlyAndEarlyResetDoesNotRequireZero() throws {
+    @Test func currentWindowIsMemoryOnlyAndEarlyResetDoesNotRequireZero() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
@@ -26,7 +26,7 @@ struct LimitQueryTests {
         #expect(reopened.weeklyMemory.withLock { $0.windows.isEmpty })
     }
 
-    @Test func naturalResetAccountsAndReplayRemainIndependent() throws {
+    @Test func naturalResetAccountsAndReplayRemainIndependent() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
@@ -41,7 +41,7 @@ struct LimitQueryTests {
         #expect(try store.saveCompletedWeeklyCycles(now: Date(timeIntervalSince1970: 604901)) == 0)
     }
 
-    @Test(arguments: [false, true]) func restartRestoresPreviousWindowAndNewLogClosesItOnce(separateFile: Bool) throws {
+    @Test(arguments: [false, true]) func restartRestoresPreviousWindowAndNewLogClosesItOnce(separateFile: Bool) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let sessions = root.appendingPathComponent("sessions")
@@ -61,10 +61,10 @@ struct LimitQueryTests {
         try Data(first.utf8).write(to: file)
         let url = root.appendingPathComponent("usage.sqlite")
         let store = try UsageStore(databaseURL: url)
-        _ = try LocalUsageScanner(store: store).scan(codexHome: root)
+        _ = try await LocalUsageScanner(store: store).scan(codexHome: root)
         #expect(try store.weeklyLimitHistory().rows.isEmpty)
         let reopened = try UsageStore(databaseURL: url)
-        let unchanged = try LocalUsageScanner(store: reopened).scan(codexHome: root)
+        let unchanged = try await LocalUsageScanner(store: reopened).scan(codexHome: root)
         #expect(unchanged.scannedFiles == 0 && unchanged.scannedBytes == 0)
         let secondThread = "00000000-0000-0000-0000-000000000098"
         let secondFile = sessions.appendingPathComponent("rollout-2026-09-01T00-00-00-\(secondThread).jsonl")
@@ -77,11 +77,11 @@ struct LimitQueryTests {
         // Preserve window state across commits, including a subsequent batch with no limit observations.
         try handle.write(contentsOf: Data(String(repeating: "{\"type\":\"other\"}\n", count: 520).utf8))
         try handle.close()
-        #expect(try LocalUsageScanner(store: reopened).scan(codexHome: root).insertedRequests == 1)
+        #expect(try await LocalUsageScanner(store: reopened).scan(codexHome: root).insertedRequests == 1)
         let rows = try reopened.weeklyLimitHistory().rows
         #expect(rows.count == 1 && rows[0].resetKind == "early")
         let third = try UsageStore(databaseURL: url)
-        #expect(try LocalUsageScanner(store: third).scan(codexHome: root).insertedRequests == 0)
+        #expect(try await LocalUsageScanner(store: third).scan(codexHome: root).insertedRequests == 0)
         #expect(try third.weeklyLimitHistory().rows == rows)
         #expect(try third.tableCounts()["usage"] == 2)
         let checkpoint = try #require(try third.scanCursor(rolloutID: separateFile ? secondThread : thread))
@@ -91,19 +91,19 @@ struct LimitQueryTests {
         try next.seekToEnd()
         try next.write(contentsOf: Data(event(now-20, reset: Int64(now)+590000, percent: 1, count: 3).utf8))
         try next.close()
-        _ = try LocalUsageScanner(store: third).scan(codexHome: root)
+        _ = try await LocalUsageScanner(store: third).scan(codexHome: root)
         let finalRows = try third.weeklyLimitHistory().rows
         #expect(finalRows.count == 2)
         let fourth = try UsageStore(databaseURL: url)
-        #expect(try LocalUsageScanner(store: fourth).scan(codexHome: root).scannedBytes == 0)
+        #expect(try await LocalUsageScanner(store: fourth).scan(codexHome: root).scannedBytes == 0)
         #expect(try fourth.weeklyLimitHistory().rows == finalRows)
     }
 
-    @Test func cycleSummariesPersistAndRefreshAfterLateUsageAndBoundaryChanges() throws {
+    @Test func cycleSummariesPersistAndRefreshAfterLateUsageAndBoundaryChanges() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
-        try store.pool.write { db in
+        try await store.pool.write { db in
             try db.execute(sql: """
                 INSERT INTO usage(source_line,rollout_id,account_id,source,occurred_at,turn_key,turn_started_at,total_tokens,amount,input_amount) VALUES
                     (1,'a','a','local',200,'turn:x',200,10,100,100),
@@ -120,7 +120,7 @@ struct LimitQueryTests {
         let early = try #require(store.weeklyLimitHistory().rows.first)
         #expect(early.endsAt == 1000 && early.totalTokens == 30 && early.requestCount == 2)
         #expect(early.amountNanoUSD == nil && early.knownAmountNanoUSD == 150)
-        try store.pool.write { db in
+        try await store.pool.write { db in
             try db.execute(sql: "UPDATE usage SET amount=50 WHERE source_line=2 AND rollout_id='a'")
             try db.execute(sql: """
                 INSERT INTO usage(source_line,rollout_id,account_id,source,occurred_at,total_tokens,amount,input_amount)
@@ -132,12 +132,12 @@ struct LimitQueryTests {
         #expect(updated.totalTokens == 35 && updated.requestCount == 3)
         #expect(updated.amountNanoUSD == 175 && updated.knownAmountNanoUSD == 175)
         // History queries read persisted cycle totals directly, including after restart.
-        try store.pool.write { try $0.execute(sql: "DROP TABLE usage") }
+        try await store.pool.write { try $0.execute(sql: "DROP TABLE usage") }
         let reopened = try UsageStore(databaseURL: store.databaseURL)
         #expect(try reopened.weeklyLimitHistory().rows == [updated])
     }
 
-    @Test func excludedAndNonWeeklyWindowsDoNotCreateCycles() throws {
+    @Test func excludedAndNonWeeklyWindowsDoNotCreateCycles() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))

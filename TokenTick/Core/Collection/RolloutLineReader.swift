@@ -22,12 +22,14 @@ final class RolloutLineReader {
     private var chunkPosition = 0
     private var frameRemaining = 0
     private var readCompressedBytes = false
+    private let readSize: Int
     private let maximumLineBytes: Int
     private(set) var offset: UInt64
 
-    init(url: URL, compressed: Bool, offset: UInt64 = 0, maximumLineBytes: Int = 16 * 1_024 * 1_024,
-         source: any RolloutFileSource = LocalRolloutFileSource()) throws {
-        handle = try source.open(url)
+    init(handle: any RolloutFileReading, compressed: Bool, offset: UInt64 = 0,
+         maximumLineBytes: Int = 16 * 1_024 * 1_024, readSize: Int = 64 * 1_024) throws {
+        self.handle = handle
+        self.readSize = readSize
         self.maximumLineBytes = maximumLineBytes
         self.offset = offset
         if compressed {
@@ -58,13 +60,13 @@ final class RolloutLineReader {
     }
 
     /// Leave incomplete trailing JSONL lines for the next read without advancing the committed cursor.
-    func nextLine() throws -> Data? {
+    func nextLine() async throws -> Data? {
         var line = Data()
         var lineBytes = 0
         var irrelevant = false
         while true {
             if chunkPosition == chunk.count {
-                chunk = try nextChunk()
+                chunk = try await nextChunk()
                 chunkPosition = 0
                 if chunk.isEmpty { return nil }
             }
@@ -74,7 +76,7 @@ final class RolloutLineReader {
             if !irrelevant {
                 guard line.count + end - chunkPosition <= maximumLineBytes else { throw ReadError.lineTooLarge }
                 line.append(contentsOf: chunk[chunkPosition..<end])
-                if Self.isIrrelevant(line) {
+                if autoreleasepool(invoking: { Self.isIrrelevant(line) }) {
                     irrelevant = true
                     line.removeAll(keepingCapacity: false)
                 }
@@ -101,11 +103,11 @@ final class RolloutLineReader {
             || ignoredEvent?.firstMatch(in: prefix, range: range) != nil
     }
 
-    func nextChunk() throws -> Data {
-        guard let stream else { return try handle.read(upToCount: 64 * 1_024) }
+    func nextChunk() async throws -> Data {
+        guard let stream else { return try await handle.read(upToCount: readSize) }
         while true {
             if inputPosition == input.count {
-                input = try handle.read(upToCount: 64 * 1_024)
+                input = try await handle.read(upToCount: readSize)
                 inputPosition = 0
                 if input.isEmpty {
                     guard readCompressedBytes, frameRemaining == 0 else { throw ReadError.truncatedCompression }

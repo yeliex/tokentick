@@ -12,7 +12,7 @@ struct TokenTickCommand {
             case "version": print("\(ApplicationInfo.name) \(ApplicationInfo.version)")
             case "scan":
                 let store = try UsageStore(databaseURL: options.database)
-                let report = try LocalUsageScanner(store: store).scan(codexHome: options.codexHome)
+                let report = try await LocalUsageScanner(store: store).scan(codexHome: options.codexHome)
                 if options.json { try printJSON(report) }
                 else {
                     print("Discovered \(report.discoveredFiles) files; scanned \(report.scannedFiles), unchanged \(report.unchangedFiles).")

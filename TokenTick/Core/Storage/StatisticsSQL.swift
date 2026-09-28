@@ -31,7 +31,7 @@ enum StatisticsSQL {
         })
     }
 
-    static let groupColumns = "account_key, date, timezone, dimension, dimension_value"
+    static let groupColumns = "device, account_key, date, timezone, dimension, dimension_value"
 
     private static let metricColumns = """
         total_tokens, input_tokens,
@@ -55,14 +55,14 @@ enum StatisticsSQL {
         return """
         WITH facts AS (
             SELECT \(dateExpression ?? dayExpression) AS day,
-                u.account_id, u.thread_id, t.project_name, u.model, u.total_tokens,
+                u.device, u.account_id, u.thread_id, t.project_name, u.model, u.total_tokens,
                 u.input_tokens, u.output_tokens, u.cache_read_tokens, u.cache_write_tokens, u.reasoning_tokens,
                 u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount,
                 tokentick_known_amount(u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount) AS known_amount
-            FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id
+            FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id AND t.device = u.device
             WHERE (u.source = 'local' OR u.thread_id IS NOT NULL) AND (\(predicate))
         ), compact AS MATERIALIZED (
-            SELECT day, account_id, thread_id, project_name, model,
+            SELECT device, day, account_id, thread_id, project_name, model,
                 SUM(total_tokens) AS total_tokens, SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens,
                 SUM(cache_read_tokens) AS cache_read_tokens, SUM(cache_write_tokens) AS cache_write_tokens,
                 SUM(reasoning_tokens) AS reasoning_tokens, SUM(input_amount) AS input_amount,
@@ -72,9 +72,9 @@ enum StatisticsSQL {
                 SUM(CASE WHEN thread_id IS NULL THEN total_tokens ELSE 0 END) AS unattributed_tokens,
                 COUNT(*) AS record_count, SUM(known_amount) AS known_amount,
                 SUM(CASE WHEN amount IS NULL THEN 1 ELSE 0 END) AS unpriced_records
-            FROM facts GROUP BY day, account_id, thread_id, project_name, model
+            FROM facts GROUP BY device, day, account_id, thread_id, project_name, model
         )
-        SELECT CASE WHEN scope = 0 THEN 'all' WHEN account_id IS NULL THEN 'unknown' ELSE 'value:' || account_id END AS account_key,
+        SELECT device, CASE WHEN scope = 0 THEN 'all' WHEN account_id IS NULL THEN 'unknown' ELSE 'value:' || account_id END AS account_key,
             day AS date, :timezone AS timezone, dimension,
             CASE dimension WHEN 'all' THEN 'all'
                 WHEN 'thread' THEN COALESCE('value:' || thread_id, 'unknown')
@@ -86,7 +86,7 @@ enum StatisticsSQL {
         FROM compact
         CROSS JOIN (\(scopes))
         CROSS JOIN (\(dimensions))
-        GROUP BY account_key, day, dimension, dimension_value
+        GROUP BY device, account_key, day, dimension, dimension_value
         """
     }
 }

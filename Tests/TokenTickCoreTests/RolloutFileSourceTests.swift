@@ -5,7 +5,7 @@ import Testing
 @testable import TokenTickCore
 
 struct RolloutFileSourceTests {
-    @Test func checkpointReadFailureDoesNotCommitUsageOrCursor() throws {
+    @Test func checkpointReadFailureDoesNotCommitUsageOrCursor() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let sessions = root.appendingPathComponent("sessions")
@@ -19,35 +19,30 @@ struct RolloutFileSourceTests {
         """
         try Data(text.utf8).write(to: file)
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
-        #expect(throws: ReadFailure.self) {
-            try LocalUsageScanner(store: store, source: FailingCheckpointSource()).scan(codexHome: root)
-        }
+        let report = try await UsageScanner(store: store, device: .local(root: root), priority: DevicePriority())
+            .scan(source: FailingCheckpointSource(root: root))
+        #expect(report.issueCount == 1)
         #expect(try store.tableCounts()["usage"] == 0)
         #expect(try store.tableCounts()["scan_files"] == 0)
         let reopened = try UsageStore(databaseURL: store.databaseURL)
-        #expect(try LocalUsageScanner(store: reopened).scan(codexHome: root).insertedRequests == 1)
-        #expect(try LocalUsageScanner(store: reopened).scan(codexHome: root).unchangedFiles == 1)
+        #expect(try await LocalUsageScanner(store: reopened).scan(codexHome: root).insertedRequests == 1)
+        #expect(try await LocalUsageScanner(store: reopened).scan(codexHome: root).unchangedFiles == 1)
     }
 
     private enum ReadFailure: Error { case checkpoint }
 
-    private final class FailingCheckpointSource: RolloutFileSource {
-        let opens = Mutex(0)
-        let local = LocalRolloutFileSource()
+    private final class FailingCheckpointSource: DeviceFileSource {
+        let reads = Mutex(0)
+        let local: LocalFileSource
 
-        func enumerate(at root: URL, onError: @escaping (URL, any Error) -> Void,
-                       visit: (URL) throws -> Void) throws {
-            try local.enumerate(at: root, onError: onError, visit: visit)
-        }
-        func isRegularFile(_ url: URL) throws -> Bool { try local.isRegularFile(url) }
-        func snapshot(_ url: URL, compressed: Bool) throws -> FileSnapshot {
-            try local.snapshot(url, compressed: compressed)
-        }
-        func open(_ url: URL) throws -> any RolloutFileReading {
-            let count = opens.withLock { $0 += 1; return $0 }
+        init(root: URL) throws { local = try LocalFileSource(root: root) }
+        func probe() -> String { local.probe() }
+        func manifest() throws -> DeviceSourceManifest { try local.manifest() }
+        func read(_ file: DeviceSourceFile, offset: UInt64, count: Int) throws -> Data {
+            let countOfReads = reads.withLock { $0 += 1; return $0 }
             // Fail the tail hash after the stream and prefix hash succeeded.
-            if count == 3 { throw ReadFailure.checkpoint }
-            return try local.open(url)
+            if countOfReads == 3 { throw ReadFailure.checkpoint }
+            return try local.read(file, offset: offset, count: count)
         }
     }
 }

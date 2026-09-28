@@ -66,7 +66,7 @@ public struct UsageSynchronizer: Sendable {
                     if scope == .all || scope == .local {
                         onProgress?(SynchronizationProgress(stage: .scanning, scan: nil))
                         do {
-                            report.scan = try LocalUsageScanner(store: store).scan(codexHome: codexHome) { progress in
+                            report.scan = try await LocalUsageScanner(store: store).scan(codexHome: codexHome) { progress in
                                 onProgress?(SynchronizationProgress(stage: .scanning, scan: progress))
                             }
                             if let count = report.scan?.issueCount, count > 0 {

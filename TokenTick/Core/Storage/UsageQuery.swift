@@ -10,6 +10,7 @@ public enum UsageValueFilter: Sendable, Equatable, Hashable {
 }
 
 public struct UsageFilters: Sendable, Equatable, Hashable {
+    public var device: UsageValueFilter = .all
     public var thread: UsageValueFilter = .all
     public var project: UsageValueFilter = .all
     public var model: UsageValueFilter = .all
@@ -20,7 +21,7 @@ public struct UsageFilters: Sendable, Equatable, Hashable {
     public var occurredBefore: Double?
     public init() {}
     public var isEmpty: Bool {
-        thread == .all && project == .all && model == .all && day == .all && search.isEmpty
+        device == .all && thread == .all && project == .all && model == .all && day == .all && search.isEmpty
             && occurredFrom == nil && occurredBefore == nil
     }
 }

@@ -37,8 +37,9 @@ struct RolloutScan {
 
     /// The caller prepares hashes immediately before this transaction. Failed commits keep the pending batch.
     mutating func commit(store: UsageStore, identity: RolloutIdentity, url: URL,
-                         checkpoint: FileSnapshot, report: inout ScanReport) throws {
-        try store.commitScan(usages, limits: limits, identity: identity, url: url, line: line, offset: offset,
+                         checkpoint: FileSnapshot, report: inout ScanReport, device: String = "local",
+                         sourceRevision: Int = 0, priority: DevicePriority = DevicePriority()) throws {
+        try store.commitScan(usages, device: device, sourceRevision: sourceRevision, priority: priority, limits: limits, identity: identity, url: url, line: line, offset: offset,
                              file: checkpoint, state: &parser.state, report: &report)
         usages.removeAll(keepingCapacity: true)
         limits.removeAll(keepingCapacity: true)

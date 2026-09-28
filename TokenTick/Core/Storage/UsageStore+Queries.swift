@@ -52,8 +52,13 @@ extension UsageStore {
         case .amount: order = "known_amount IS NULL, known_amount DESC, group_value ASC"
         case .name:
             order = query.grouping == .thread
-                ? "COALESCE((SELECT title FROM threads WHERE thread_id = group_value), group_value) COLLATE NOCASE ASC, group_value ASC"
+                ? "COALESCE((SELECT nt.title FROM threads nt LEFT JOIN usage nu ON nu.thread_id=nt.thread_id AND nu.device=nt.device WHERE nt.thread_id=group_value AND (:title_device IS NULL OR nt.device=:title_device) GROUP BY nt.device ORDER BY MAX(nu.occurred_at) DESC, nt.device != 'local', nt.device LIMIT 1), group_value) COLLATE NOCASE ASC, group_value ASC"
                 : "group_value ASC"
+        }
+        if query.sort == .name, query.grouping == .thread {
+            let device: String?
+            if case .value(let value) = query.filters.device { device = value } else { device = nil }
+            arguments += ["title_device": device]
         }
         let rows = try Row.fetchAll(db, sql: """
             \(source)SELECT \(group) AS group_value, COUNT(*) OVER() AS total_groups, SUM(record_count) AS records,
@@ -77,7 +82,7 @@ extension UsageStore {
             SELECT SUM(total_tokens) FROM statistics
             WHERE timezone = :timezone AND account_key = :account AND dimension = 'all' AND date = 'unknown'
             """ : """
-            SELECT SUM(u.total_tokens) FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id
+            SELECT SUM(u.total_tokens) FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id AND t.device = u.device
             WHERE (u.source = 'local' OR u.thread_id IS NOT NULL) AND (\(factFilters.predicate))
                 AND (\(dateExpression ?? StatisticsSQL.dayExpression)) = 'unknown'
                 AND (:account = 'all' OR CASE WHEN u.account_id IS NULL THEN 'unknown'
@@ -102,6 +107,7 @@ extension UsageStore {
 
 
 public struct UsageFilterOptions: Sendable, Equatable {
+    public let devices: [String]
     public let models: [String]
     public let projects: [String]
     public let accounts: [String]
@@ -135,14 +141,15 @@ extension UsageStore {
             case .unknown: predicate += " AND u.account_id IS NULL"
             case .account(let id): predicate += " AND u.account_id = :account"; arguments += ["account": id]
             }
+            let devices = try String.fetchAll(db, sql: "SELECT DISTINCT u.device FROM usage u WHERE \(predicate) ORDER BY u.device", arguments: arguments)
             let models = try String.fetchAll(db, sql: "SELECT DISTINCT u.model FROM usage u WHERE \(predicate) AND u.model IS NOT NULL ORDER BY u.model", arguments: arguments)
-            let projects = try String.fetchAll(db, sql: "SELECT DISTINCT t.project_name FROM usage u JOIN threads t ON t.thread_id = u.thread_id WHERE \(predicate) AND t.project_name IS NOT NULL ORDER BY t.project_name", arguments: arguments)
+            let projects = try String.fetchAll(db, sql: "SELECT DISTINCT t.project_name FROM usage u JOIN threads t ON t.thread_id = u.thread_id AND t.device = u.device WHERE \(predicate) AND t.project_name IS NOT NULL ORDER BY t.project_name", arguments: arguments)
             let accounts = try String.fetchAll(db, sql: """
                 SELECT account_id FROM usage WHERE account_id IS NOT NULL
                 UNION SELECT account_id FROM weekly_limit_cycles WHERE account_id IS NOT NULL
                 ORDER BY account_id
                 """)
-            return UsageFilterOptions(models: models, projects: projects, accounts: accounts)
+            return UsageFilterOptions(devices: devices, models: models, projects: projects, accounts: accounts)
         }
     }
 }
