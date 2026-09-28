@@ -175,6 +175,8 @@ private struct RemoteDeviceEditor: View {
     @State private var directory: URL?
     @State private var bookmark: Data?
     @State private var picker = false
+    @State private var testing = false
+    @State private var connectionAvailable = false
     @State private var saving = false
     @State private var saveTask: Task<Void, Never>?
     @State private var error: String?
@@ -188,8 +190,6 @@ private struct RemoteDeviceEditor: View {
                     TextField(String(localized: "Address"), text: $address)
                         .autocorrectionDisabled()
                     if let parsed = try? ParsedDeviceConnection(address: address) {
-                        Text(parsed.connection.displayAddress)
-                            .font(.caption).foregroundStyle(.secondary).lineLimit(2)
                         if let duplicate = model.configuration.devices.first(where: {
                             $0.id != existing?.id && $0.connection.displayAddress == parsed.connection.displayAddress
                         }) {
@@ -201,19 +201,24 @@ private struct RemoteDeviceEditor: View {
                 } footer: {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(String(localized: "Enter an SSH URL or choose the Codex folder."))
-                        Text(verbatim: "ssh://my-server\nssh://user@host/absolute/path/.codex\n/Volumes/Remote/codex")
+                        Text(verbatim: "ssh://my-server\nssh://user@host/absolute/path/.codex\nssh://user@windows-pc/C:/Users/username/.codex\n/Volumes/Remote/codex")
                             .font(.system(.caption, design: .monospaced))
                             .textSelection(.enabled)
                     }.font(.caption).foregroundStyle(.secondary)
                 }
             }.formStyle(.grouped)
-                .disabled(saving)
+                .disabled(saving || testing)
             if let error { Text(error).font(.callout).foregroundStyle(.red) }
             HStack {
+                Button(testing ? String(localized: "Testing connection…") : String(localized: "Test Connection")) { test() }
+                    .disabled(address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving || testing)
+                if connectionAvailable {
+                    Text(String(localized: "Connection available")).font(.callout).foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button(String(localized: "Cancel")) { saveTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction)
                 Button(String(localized: "Save")) { save() }.keyboardShortcut(.defaultAction)
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving || testing)
             }
         }.padding(24).frame(width: 500)
         .fileImporter(isPresented: $picker, allowedContentTypes: [.folder]) { result in
@@ -226,6 +231,7 @@ private struct RemoteDeviceEditor: View {
                 address = url.path
             } catch { self.error = error.localizedDescription }
         }
+        .onChange(of: address) { connectionAvailable = false; error = nil }
         .onDisappear { saveTask?.cancel() }
         .onAppear {
             guard let existing else { return }
@@ -238,16 +244,38 @@ private struct RemoteDeviceEditor: View {
         }
     }
 
+    private func draftDevice() throws -> RemoteDevice {
+        let parsed = try ParsedDeviceConnection(address: address)
+        let connection: DeviceConnection
+        if case .directory(let path, _) = parsed.connection {
+            connection = .directory(path: path, bookmark: directory?.path == path ? bookmark : nil)
+        } else { connection = parsed.connection }
+        var device = existing ?? RemoteDevice(name: name, connection: connection)
+        device.edit(name: name.trimmingCharacters(in: .whitespacesAndNewlines), connection: connection, enabled: device.enabled)
+        device.address = address
+        return device
+    }
+
+    private func test() {
+        do {
+            let device = try draftDevice()
+            testing = true; connectionAvailable = false; error = nil
+            saveTask = Task {
+                defer { testing = false; saveTask = nil }
+                do {
+                    _ = try await model.testDraft(device)
+                    try Task.checkCancellation()
+                    connectionAvailable = true
+                } catch is CancellationError { }
+                catch { self.error = error.localizedDescription }
+            }
+        } catch { self.error = error.localizedDescription }
+    }
+
     private func save() {
         do {
-            let parsed = try ParsedDeviceConnection(address: address)
-            let connection: DeviceConnection
-            if case .directory(let path, _) = parsed.connection {
-                connection = .directory(path: path, bookmark: directory?.path == path ? bookmark : nil)
-            } else { connection = parsed.connection }
-            var device = existing ?? RemoteDevice(name: name, connection: connection)
-            device.edit(name: name.trimmingCharacters(in: .whitespacesAndNewlines), connection: connection, enabled: device.enabled)
-            device.address = address
+            let device = try draftDevice()
+            error = nil
             saving = true
             saveTask = Task {
                 defer { saving = false; saveTask = nil }

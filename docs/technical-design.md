@@ -120,7 +120,7 @@ Built-in local reads use native file access. Selected folders reuse one private 
 
 SSH uses system OpenSSH and SFTP for enumeration and byte-range reads. One bundled JavaScript query uses Codex's Node.js runtime and `node:sqlite` for fixed, paginated, read-only metadata projections. Runtime discovery uses the SFTP login directory's Codex cache; Windows invocation respects OpenSSH DefaultShell. Missing runtime capabilities are reported without copying databases. Log parsing, Fast-evidence interpretation, pricing, and deduplication run in Swift on the Mac. Source queries use short read transactions, not exclusive locks or checkpoints.
 
-Honor the user's SSH configuration, including authentication, forwarding, RemoteCommand, and multiplexing. Only explicit URL user/port values override it. Cancellation closes owned subprocesses, not user-managed multiplexed masters. An unspecified root is resolved by Node from `process.env.CODEX_HOME`, then `os.homedir()` plus `.codex`; explicit roots bypass discovery. Windows drive and UNC paths are interpreted as remote paths.
+SSH inherits exported variables from the user's interactive login shell, read once per app launch with a 10-second timeout. NUL framing excludes shell startup messages; device-specific askpass values are applied afterward. Honor the user's SSH configuration, including authentication, forwarding, RemoteCommand, and multiplexing. Only explicit URL user/port values override it. Cancellation closes owned subprocesses, not user-managed multiplexed masters. An unspecified root is resolved by Node from `process.env.CODEX_HOME`, then `os.homedir()` plus `.codex`; explicit roots bypass discovery. Windows drive and UNC paths are interpreted as remote paths.
 
 ### Device configuration and lifecycle
 

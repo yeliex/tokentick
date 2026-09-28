@@ -61,7 +61,17 @@ public struct DeviceSyncService: Sendable {
     }
 
     public func test(_ device: RemoteDevice) async throws -> DeviceConnectionTestResult {
-        try await withSource(device) { source in
+        // Unsaved edits must not read credentials from the saved device configuration.
+        var draftDirectory: URL?
+        defer { if let draftDirectory { try? FileManager.default.removeItem(at: draftDirectory) } }
+        if let address = device.address, try ParsedDeviceConnection(address: address).password != nil {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            draftDirectory = directory
+            var draft = device
+            if draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { draft.name = "Connection test" }
+            try DeviceConfigurationStore(directory: directory).update { $0.devices = [draft] }
+        }
+        return try await withSource(device, configurationDirectory: draftDirectory) { source in
             let root = try await source.probe()
             let email = try? await (source as? any DeviceAccountSource)?.accountEmail()
             try Task.checkCancellation()
@@ -77,7 +87,7 @@ public struct DeviceSyncService: Sendable {
         }
     }
 
-    private func withSource<Result: Sendable>(_ device: RemoteDevice,
+    private func withSource<Result: Sendable>(_ device: RemoteDevice, configurationDirectory: URL? = nil,
         operation: @Sendable (any DeviceFileSource) async throws -> Result) async throws -> Result {
         let source: any DeviceFileSource
         var scopedURL: URL?
@@ -91,8 +101,8 @@ public struct DeviceSyncService: Sendable {
             if url.startAccessingSecurityScopedResource() { scopedURL = url }
             source = device.id == "local" ? try LocalFileSource(root: url) : DirectoryDeviceSource(root: url, executable: executable)
         case .ssh:
-            source = try SSHDeviceSource(device: device, executable: executable,
-                configurationDirectory: configurations.url.deletingLastPathComponent(), sshConfiguration: sshConfiguration)
+            source = try await SSHDeviceSource(device: device, executable: executable,
+                configurationDirectory: configurationDirectory ?? configurations.url.deletingLastPathComponent(), sshConfiguration: sshConfiguration)
         }
         defer { scopedURL?.stopAccessingSecurityScopedResource() }
         do {

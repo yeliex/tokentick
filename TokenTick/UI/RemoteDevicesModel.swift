@@ -223,6 +223,11 @@ final class RemoteDevicesModel {
         }
     }
 
+    func testDraft(_ device: RemoteDevice) async throws -> DeviceConnectionTestResult {
+        guard let service else { throw DeviceConfigurationError.invalidConfiguration }
+        return try await service.test(device)
+    }
+
     func test(_ device: RemoteDevice) {
         guard !suspended, !collectionPaused, tasks[device.id] == nil, !editingIDs.contains(device.id), let service else { return }
         let previous = statuses[device.id] ?? Status()
