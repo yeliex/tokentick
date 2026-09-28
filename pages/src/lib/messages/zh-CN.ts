@@ -9,7 +9,7 @@ export const zhCN: typeof en = {
   download: "下载",
   heroTitle: "Codex 用量，",
   heroAccent: "一目了然。",
-  heroDescription: "在 Mac 菜单栏随时查看用量限额与重置时间。用一个原生应用，了解 Token 用量、预估费用和本地存储占用。",
+  heroDescription: "在 Mac 菜单栏随时查看用量限额与重置时间。集中查看多台设备的 Codex 用量、预估费用和本地存储占用。",
   downloadMac: "下载 Mac 版",
   viewGithub: "在 GitHub 查看",
   explore: "多一分清晰，少一分猜测。",
@@ -61,16 +61,20 @@ export const zhCN: typeof en = {
   ],
   faqs: [
     {
+      question: "可以查看多台设备的用量吗？",
+      answer: "可以。在设置的「远程设备」中添加 SSH 连接，或选择 Codex 文件夹，即可汇总查看，也可以按设备筛选。连接可以随时暂停，移除时可选择保留已采集的历史。",
+    },
+    {
       question: "我的 Codex 数据会留在 Mac 上吗？",
-      answer: "用量记录保存在本地。TokenTick 不会上传你的会话、凭据或用量记录。Mac 应用会使用匿名安装标识向 Sentry 发送崩溃报告、经过脱敏处理的运行错误和应用会话统计。它还会连接 Codex 获取账户限额，并获取公开模型价格和应用更新。CLI 不会初始化 Sentry。",
+      answer: "用量记录保存在本地。TokenTick 不会上传你的会话、凭据或用量记录。Mac 应用会使用匿名安装标识向 Sentry 发送崩溃报告、经过脱敏处理的运行错误和应用会话统计。它还会获取 Codex 账户限额、模型价格和应用更新。CLI 不发送这些报告。",
     },
     {
       question: "会占用多少 CPU 和内存？",
-      answer: "TokenTick 是原生 SwiftUI 应用，以增量方式处理日志。资源占用取决于历史记录规模和当前操作：首次导入或重新计价可能比日常更新消耗更多资源。磁盘空间扫描仅在每次启动后首次打开存储页面，或手动刷新时运行。没有独立的常驻守护进程。",
+      answer: "日常更新只读取新增记录，导入大量历史或重新计算费用时会占用更多资源。磁盘空间仅在每次启动后首次打开存储页面，或手动刷新时扫描。",
     },
     {
       question: "需要哪些访问权限？",
-      answer: "TokenTick 需要读取本地 Codex 文件，并通过 Codex 的 app-server 使用现有登录状态获取账户限额，无需粘贴 API 密钥或复制凭据。它不需要辅助功能或屏幕录制权限。可选的 CLI 安装会在 /usr/local/bin 创建链接；如果该目录不可写，手动安装可能需要管理员权限。",
+      answer: "TokenTick 需要读取 Codex 文件，并使用现有 Codex 登录状态查询账户限额，无需 API 密钥。它不需要辅助功能或屏幕录制权限。远程设备可在设置中添加 SSH 连接，或选择 Codex 文件夹。",
     },
     {
       question: "关闭窗口后，还会继续运行吗？",

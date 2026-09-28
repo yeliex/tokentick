@@ -54,19 +54,24 @@ const features = [
 ];
 const faqs = [
   {
+    question: "Can I track usage from multiple devices?",
+    answer:
+      "Yes. Add an SSH connection or choose a Codex folder in Settings → Remote Devices. View combined usage or filter by device. You can pause connections and keep collected history when removing them.",
+  },
+  {
     question: "Does my Codex data stay on my Mac?",
     answer:
-      "Usage records are stored locally. TokenTick does not upload your conversations, credentials, or usage records. The Mac app sends crash reports, sanitized operational errors, and session statistics to Sentry, using an anonymous installation ID. It also connects to Codex for account limits and fetches public model prices and app updates. The CLI does not initialize Sentry.",
+      "Usage records are stored locally. TokenTick does not upload your conversations, credentials, or usage records. The Mac app sends crash reports, sanitized operational errors, and session statistics to Sentry, using an anonymous installation ID. It also retrieves your Codex account limits, model prices, and app updates. The CLI does not send these reports.",
   },
   {
     question: "How much CPU and memory does it use?",
     answer:
-      "TokenTick is a native SwiftUI app that processes logs incrementally. Resource use depends on your history and the work in progress: an initial import or repricing can use more resources than routine updates. Disk-space scanning runs only when you first open Storage in a launch or request a refresh. There is no separate persistent daemon.",
+      "Routine updates read new activity. Importing a large history or recalculating costs takes more resources. Storage is scanned when you first open its page after launching the app, or when you refresh it.",
   },
   {
     question: "What access and permissions does it need?",
     answer:
-      "TokenTick needs read access to your local Codex files and uses Codex’s existing sign-in through its app-server to retrieve account limits. It does not ask you to paste an API key or copy your credentials. You do not need Accessibility or Screen Recording access. The optional CLI installation creates a link in /usr/local/bin; if that directory is not writable, manual installation may require administrator access.",
+      "TokenTick reads your Codex files and uses your existing Codex sign-in to check account limits. No API key is needed. It does not require Accessibility or Screen Recording permissions. For remote devices, add an SSH connection or choose a Codex folder in Settings.",
   },
   {
     question: "Does it keep running when I close the window?",
@@ -84,7 +89,7 @@ export const en = {
   download: "Download",
   heroTitle: "Codex usage,",
   heroAccent: "at a glance.",
-  heroDescription: "Monitor usage limits and reset times from your Mac menu bar. Explore token usage, estimated costs, and local storage in one native app.",
+  heroDescription: "Monitor usage limits and reset times from your Mac menu bar. Bring together Codex usage from your devices, explore estimated costs, and check local storage.",
   downloadMac: "Download for Mac",
   viewGithub: "View on GitHub",
   explore: "A little more clarity. A lot less guessing.",
