@@ -52,7 +52,7 @@ struct UsageDetailsView: View {
         VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 14) {
                     ScrollView(.horizontal) {
-                        HStack(spacing: 6) {
+                        HStack(alignment: .center, spacing: 8) {
                             Picker(String(localized: "Group by"), selection: $state.grouping) {
                                 Text(String(localized: "Daily")).tag(UsageGrouping.day)
                                 Text(String(localized: "Project")).tag(UsageGrouping.project)
@@ -61,7 +61,7 @@ struct UsageDetailsView: View {
                             UsageDateFilter(period: periodSelection, from: $state.customFrom, through: $state.customThrough,
                                             periods: [.today, .week, .month, .quarter, .year, .all], timezone: timezone)
                         TextField(String(localized: "Search task title or ID"), text: $state.filters.search)
-                            .textFieldStyle(.roundedBorder).frame(width: 130)
+                            .textFieldStyle(.roundedBorder).frame(width: 180)
                         if !(app.devices.configuration.devices.isEmpty && app.devices.configuration.removedNames.isEmpty) {
                             Picker(String(localized: "Device"), selection: $state.filters.device) {
                                 Text(String(localized: "All devices")).tag(UsageValueFilter.all)
@@ -70,25 +70,25 @@ struct UsageDetailsView: View {
                                     + Array(app.devices.configuration.removedNames.keys))).sorted(), id: \.self) { id in
                                     Text(app.devices.name(id)).tag(UsageValueFilter.value(id))
                                 }
-                            }.labelsHidden().frame(width: 120)
+                            }.labelsHidden().fixedSize()
                         }
                         Picker(String(localized: "Project"), selection: $state.filters.project) {
                             Text(String(localized: "All projects")).tag(UsageValueFilter.all)
                             ForEach(state.options?.projects ?? [], id: \.self) { Text(UsageFormatting.project($0)).tag(UsageValueFilter.value($0)) }
 
-                        }.labelsHidden().frame(width: 100)
+                        }.labelsHidden().fixedSize()
                         Picker(String(localized: "Model"), selection: $state.filters.model) {
                             Text(String(localized: "All models")).tag(UsageValueFilter.all)
                             ForEach(state.options?.models ?? [], id: \.self) { Text($0).tag(UsageValueFilter.value($0)) }
 
-                        }.labelsHidden().frame(width: 110)
+                        }.labelsHidden().fixedSize()
                         AccountScopeControl(account: $state.account, accounts: state.options?.accounts ?? [],
                                             currentAccount: app.currentLimits?.accountID)
                         Picker(String(localized: "Sort"), selection: $state.sort) {
                             ForEach(UsageSort.allCases, id: \.self) { Text($0.title).tag($0) }
-                        }.labelsHidden().frame(width: 100)
-                        }
-                    }.scrollIndicators(.hidden).controlSize(.small).frame(height: 28)
+                        }.labelsHidden().fixedSize()
+                        }.padding(.vertical, 6)
+                    }.scrollIndicators(.hidden).controlSize(.small).frame(height: 40)
                     HStack(spacing: 20) {
                         summaryMetric("Tokens", UsageFormatting.tokens(currentTotal?.totalTokens))
                         summaryMetric(String(localized: "Estimated cost"), UsageFormatting.money(currentTotal?.knownAmountNanoUSD))
@@ -263,7 +263,7 @@ struct AccountScopeControl: View {
                         Text(id == currentAccount ? String(localized: "Current account") : String(localized: "Account · ") + String(id.suffix(8)))
                             .help(id).tag(UsageAccountScope.account(id))
                     }
-                }.labelsHidden().frame(width: 160)
+                }.labelsHidden().fixedSize()
             }
         }
         .onChange(of: available, initial: true) {

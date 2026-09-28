@@ -1272,7 +1272,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "历史累计"
+            "value": "历史"
           }
         }
       }
@@ -3529,33 +3529,6 @@
         }
       }
     },
-    "Add a connection to sync their usage.": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Add a connection to sync their usage."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "添加连接以同步这些设备的用量。"
-          }
-        }
-      }
-    },
-    "Add a connection to include its Codex usage.": {
-      "extractionState": "manual",
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "添加连接以统计该设备的 Codex 用量。"
-          }
-        }
-      }
-    },
     "Address": {
       "extractionState": "manual",
       "localizations": {
@@ -3590,38 +3563,6 @@
         }
       }
     },
-    "Codex remote environments detected": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Codex remote environments detected"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "发现 Codex 远程环境"
-          }
-        }
-      }
-    },
-    "Sync Codex usage over SSH or from a folder.": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sync Codex usage over SSH or from a folder."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "通过 SSH 或文件夹同步 Codex 用量。"
-          }
-        }
-      }
-    },
     "Connection": {
       "extractionState": "manual",
       "localizations": {
@@ -3641,17 +3582,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "连接可用"
-          }
-        }
-      }
-    },
-    "Connection details": {
-      "extractionState": "manual",
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "连接详情"
           }
         }
       }
@@ -3685,33 +3615,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "设备操作"
-          }
-        }
-      }
-    },
-    "Device history has not been fully collected: %@. Sync available sources to complete the history.": {
-      "extractionState": "manual",
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "以下设备的历史用量尚未完整采集：%@。请同步可用来源以补齐历史。"
-          }
-        }
-      }
-    },
-    "Dismiss": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dismiss"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "忽略"
           }
         }
       }
@@ -3750,28 +3653,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "输入 SSH 链接或选择 Codex 文件夹。"
-          }
-        }
-      }
-    },
-    "Files awaiting check: %lld": {
-      "extractionState": "manual",
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "待检查文件：%lld"
-          }
-        }
-      }
-    },
-    "Files: %lld · New events: %lld": {
-      "extractionState": "manual",
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文件：%lld · 新增事件：%lld"
           }
         }
       }
@@ -3955,17 +3836,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "立即同步"
-          }
-        }
-      }
-    },
-    "Syncing task names and projects…": {
-      "extractionState": "manual",
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在同步任务名称和项目…"
           }
         }
       }

@@ -47,7 +47,7 @@ struct UsageDateFilter: View {
             Button(String(localized: "Custom…")) { openCalendar() }
         } label: {
             Text(period.title)
-        }.frame(width: 90).accessibilityLabel(String(localized: "Date range"))
+        }.fixedSize().accessibilityLabel(String(localized: "Date range"))
         .popover(isPresented: $showingCalendar, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 20) {
                 Text(String(localized: "Choose date range")).font(.headline)

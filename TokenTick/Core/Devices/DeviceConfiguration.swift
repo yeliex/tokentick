@@ -79,7 +79,6 @@ public struct RemoteDevice: Codable, Equatable, Identifiable, Sendable {
 public struct DeviceConfiguration: Codable, Equatable, Sendable {
     public var devices: [RemoteDevice] = []
     public var removedNames: [String: String] = [:]
-    public var dismissedRemoteHintIDs: Set<String>?
 
     public init() {}
 

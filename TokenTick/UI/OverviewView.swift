@@ -7,43 +7,39 @@ struct OverviewView: View {
     var openConversation: (UsageQuery) -> Void
     @SceneStorage("overview.period") private var storedPeriod = OverviewPeriod.week.rawValue
     private var period: OverviewPeriod { OverviewPeriod(rawValue: storedPeriod) ?? .week }
+    @State private var accounts: [String] = []
     @State private var loadedPeriod: OverviewPeriod?
     @State private var report: OverviewReport?
     @State private var loading = false
     @State private var error: String?
     @State private var refreshedAt = Date()
-    private struct Request: Hashable { let period: OverviewPeriod; let refresh: Int; let timezone: String; let now: Date; let device: UsageValueFilter }
+    private struct Request: Hashable { let period: OverviewPeriod; let refresh: Int; let timezone: String; let now: Date; let account: UsageAccountScope }
     private var timezone: String { app.status?.timezone ?? TimeZone.current.identifier }
-    private var request: Request { Request(period: period, refresh: app.usageRefreshID, timezone: timezone, now: refreshedAt, device: app.selectedDevice) }
-    private var selectionChanged: Bool { loadedPeriod != period || report?.query.filters.device != app.selectedDevice }
+    private var request: Request { Request(period: period, refresh: app.usageRefreshID, timezone: timezone, now: refreshedAt, account: app.selectedAccount) }
+    private var selectionChanged: Bool { loadedPeriod != period || report?.query.account != app.selectedAccount }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 30) {
                 CurrentLimitsView()
-                if !app.devices.coverageGaps.isEmpty {
-                    Text(String(localized: "Device history has not been fully collected: \(app.devices.coverageGaps.map { app.devices.name($0) }.joined(separator: ", ")). Sync available sources to complete the history."))
-                        .font(.callout).foregroundStyle(.secondary)
-                }
                 HStack {
                     Text(String(localized: "Usage")).font(.title2.weight(.semibold))
                     Spacer()
-                    if !app.devices.configuration.devices.isEmpty || !app.devices.configuration.removedNames.isEmpty {
-                        Picker(String(localized: "Device"), selection: Binding(get: { app.selectedDevice }, set: { app.selectedDevice = $0 })) {
-                            Text(String(localized: "All devices")).tag(UsageValueFilter.all)
-                            Text(String(localized: "Local")).tag(UsageValueFilter.value("local"))
-                            ForEach(app.devices.configuration.devices) { device in
-                                Text(device.name).tag(UsageValueFilter.value(device.id))
+                    HStack(alignment: .center, spacing: 8) {
+                        Picker(String(localized: "Account"), selection: Binding(get: { app.selectedAccount }, set: { app.selectedAccount = $0 })) {
+                            Text(String(localized: "All accounts")).tag(UsageAccountScope.all)
+                            ForEach(accounts, id: \.self) { id in
+                                Text(id == app.currentLimits?.accountID ? String(localized: "Current account") : String(localized: "Account · ") + String(id.suffix(8)))
+                                    .help(id).tag(UsageAccountScope.account(id))
                             }
-                            ForEach(app.devices.configuration.removedNames.keys.sorted(), id: \.self) { id in
-                                Text(app.devices.name(id)).tag(UsageValueFilter.value(id))
-                            }
-                        }.labelsHidden().frame(width: 140)
+                            Text(String(localized: "Unknown account")).tag(UsageAccountScope.unknown)
+                        }.labelsHidden().controlSize(.small).fixedSize()
+                        Picker(String(localized: "Period"), selection: Binding(get: { period }, set: { storedPeriod = $0.rawValue })) {
+                            ForEach(OverviewPeriod.allCases) { Text($0.title).tag($0) }
+                        }.pickerStyle(.segmented).labelsHidden().controlSize(.small)
+                            .fixedSize(horizontal: true, vertical: true)
                     }
-                    Picker(String(localized: "Period"), selection: Binding(get: { period }, set: { storedPeriod = $0.rawValue })) {
-                        ForEach(OverviewPeriod.allCases) { Text($0.title).tag($0) }
-                    }.pickerStyle(.segmented).labelsHidden().controlSize(.regular)
-                        .fixedSize(horizontal: true, vertical: true)
+                    .alignmentGuide(VerticalAlignment.center) { $0[VerticalAlignment.center] + 1 }
                 }
                 if selectionChanged && (loading || report != nil) {
                     ProgressView(String(localized: "Summarizing usage")).frame(maxWidth: .infinity, minHeight: 260)
@@ -132,11 +128,13 @@ struct OverviewView: View {
             loading = report == nil || selectionChanged; error = nil
             do {
                 let worker = Task.detached(priority: .userInitiated) {
-                    try store.overviewReport(period: current.period, now: current.now, timezone: current.timezone, device: current.device)
+                    let report = try store.overviewReport(period: current.period, now: current.now, timezone: current.timezone, account: current.account)
+                    return (report, try store.usageFilterOptions().accounts)
                 }
                 let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                 guard !Task.isCancelled else { return }
-                if report?.hasSameContent(as: result) != true || loadedPeriod != current.period { report = result }
+                accounts = result.1
+                if report?.hasSameContent(as: result.0) != true || loadedPeriod != current.period { report = result.0 }
                 loadedPeriod = current.period
             } catch {
                 guard !Task.isCancelled else { return }

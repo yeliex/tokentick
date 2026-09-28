@@ -98,7 +98,7 @@ Add devices in Settings → Remote Devices using an SSH address or **Use Local F
 
 SSH uses your existing system configuration. If the address has no path, TokenTick uses the remote `CODEX_HOME` or `~/.codex`.
 
-View combined usage or filter by device in Overview and usage details. When removing a connection, choose whether to keep its collected history. Account limits and storage information remain specific to your local device.
+Overview groups usage across devices by account. Filter by account in Overview or by device in usage details. When removing a connection, choose whether to keep its collected history. Account limits and storage information remain specific to your local device.
 
 ## CLI
 

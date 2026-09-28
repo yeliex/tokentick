@@ -21,25 +21,9 @@ struct RemoteDevicesSettingsView: View {
                         editing = nil; editorPresented = true
                     }
                 }
-                Text(String(localized: "Sync Codex usage over SSH or from a folder."))
-                    .font(.callout).foregroundStyle(.secondary)
                 if let error = model.error ?? actionError { Text(error).foregroundStyle(.red).textSelection(.enabled) }
-                if model.newRemoteHintCount > 0 {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label(String(localized: "Codex remote environments detected"), systemImage: "network")
-                            .font(.callout.weight(.medium))
-                        Text(String(localized: "Add a connection to sync their usage."))
-                            .font(.caption).foregroundStyle(.secondary)
-                        HStack {
-                            Button(String(localized: "Add Device")) { editing = nil; editorPresented = true }
-                            Button(String(localized: "Dismiss")) { model.dismissRemoteHints() }
-                        }.controlSize(.small)
-                    }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
-                }
                 if model.configuration.devices.isEmpty {
-                    ContentUnavailableView(String(localized: "No remote devices"), systemImage: "desktopcomputer",
-                        description: Text(String(localized: "Add a connection to include its Codex usage.")))
+                    ContentUnavailableView(String(localized: "No remote devices"), systemImage: "desktopcomputer")
                         .frame(maxWidth: .infinity)
                 }
                 ForEach(model.configuration.devices) { device in
@@ -47,7 +31,6 @@ struct RemoteDevicesSettingsView: View {
                 }
             }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
         }
-        .task { await model.refreshRemoteHints() }
         .sheet(isPresented: $editorPresented) { RemoteDeviceEditor(model: model, existing: editing) }
         .sheet(item: $removing) { device in
             VStack(alignment: .leading, spacing: 18) {
@@ -86,7 +69,7 @@ struct RemoteDevicesSettingsView: View {
             }
             if let progress = status?.progress, status?.busy == true {
                 ProgressView(value: Double(progress.completedFiles), total: Double(max(1, progress.totalFiles)))
-                Text(String(localized: "Scanning files: \(progress.completedFiles)/\(progress.totalFiles)")).font(.caption)
+                Text(String(localized: "Syncing…")).font(.caption)
             } else if let error = status?.error {
                 Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
             } else {
@@ -94,33 +77,21 @@ struct RemoteDevicesSettingsView: View {
             }
             if let error = status?.connectionTestError {
                 Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
-            } else if let test = status?.connectionTest {
+            } else if status?.connectionTest != nil {
                 Text(String(localized: "Connection available")).font(.callout).foregroundStyle(.secondary)
-                Text(test.root).font(.caption).textSelection(.enabled)
-                Text(test.accountEmail ?? String(localized: "Unknown account")).font(.caption).foregroundStyle(.secondary)
             }
             if let date = model.collectionDates[device.id], status?.result != nil || !device.enabled {
                 LabeledContent(String(localized: "Last sync"), value: date.formatted(date: .abbreviated, time: .standard))
                     .font(.caption).foregroundStyle(.secondary)
             }
-            if let result = status?.result {
-                Text(result.accountEmail ?? String(localized: "Unknown account")).font(.caption).foregroundStyle(.secondary)
-                DisclosureGroup(String(localized: "Connection details")) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(result.root).textSelection(.enabled)
-                        Text(result.finishedAt.formatted(date: .abbreviated, time: .standard))
-                        if let scan = result.scan {
-                            Text(String(localized: "Files: \(scan.discoveredFiles) · New events: \(scan.insertedRequests)"))
-                            if scan.pendingFiles > 0 {
-                                Text(String(localized: "Files awaiting check: \(scan.pendingFiles)"))
-                            }
-                            if scan.pendingMetadata {
-                                Text(String(localized: "Syncing task names and projects…"))
-                            }
-                            ForEach(Array(scan.issues.prefix(3).enumerated()), id: \.offset) { _, issue in Text(issue.message) }
-                        }
-                    }.font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 6)
-                }.font(.caption)
+            if status?.connectionTest != nil || status?.result != nil {
+                Text(status?.connectionTest?.accountEmail ?? status?.result?.accountEmail ?? String(localized: "Unknown account"))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if status?.busy != true, let issues = status?.result?.scan?.issues {
+                ForEach(Array(issues.prefix(3).enumerated()), id: \.offset) { _, issue in
+                    Text(issue.message).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+                }
             }
             Divider()
             HStack {

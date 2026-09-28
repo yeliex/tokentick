@@ -16,39 +16,17 @@ final class RemoteDevicesModel {
     }
 
     private(set) var configuration = DeviceConfiguration()
-    private(set) var coverageGaps: [String] = []
     private(set) var collectionDates: [String: Date] = [:]
 
-    func refreshCoverage() async {
+    func refreshCollectionDates() async {
         guard let service else { return }
         let snapshot = configuration
         do {
-            let (gaps, dates) = try await Task.detached(priority: .utility) {
-                (try service.store.deviceCoverageGaps(snapshot), try service.store.deviceCollectionDates(snapshot))
+            let dates = try await Task.detached(priority: .utility) {
+                try service.store.deviceCollectionDates(snapshot)
             }.value
             guard snapshot == configuration, !Task.isCancelled else { return }
-            coverageGaps = gaps
             collectionDates = dates
-        } catch { self.error = error.localizedDescription }
-    }
-    private(set) var remoteHintIDs = Set<String>()
-
-    var newRemoteHintCount: Int {
-        remoteHintIDs.subtracting(configuration.dismissedRemoteHintIDs ?? []).count
-    }
-
-    func refreshRemoteHints() async {
-        let hints = await Task.detached(priority: .utility) { try? CodexRemoteDiscovery.read() }.value
-        guard !Task.isCancelled else { return }
-        remoteHintIDs = hints ?? []
-    }
-
-    func dismissRemoteHints() {
-        guard let service else { return }
-        do {
-            configuration = try service.configurations.update { configuration in
-                configuration.dismissedRemoteHintIDs = (configuration.dismissedRemoteHintIDs ?? []).union(remoteHintIDs)
-            }
         } catch { self.error = error.localizedDescription }
     }
     private(set) var statuses: [String: Status] = [:]
@@ -166,7 +144,7 @@ final class RemoteDevicesModel {
                     metadataRefreshedAt[previous.id] = nil
                 }
                 configuration = loaded
-                Task { await refreshCoverage() }
+                Task { await refreshCollectionDates() }
             }
             updateMonitoring()
             error = nil
@@ -203,7 +181,7 @@ final class RemoteDevicesModel {
                 var finished = Status()
                 finished.result = result
                 self.statuses[device.id] = finished
-                await self.refreshCoverage()
+                await self.refreshCollectionDates()
                 var schedule = self.schedules[device.id] ?? RemoteSyncSchedule()
                 if let report = result.scan { schedule.received(report, at: Date()) }
                 self.schedules[device.id] = schedule
@@ -295,7 +273,7 @@ final class RemoteDevicesModel {
             statuses[device.id] = nil
         }
         editingIDs.remove(device.id)
-        await refreshCoverage()
+        await refreshCollectionDates()
         if device.enabled { run(device) }
     }
 

@@ -146,7 +146,7 @@ Remote passes yield after 32 changed files or 64 MiB of parsed input, checked at
 
 Due sources are ordered by next-check time, then configuration order. Remote timers and network monitoring exist only while an enabled device exists. Full-manifest discovery and incremental directory selection follow the `scan_files` contract above.
 
-Only error-free collection with no pending logs or metadata records a device/source-revision completion timestamp. It proves historical coverage, not current connectivity. Database rebuilds clear these markers; Overview reports configured or retained-history sources without them. Each completed pass refreshes coverage independently of dashboard queries. Fact revisions trigger dashboard updates for pricing and project changes; unchanged polls only update device status. Connection tests do not alter collection results, freshness timestamps, or backoff. Accessible empty sources are successful empty scans.
+Only error-free collection with no pending logs or metadata records a device/source-revision completion timestamp. Settings uses this timestamp for Last sync. Database rebuilds clear these markers. Each completed pass refreshes the displayed timestamps independently of dashboard queries. Fact revisions trigger dashboard updates for pricing and project changes; unchanged polls only update device status. Connection tests do not alter collection results, freshness timestamps, or backoff. Accessible empty sources are successful empty scans.
 
 ### File identity and streaming
 

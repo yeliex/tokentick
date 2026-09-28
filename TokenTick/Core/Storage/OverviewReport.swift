@@ -66,10 +66,11 @@ public struct OverviewReport: Sendable {
 
 extension UsageStore {
     /// Read overview sections in one snapshot so concurrent syncs cannot produce inconsistent totals and charts.
-    public func overviewReport(period: OverviewPeriod, now: Date, timezone identifier: String, device: UsageValueFilter = .all) throws -> OverviewReport {
+    public func overviewReport(period: OverviewPeriod, now: Date, timezone identifier: String, device: UsageValueFilter = .all, account: UsageAccountScope = .all) throws -> OverviewReport {
         guard let timezone = TimeZone(identifier: identifier) else { throw UsageQueryError.invalidTimezone }
         var query = period.query(now: now, timezone: identifier)
         query.filters.device = device
+        query.account = account
         try query.validate()
         return try pool.read { db in
             StatisticsSQL.prepare(db, timezone: timezone)
@@ -90,6 +91,15 @@ extension UsageStore {
                 return date.map { OverviewTrendPoint(date: $0, summary: row) }
             }.sorted { $0.date < $1.date }
             let filters = UsageFiltersSQL(query.filters)
+            var predicate = filters.predicate
+            var arguments = filters.arguments
+            switch account {
+            case .all: break
+            case .unknown: predicate += " AND u.account_id IS NULL"
+            case .account(let id):
+                predicate += " AND u.account_id = :overview_account"
+                arguments += ["overview_account": id]
+            }
             let modeExpression = """
                 CASE WHEN u.is_long_context IS NULL THEN 'unknown'
                     WHEN u.tier = 'fast' OR (u.tier IS NULL AND EXISTS (
@@ -105,18 +115,18 @@ extension UsageStore {
                     SELECT \(expression) AS name, SUM(u.total_tokens) AS tokens,
                         SUM(tokentick_known_amount(u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount)) AS amount
                     FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id AND t.device = u.device
-                    WHERE (u.source = 'local' OR u.thread_id IS NOT NULL) AND (\(filters.predicate))
+                    WHERE (u.source = 'local' OR u.thread_id IS NOT NULL) AND (\(predicate))
                     GROUP BY name ORDER BY tokens DESC, name ASC
-                    """, arguments: filters.arguments).map { OverviewUsageShare(name: $0["name"], tokens: $0["tokens"], amount: $0["amount"]) }
+                    """, arguments: arguments).map { OverviewUsageShare(name: $0["name"], tokens: $0["tokens"], amount: $0["amount"]) }
             }
             let modes = try shares(modeExpression)
             let efforts = try shares(effortExpression)
             let recent = try Row.fetchAll(db, sql: """
                 SELECT u.thread_id, t.title, t.project_name, MAX(u.occurred_at) AS last_active
                 FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id AND t.device = u.device
-                WHERE u.thread_id IS NOT NULL AND u.occurred_at IS NOT NULL AND (\(filters.predicate))
+                WHERE u.thread_id IS NOT NULL AND u.occurred_at IS NOT NULL AND (\(predicate))
                 GROUP BY u.thread_id ORDER BY last_active DESC, u.thread_id ASC LIMIT 10
-                """, arguments: filters.arguments)
+                """, arguments: arguments)
             let conversations = try recent.map { row in
                 let id: String = row["thread_id"]
                 let summary = try Self.readUsageReport(query.focused(on: .thread, value: id), timezone: timezone, db: db).rows

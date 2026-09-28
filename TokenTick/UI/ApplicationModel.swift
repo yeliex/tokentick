@@ -11,7 +11,7 @@ final class ApplicationModel {
     private var started = false
     let storage = CodexStorageModel()
     let devices = RemoteDevicesModel()
-    var selectedDevice: UsageValueFilter = .all
+    var selectedAccount: UsageAccountScope = .all
     let resetReminders = ResetReminderController()
     var requestedPage: AppPage?
     var isRefreshingAPI = false
@@ -74,10 +74,6 @@ final class ApplicationModel {
             if let store {
                 devices.start(store: store) { [weak self] in
                     guard let self else { return }
-                    if case .value(let id) = self.selectedDevice, id != "local",
-                       self.devices.configuration.name(for: id) == nil {
-                        self.selectedDevice = .all
-                    }
                     await self.refresh()
                 }
             }
@@ -235,7 +231,7 @@ final class ApplicationModel {
             status = result.0
             lastSync = result.1
             refreshID += 1
-            await devices.refreshCoverage()
+            await devices.refreshCollectionDates()
         } catch {
             AppTelemetry.capture(error, operation: "database.refresh")
             self.error = error.localizedDescription
