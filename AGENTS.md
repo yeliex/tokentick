@@ -25,7 +25,7 @@ Collection, Pricing, Synchronization, Storage, and UI have separate responsibili
 - Local logs establish usage facts. API daily totals are in-memory reference data, never extra priced local usage.
 - Store individual effective events. Cross-task deduplication is turn-based and retains the earliest source task; a fork's inherited turns do not create duplicate rows. Response IDs match events within that ownership rule.
 - Do not invent response/turn IDs or use ordinals as response IDs. Distinct responses with equal tokens remain distinct.
-- Unknown account, model, rate, and amount remain unknown. Never fill historical account attribution from the current login.
+- Attribute usage to the log’s `creator_account_id`, falling back to the source device’s current Codex login before scanning. Keep the resolved task account on incremental reads. If neither is available, keep it unknown. Unknown model, rate, and amount remain unknown.
 - Input includes caches and output includes reasoning. Use Decimal for rates and checked integer nanoUSD for amounts; never accumulate money in Double.
 - Missing tier evidence may use standard pricing with an explicit basis. Confirmed Fast with a missing rate stays unpriced. Derive Fast/long combinations per component only when required rates exist.
 - Persist only ended main seven-day limit cycles. Current display snapshots may be cached in `api.json`; API daily buckets and forecast samples stay in memory; minimal cursor summaries may support recovery.

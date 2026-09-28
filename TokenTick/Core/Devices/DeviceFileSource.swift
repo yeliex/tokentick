@@ -1,8 +1,8 @@
 import Foundation
 
-/// A display-only identity capability; it never supplies attribution for usage events.
+/// Resolve the login belonging to this source before collecting its logs.
 protocol DeviceAccountSource: Sendable {
-    func accountEmail() async throws -> String?
+    func account() async throws -> DeviceAccount
 }
 
 struct DeviceSourceFile: Codable, Sendable, Equatable {
@@ -66,9 +66,9 @@ actor DirectoryDeviceSource: DeviceFileSource, DeviceTraceSource, DeviceAccountS
         worker = nil
     }
 
-    func accountEmail() async throws -> String? {
-        guard case .accountEmail(let email) = try await request(.account) else { throw DeviceSourceFailure.invalidResponse }
-        return email
+    func account() async throws -> DeviceAccount {
+        guard case .account(let identity) = try await request(.account) else { throw DeviceSourceFailure.invalidResponse }
+        return identity
     }
 
     func traceFiles() async throws -> [String] {

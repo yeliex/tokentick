@@ -1,0 +1,18 @@
+#!/usr/local/bin/node
+// Synthetic app-server used only by the isolated SSH fixture.
+const readline = require('node:readline');
+readline.createInterface({ input: process.stdin }).on('line', line => {
+    const request = JSON.parse(line);
+    if (!request.id) return;
+    let result;
+    switch (request.method) {
+    case 'initialize': result = {}; break;
+    case 'account/rateLimits/read':
+        if (process.env.CODEX_HOME !== '/root/.codex') process.exit(1);
+        result = { accountId: 'remote-account', rateLimits: {} }; break;
+    case 'account/read':
+        result = { account: { type: 'chatgpt', email: 'remote@example.invalid' } }; break;
+    default: process.exit(1);
+    }
+    process.stdout.write(JSON.stringify({ id: request.id, result }) + '\n');
+});

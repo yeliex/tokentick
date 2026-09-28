@@ -9,6 +9,7 @@ struct RolloutEvent: Decodable {
         case session(Session), turn(Turn), settings(Settings), started(Started), count(Count), record(Record), other
     }
     struct Session: Codable {
+        var creator_account_id: String? = nil
         let id: String
         var timestamp: String?
         let cwd: String?

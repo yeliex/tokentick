@@ -34,12 +34,14 @@ struct SSHIntegrationTests {
         let beforeTest = try store.tableCounts()
         let connection = try await service.test(device)
         #expect(connection.root == "/root/.codex")
+        #expect(connection.accountEmail == "remote@example.invalid")
         #expect(try store.tableCounts() == beforeTest)
         var configuration = DeviceConfiguration()
         configuration.devices = [device]
         #expect(try store.deviceCollectionDates(configuration).isEmpty)
         let first = try await service.synchronize(device)
         #expect(first.dataChanged)
+        #expect(try store.usageRecords().rows.map(\.accountID) == ["remote-account"])
         #expect(first.scan?.insertedRequests == 1 && first.scan?.issueCount == 0)
         #expect(try store.threadInfo(ids: ["00000000-0000-0000-0000-000000000001"]).values.first?.projectName == "First")
         try await node(#"""

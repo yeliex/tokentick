@@ -46,6 +46,37 @@ struct SSHMetadataQuery: Sendable {
         }
     }
 
+    func accountSession(root: String) throws -> CodexAPISession {
+        // A static launcher carries the selected home as JSON; the RPC stream stays on stdin/stdout.
+        let home = String(decoding: try JSONEncoder().encode(root), as: UTF8.self)
+        let script = """
+        const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
+        const windows = process.platform === 'win32';
+        const candidates = (process.env.PATH || '').split(path.delimiter)
+            .flatMap(p => (windows ? ['codex.exe', 'codex.cmd'] : ['codex']).map(n => path.join(p, n)));
+        if (process.platform === 'darwin') {
+            for (const p of ['/Applications', path.join(os.homedir(), 'Applications')])
+                for (const app of ['Codex.app', 'ChatGPT.app']) candidates.push(path.join(p, app, 'Contents/Resources/codex'));
+        }
+        const executable = candidates.find(p => {
+            try { fs.accessSync(p, fs.constants.X_OK); return fs.statSync(p).isFile(); } catch { return false; }
+        });
+        if (!executable) process.exit(1);
+        const shell = windows && executable.endsWith('.cmd');
+        const child = require('node:child_process').spawn(shell ? '\"' + executable + '\"' : executable, ['app-server', '--stdio'], {
+            stdio: 'inherit', env: {...process.env, CODEX_HOME: \(home)},
+            shell
+        });
+        child.on('error', () => process.exit(1));
+        child.on('exit', code => process.exit(code ?? 1));
+        """
+        let encoded = Data(script.utf8).base64EncodedString()
+        guard command.hasSuffix(" -") else { throw DeviceSourceFailure.unsupported }
+        let launcher = String(command.dropLast()) + "-e \"eval(Buffer.from('\(encoded)','base64').toString())\""
+        return try CodexAPISession(executable: URL(fileURLWithPath: "/usr/bin/ssh"),
+            arguments: arguments + [launcher], environment: environment)
+    }
+
     static func input(_ request: Request) throws -> Data {
         guard let script = Bundle.module.url(forResource: "device_query", withExtension: "js") else {
             throw DeviceSourceFailure.unsupported

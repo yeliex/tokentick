@@ -73,9 +73,9 @@ public struct DeviceSyncService: Sendable {
         }
         return try await withSource(device, configurationDirectory: draftDirectory) { source in
             let root = try await source.probe()
-            let email = try? await (source as? any DeviceAccountSource)?.accountEmail()
+            let identity = try? await (source as? any DeviceAccountSource)?.account()
             try Task.checkCancellation()
-            return DeviceConnectionTestResult(root: root, accountEmail: email)
+            return DeviceConnectionTestResult(root: root, accountEmail: identity?.email)
         }
     }
 
@@ -118,6 +118,8 @@ public struct DeviceSyncService: Sendable {
     private func collectSource(_ device: RemoteDevice, source: any DeviceFileSource, refreshMetadata: Bool,
         onProgress: (@Sendable (ScanProgress) -> Void)?) async throws -> DeviceSyncResult {
         let root = try await source.probe()
+        let account = try? await (source as? any DeviceAccountSource)?.account()
+        try Task.checkCancellation()
         let previousRevision = try await store.pool.read { try UsageStore.statisticsRevision($0) }
         var completedCycles = 0
         var metadataRefreshed = false
@@ -129,7 +131,7 @@ public struct DeviceSyncService: Sendable {
         var report = try await UsageScanner(store: store, device: device, priority: priority,
             maximumFilesPerPass: device.id == "local" ? .max : 32,
             maximumBytesPerPass: device.id == "local" ? .max : 64 * 1_024 * 1_024,
-            preferIncrementalManifest: !refreshMetadata)
+            preferIncrementalManifest: !refreshMetadata, accountID: account?.id)
             .scan(source: source, onProgress: onProgress)
         let catalogPending = try store.deviceCatalogCursor(device: device.id, sourceRevision: device.sourceRevision) != nil
         let shouldRefreshMetadata = refreshMetadata || report.scannedFiles > 0 || catalogPending
@@ -175,14 +177,12 @@ public struct DeviceSyncService: Sendable {
         try FileWriteLock(url: store.databaseURL.appendingPathExtension("write.lock")).withLock {
             completedCycles = try store.saveCompletedWeeklyCycles()
         }
-        // Optional identity failure must not discard collected facts or borrow the local login.
-        let email = metadataRefreshed ? try? await (source as? any DeviceAccountSource)?.accountEmail() : nil
         try Task.checkCancellation()
         if device.id != "local", report.issueCount == 0, report.pendingFiles == 0, !report.pendingMetadata {
             try store.recordDeviceCollectionComplete(device)
         }
         let revision = try await store.pool.read { try UsageStore.statisticsRevision($0) }
-        return DeviceSyncResult(deviceID: device.id, root: root, scan: report, finishedAt: Date(), accountEmail: email, metadataRefreshed: metadataRefreshed,
+        return DeviceSyncResult(deviceID: device.id, root: root, scan: report, finishedAt: Date(), accountEmail: account?.email, metadataRefreshed: metadataRefreshed,
             dataChanged: revision != previousRevision || completedCycles > 0 || report.scannedFiles > 0)
     }
 }

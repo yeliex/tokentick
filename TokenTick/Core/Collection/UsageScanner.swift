@@ -10,6 +10,7 @@ struct UsageScanner: Sendable {
     var maximumFilesPerPass = 32
     var maximumBytesPerPass: UInt64 = 64 * 1_024 * 1_024
     var preferIncrementalManifest = false
+    var accountID: String? = nil
 
     func scan(source: any DeviceFileSource, onProgress: (@Sendable (ScanProgress) -> Void)? = nil) async throws -> ScanReport {
         let lock = FileWriteLock(url: store.databaseURL.appendingPathExtension("device-\(device.id).lock"))
@@ -39,6 +40,7 @@ struct UsageScanner: Sendable {
         let groups = Dictionary(grouping: files, by: { $0.rollout!.rolloutID }).values
             .map { $0.sorted { $0.path < $1.path } }
             .sorted { ($0.map(\.modifiedAt).max() ?? 0) > ($1.map(\.modifiedAt).max() ?? 0) }
+        onProgress?(ScanProgress(completedFiles: 0, totalFiles: groups.count, fileName: "", insertedRequests: 0))
         var lastProgress = ContinuousClock.now
         for (index, copies) in groups.enumerated() {
             try Task.checkCancellation()
@@ -111,7 +113,7 @@ struct UsageScanner: Sendable {
             report.unchangedFiles += 1
             return false
         }
-        var scan = RolloutScan(identity: identity)
+        var scan = RolloutScan(identity: identity, accountID: accountID)
         if let cursor, cursor.state.version == RolloutParserState.currentVersion,
            !identity.isCompressed, !cursor.file.compressed, cursor.offset > 0,
            cursor.file.sourceIdentity == file.identity, file.size >= cursor.offset,
@@ -119,7 +121,7 @@ struct UsageScanner: Sendable {
             let count = Int(min(cursor.offset, 4_096))
             if try await hash(source, file, offset: 0, count: count) == cursor.file.prefixHash,
                try await hash(source, file, offset: cursor.offset - UInt64(count), count: count) == cursor.file.tailHash {
-                scan = RolloutScan(identity: identity, cursor: cursor)
+                scan = RolloutScan(identity: identity, cursor: cursor, accountID: accountID)
             }
         }
         let initialOffset = scan.offset

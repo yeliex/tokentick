@@ -2,10 +2,15 @@ import Foundation
 import Synchronization
 
 /// Native access for the built-in source; collection and storage are shared with SSH.
-final class LocalFileSource: DeviceFileSource, DeviceTraceSource {
+final class LocalFileSource: DeviceFileSource, DeviceTraceSource, DeviceAccountSource {
     let root: URL
     private let catalogReader = Mutex<DeviceCatalogPage.Reader?>(nil)
     init(root: URL) throws { self.root = try DeviceWorker.validatedRoot(root.path) }
+    func account() async throws -> DeviceAccount {
+        let root = root
+        let task = Task.detached(priority: .utility) { try DeviceAccount.read(root: root) }
+        return try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+    }
     func probe() -> String { root.path }
     func manifest() throws -> DeviceSourceManifest {
         guard case .manifest(let value) = try DeviceWorker.execute(.manifest, root: root) else { throw DeviceSourceFailure.invalidResponse }

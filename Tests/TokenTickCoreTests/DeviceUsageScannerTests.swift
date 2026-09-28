@@ -184,6 +184,58 @@ struct DeviceUsageScannerTests {
         #expect(try await scanner.scan(source: source).unchangedFiles == 1)
     }
 
+    @Test(arguments: [false, true])
+    func accountAttributionUsesCreatorThenSourceLogin(remote: Bool) async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let device = remote ? fixture.device : RemoteDevice.local(root: fixture.root)
+        let creatorHeader = header.replacingOccurrences(of: "\"id\":", with: "\"creator_account_id\":\"creator\",\"id\":")
+        let source = Source(data: Data((creatorHeader + record(1)).utf8), database: fixture.store.databaseURL)
+        var scanner = UsageScanner(store: fixture.store, device: device, priority: DevicePriority(), accountID: "login")
+        _ = try await scanner.scan(source: source)
+        #expect(try fixture.store.usageRecords().rows.map(\.accountID) == ["creator"])
+        scanner.accountID = "other-login"
+        await source.append(Data(record(2).utf8))
+        _ = try await scanner.scan(source: source)
+        #expect(try fixture.store.usageRecords().rows.allSatisfy { $0.accountID == "creator" })
+    }
+
+    @Test func creatorFromAnotherCopyOverridesLoginFallback() async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let remote = Source(data: Data((header + record(1)).utf8), database: fixture.store.databaseURL)
+        _ = try await UsageScanner(store: fixture.store, device: fixture.device, priority: DevicePriority(), accountID: "remote-login")
+            .scan(source: remote)
+        let creatorHeader = header.replacingOccurrences(of: "\"id\":", with: "\"creator_account_id\":\"creator\",\"id\":")
+        let local = Source(data: Data((creatorHeader + record(1)).utf8), database: fixture.store.databaseURL)
+        _ = try await UsageScanner(store: fixture.store, device: .local(root: fixture.root), priority: DevicePriority(), accountID: "local-login")
+            .scan(source: local)
+        let rows = try fixture.store.usageRecords().rows
+        #expect(rows.count == 1)
+        #expect(rows.first?.accountID == "creator")
+        #expect(rows.first?.device == "local")
+    }
+
+    @Test func replayFillsUnknownAccountWithoutDuplicatingUsage() async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let source = Source(data: Data((header + record(1)).utf8), database: fixture.store.databaseURL)
+        var scanner = UsageScanner(store: fixture.store, device: fixture.device, priority: DevicePriority())
+        _ = try await scanner.scan(source: source)
+        #expect(try fixture.store.usageRecords().rows.first?.accountID == nil)
+        try await fixture.store.pool.write { db in
+            try db.execute(sql: "UPDATE scan_files SET parser_state_json = json_set(parser_state_json, '$.version', 9)")
+        }
+        scanner.accountID = "source-login"
+        let replay = try await scanner.scan(source: source)
+        #expect(replay.insertedRequests == 0 && replay.upgradedRequests == 1)
+        #expect(try fixture.store.usageRecords().rows.map(\.accountID) == ["source-login"])
+        scanner.accountID = "changed-login"
+        await source.append(Data(record(2).utf8))
+        _ = try await scanner.scan(source: source)
+        #expect(try fixture.store.usageRecords().rows.allSatisfy { $0.accountID == "source-login" })
+    }
+
     private struct Fixture {
         let root: URL
         let store: UsageStore

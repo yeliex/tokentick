@@ -69,7 +69,7 @@ struct RemoteDevicesSettingsView: View {
             }
             if let progress = status?.progress, status?.busy == true {
                 ProgressView(value: Double(progress.completedFiles), total: Double(max(1, progress.totalFiles)))
-                Text(String(localized: "Syncing…")).font(.caption)
+                Text(String(localized: "Files: \(progress.completedFiles) / \(progress.totalFiles)")).font(.caption).monospacedDigit()
             } else if let error = status?.error {
                 Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
             } else {

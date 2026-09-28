@@ -26,14 +26,16 @@ struct OverviewView: View {
                     Text(String(localized: "Usage")).font(.title2.weight(.semibold))
                     Spacer()
                     HStack(alignment: .center, spacing: 8) {
-                        Picker(String(localized: "Account"), selection: Binding(get: { app.selectedAccount }, set: { app.selectedAccount = $0 })) {
-                            Text(String(localized: "All accounts")).tag(UsageAccountScope.all)
-                            ForEach(accounts, id: \.self) { id in
-                                Text(id == app.currentLimits?.accountID ? String(localized: "Current account") : String(localized: "Account · ") + String(id.suffix(8)))
-                                    .help(id).tag(UsageAccountScope.account(id))
-                            }
-                            Text(String(localized: "Unknown account")).tag(UsageAccountScope.unknown)
-                        }.labelsHidden().controlSize(.small).fixedSize()
+                        if accounts.count > 1 {
+                            Picker(String(localized: "Account"), selection: Binding(get: { app.selectedAccount }, set: { app.selectedAccount = $0 })) {
+                                Text(String(localized: "All accounts")).tag(UsageAccountScope.all)
+                                ForEach(accounts, id: \.self) { id in
+                                    Text(id == app.currentLimits?.accountID ? String(localized: "Current account") : String(localized: "Account · ") + String(id.suffix(8)))
+                                        .help(id).tag(UsageAccountScope.account(id))
+                                }
+                                Text(String(localized: "Unknown account")).tag(UsageAccountScope.unknown)
+                            }.labelsHidden().controlSize(.small).fixedSize()
+                        }
                         Picker(String(localized: "Period"), selection: Binding(get: { period }, set: { storedPeriod = $0.rawValue })) {
                             ForEach(OverviewPeriod.allCases) { Text($0.title).tag($0) }
                         }.pickerStyle(.segmented).labelsHidden().controlSize(.small)
@@ -134,6 +136,7 @@ struct OverviewView: View {
                 let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                 guard !Task.isCancelled else { return }
                 accounts = result.1
+                if accounts.count <= 1, app.selectedAccount != .all { app.selectedAccount = .all }
                 if report?.hasSameContent(as: result.0) != true || loadedPeriod != current.period { report = result.0 }
                 loadedPeriod = current.period
             } catch {

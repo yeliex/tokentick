@@ -168,7 +168,7 @@ final class RemoteDevicesModel {
                 self.generations[device.id] = nil
             }
             do {
-                var result = try await service.synchronize(device, refreshMetadata: refreshMetadata, onProgress: { [weak self] progress in
+                let result = try await service.synchronize(device, refreshMetadata: refreshMetadata, onProgress: { [weak self] progress in
                     Task { @MainActor in
                         guard self?.generations[device.id] == generation else { return }
                         self?.statuses[device.id]?.progress = progress
@@ -177,7 +177,6 @@ final class RemoteDevicesModel {
                 try Task.checkCancellation()
                 guard self.generations[device.id] == generation else { return }
                 if result.metadataRefreshed { self.metadataRefreshedAt[device.id] = result.finishedAt }
-                else { result.accountEmail = previous.result?.accountEmail }
                 var finished = Status()
                 finished.result = result
                 self.statuses[device.id] = finished

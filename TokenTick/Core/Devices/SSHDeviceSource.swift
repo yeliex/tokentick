@@ -98,28 +98,15 @@ actor SSHDeviceSource: DeviceFileSource, DeviceAccountSource, DeviceTraceSource 
         return try await query().read(request, as: DeviceTracePage.self)
     }
 
-    func accountEmail() async throws -> String? {
-        try await accountEmail { token in
-            await Task.detached(priority: .utility) { DeviceAccountIdentity.fetch(token) }.value
+    func account() async throws -> DeviceAccount {
+        let root = try await databaseRoot()
+        let query = try await query()
+        let task = Task.detached(priority: .utility) {
+            let session = try query.accountSession(root: root)
+            defer { session.close() }
+            return try DeviceAccount.read(session: session)
         }
-    }
-
-    func accountEmail(lookup: @Sendable (String) async -> String?) async throws -> String? {
-        let before = try await credentialBytes()
-        guard let token = try DeviceAccountIdentity.accessToken(from: before) else { return nil }
-        let email = await lookup(token)
-        try Task.checkCancellation()
-        guard try await credentialBytes() == before else { return nil }
-        return email
-    }
-
-    private func credentialBytes() async throws -> Data {
-        let path = try await resolved("auth.json")
-        let attributes = try await connection().stat(path)
-        guard attributes.isRegularFile, let size = attributes.size, size > 0, size <= 1_048_576,
-              let modified = attributes.modifiedAt else { throw DeviceSourceFailure.unsupported }
-        return try await read(DeviceSourceFile(path: "auth.json", size: size, modifiedAt: Double(modified),
-                                              identity: "sftp:auth.json"), offset: 0, count: Int(size))
+        return try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
     }
 
     func close() async {

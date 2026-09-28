@@ -30,6 +30,7 @@ struct RolloutParser {
             }
             if session.timestamp == nil { session.timestamp = event.timestamp }
             state.session = session
+            if let account = session.creator_account_id, !account.isEmpty { state.accountID = account }
             return nil
         case .turn(let turn):
             let sameTurn = turn.turn_id != nil && turn.turn_id == state.turnID
@@ -158,7 +159,7 @@ struct RolloutParser {
                            thread: String, turn: String?, line: Int,
                            evidence: UsageEvidence) throws -> CollectedUsage {
         guard let timestamp = DateParsing.parseTimestamp(evidence.timestamp) else { throw ParseError.missingTimestamp }
-        return CollectedUsage(responseID: responseID, legacyCumulative: legacy, threadID: thread.lowercased(),
+        return CollectedUsage(accountID: state.accountID, responseID: responseID, legacyCumulative: legacy, threadID: thread.lowercased(),
                               turnID: turn, timestamp: timestamp,
                               model: turn == state.turnID ? state.model : nil, tokens: usage,
                               rolloutID: identity.rolloutID.uuidString.lowercased(), line: line, evidence: evidence)

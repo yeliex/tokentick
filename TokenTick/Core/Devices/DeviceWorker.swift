@@ -19,7 +19,7 @@ public enum DeviceWorker {
 
     enum Reply: Codable, Sendable {
         case root(String), manifest(DeviceSourceManifest), bytes(Data), failure(DeviceSourceFailure), catalog(DeviceCatalogPage)
-        case accountEmail(String?)
+        case account(DeviceAccount)
         case traceFiles([String]), tracePage(DeviceTracePage)
     }
 
@@ -94,7 +94,7 @@ public enum DeviceWorker {
         switch operation {
         case .traceFiles: return .traceFiles(try DeviceTracePage.files(root: root))
         case .tracePage(let file, let cursor): return .tracePage(try DeviceTracePage.read(root: root, file: file, previous: cursor))
-        case .account: return .accountEmail(try? DeviceAccountIdentity.read(root: root))
+        case .account: return .account(try DeviceAccount.read(root: root))
         case .catalog(let after): return .catalog(try DeviceCatalogPage.read(root: root, after: after))
         case .probe:
             // Test access to exactly the selected directory, without requiring a Codex layout.

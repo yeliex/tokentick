@@ -11,8 +11,9 @@ struct RolloutScan {
     var batchReady: Bool { pendingLines >= 512 }
     var inheritedEvents: Int { parser.inheritedEvents }
 
-    init(identity: RolloutIdentity, cursor: ScanCursor? = nil) {
+    init(identity: RolloutIdentity, cursor: ScanCursor? = nil, accountID: String? = nil) {
         parser = RolloutParser(state: cursor?.state ?? RolloutParserState(), identity: identity)
+        if parser.state.accountID == nil { parser.state.accountID = accountID }
         line = cursor?.line ?? 0
         offset = cursor?.offset ?? 0
     }

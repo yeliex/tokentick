@@ -65,9 +65,10 @@ extension UsageStore {
                 let preferIncoming = preferSource || (usage.evidence.record != nil
                     && (existing["response_id"] as String?) == nil
                     && (existing["device"] as String) == device)
-                let columns = ["response_id","model","tier","reasoning_effort","legacy_total","legacy_input","legacy_output",
+                let columns = ["account_id","response_id","model","tier","reasoning_effort","legacy_total","legacy_input","legacy_output",
                     "legacy_cache_read","legacy_cache_write","legacy_reasoning","turn_started_at"]
                 let values: [(any DatabaseValueConvertible)?] = [
+                    session?.creator_account_id.flatMap { $0.isEmpty ? nil : $0 } ?? (existing["account_id"] as String?) ?? usage.accountID,
                     usage.responseID ?? existing["response_id"], usage.model ?? existing["model"], tier ?? existing["tier"],
                     usage.evidence.reasoningEffort ?? existing["reasoning_effort"],
                     legacy?.totalTokens ?? existing["legacy_total"], legacy == nil ? (existing["legacy_input"] as Int64?) : legacy?.inputTokens,
@@ -87,12 +88,12 @@ extension UsageStore {
                 if changed { upgraded += 1 } else { duplicates += 1; continue }
             } else {
                 try db.execute(sql: """
-                    INSERT INTO usage(device,turn_key,thread_id,turn_id,response_id,occurred_at,usage_date,hour,minute,model,tier,reasoning_effort,
+                    INSERT INTO usage(account_id,device,turn_key,thread_id,turn_id,response_id,occurred_at,usage_date,hour,minute,model,tier,reasoning_effort,
                         input_tokens,output_tokens,cache_read_tokens,cache_write_tokens,reasoning_tokens,total_tokens,
                         source,rollout_id,source_line,source_ordinal,turn_started_at,source_created_at,
                         legacy_total,legacy_input,legacy_output,legacy_cache_read,legacy_cache_write,legacy_reasoning)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'local',?,?,?,?,?,?,?,?,?,?,?)
-                    """, arguments: [device,key,usage.threadID,usage.turnID,usage.responseID,time,
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'local',?,?,?,?,?,?,?,?,?,?,?)
+                    """, arguments: [usage.accountID,device,key,usage.threadID,usage.turnID,usage.responseID,time,
                         usage.timestamp.formatted(.iso8601.year().month().day().dateSeparator(.dash)),parts.hour,parts.minute,
                         usage.model,tier,usage.evidence.reasoningEffort,usage.tokens.inputTokens,usage.tokens.outputTokens,
                         usage.tokens.cachedInputTokens,usage.tokens.cacheWriteInputTokens,usage.tokens.reasoningOutputTokens,usage.tokens.totalTokens,

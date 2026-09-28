@@ -3907,6 +3907,16 @@
       }
     },
 
+    "Files: %lld / %lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件：%1$lld / %2$lld"
+          }
+        }
+      }
+    },
     "Use Local Folder": {
       "extractionState": "manual",
       "localizations": {
