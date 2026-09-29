@@ -241,15 +241,16 @@ struct DeviceUsageScannerTests {
         defer { fixture.clean() }
         let reset: Int64 = 1_789_084_800
         let limits = """
-        {"timestamp":"2026-09-09T00:00:02Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"secondary":{"used_percent":40,"window_minutes":10080,"resets_at":\(reset)}}}}
+        {"timestamp":"2026-09-09T00:00:00Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"secondary":{"used_percent":40,"window_minutes":10080,"resets_at":\(reset)}}}}
 
         """
-        let first = header.replacingOccurrences(of: "\"id\":", with: "\"creator_account_id\":\"a\",\"id\":") + record(1) + limits
+        let first = header.replacingOccurrences(of: "\"type\":\"turn_context\"", with: "\"timestamp\":\"2026-09-09T00:00:00Z\",\"type\":\"turn_context\"").replacingOccurrences(of: "\"id\":", with: "\"creator_account_id\":\"a\",\"id\":") + record(1) + limits
         let source = Source(data: Data(first.utf8), database: fixture.store.databaseURL)
         _ = try await UsageScanner(store: fixture.store, device: .local(root: fixture.root), priority: DevicePriority())
             .scan(source: source)
         _ = try await UsageScanner(store: fixture.store, device: fixture.device, priority: DevicePriority())
             .scan(source: source)
+        #expect(try fixture.store.weeklyLimitHistory().rows.isEmpty)
         try fixture.store.saveCompletedWeeklyCycles()
         var rows = try fixture.store.weeklyLimitHistory().rows
         #expect(rows.count == 1)

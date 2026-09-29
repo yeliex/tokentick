@@ -72,6 +72,7 @@ struct RolloutParser {
                 currentLimits = try CurrentLimitSnapshot.log(raw: raw, observedAt: timestamp.timeIntervalSince1970,
                     threadID: session.id, fileName: identity.fileName, line: line, accountID: state.accountID)
                 currentLimits?.turnID = state.turnID
+                currentLimits?.turnStartedAt = state.turnStartedAt.flatMap(DateParsing.parseTimestamp)?.timeIntervalSince1970
                 if try isInherited(event, session: session) { currentLimits?.historyExclusion = "inherited" }
                 else if session.forked_from_id != nil, let created = session.timestamp.flatMap(DateParsing.parseTimestamp), timestamp <= created {
                     currentLimits?.historyExclusion = "fork_replay"

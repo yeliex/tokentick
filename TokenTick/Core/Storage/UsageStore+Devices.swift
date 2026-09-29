@@ -39,6 +39,12 @@ extension UsageStore {
                 }
                 try db.execute(sql: "INSERT INTO app_metadata(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                     arguments: [key, String(date.timeIntervalSince1970)])
+                try db.execute(sql: """
+                    UPDATE app_metadata SET value='complete' WHERE key='weekly_cycles_rebuild' AND value='pending'
+                    AND NOT EXISTS (SELECT 1 FROM scan_files
+                        WHERE COALESCE(json_extract(parser_state_json,'$.version'),0)<>?
+                           OR COALESCE(json_extract(file_state_json,'$.completed'),0)<>1)
+                    """, arguments: [RolloutParserState.currentVersion])
             }
         }
     }

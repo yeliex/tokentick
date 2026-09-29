@@ -14,6 +14,7 @@ public struct CurrentLimitSnapshot: Codable, Sendable {
     public var unlimitedCredits: Bool? = nil
     public var fileName: String? = nil
     public var line: Int? = nil
+    public var turnStartedAt: Double? = nil
     public var turnID: String? = nil
     public var historyExclusion: String? = nil
 

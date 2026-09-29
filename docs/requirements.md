@@ -99,9 +99,9 @@ Estimate exhaustion and remaining allowance at reset from recent percentage obse
 
 Persist only completed seven-day windows of the main `codex` bucket, identified by a duration of 10,080 minutes, not by `primary` or `secondary` naming. Five-hour and additional-model windows are excluded from history.
 
-A stable reset deadline provides the inferred start seven days earlier. A new window observed before the previous deadline establishes an early reset; use the first new-window observation as an approximate boundary when the exact event is unavailable. Do not distinguish a reset credit from another early reset without evidence. Idle zero-use deadline movement must not generate overlapping cycles.
+Use the first accepted limit observation of a cycle as its start and the reported reset deadline as its end. Never derive the start by subtracting seven days. Recognize a confirmed early reset separately: the deadline moves forward, usage falls from above 1% to at most 5%, and a subsequent reading supports the new window. End the old cycle at the first observation of the confirmed new window; otherwise keep the reported deadline. Reject an early reset if subsequent readings of the previous window show usage growing above its pre-reset percentage before its deadline and beyond the last reading of the candidate window. Reevaluate earlier decisions when new evidence arrives. Ignore conflicting limit windows without discarding messages or usage. A zero-only candidate must not end the existing cycle or block subsequent candidates. Idle gaps between cycles are valid. Same-account deadlines within 60 seconds represent one cycle, including across scans and restarts. Upgrades rebuild affected historical cycles through normal resumable local and remote collection, preserving usage facts and prices.
 
-Store the last observed percentage, not a claimed final billed percentage. Persist local record counts, tokens, complete costs, and known cost components for each ended cycle during synchronization. Attribute usage using the turn start, falling back to its occurrence time when unavailable. Update aggregates after new logs, boundary corrections, or repricing. Resume historical detection from minimal scan checkpoints without persisting full current snapshots or individual observations.
+Store the highest observed percentage within the accepted cycle, not a claimed final billed percentage. Collection only checkpoints evidence; resolve cycle boundaries and refresh aggregates after each synchronization pass, using all collected sources. Persist local record counts, tokens, complete costs, and known cost components for each ended cycle during synchronization. Attribute usage using the turn start, falling back to its occurrence time when unavailable. Update aggregates after new logs, boundary corrections, or repricing. Resume historical detection from minimal scan checkpoints without persisting full current snapshots or individual observations.
 
 ## App experience
 
@@ -125,7 +125,7 @@ Show tokens, costs, and event counts above a paginated table. Selecting a day or
 
 Show ended cycles in a list with the selected cycle's details alongside it. Date presets are 30 days, 90 days, 1 year, and Lifetime, plus custom dates. Show account selection only when multiple known accounts exist, while global results retain unknown-account usage.
 
-The detail card combines percentage, progress, local tokens, estimated costs, and event counts. Its heading shows the start and actual end boundary including time; early-reset cycles additionally show the scheduled deadline. Keep these extra times out of the list. The current window belongs in Overview.
+The detail card combines percentage, progress, local tokens, estimated costs, and event counts. Its heading shows the first-observation time and reported reset deadline including time. Keep these extra times out of the list. The current window belongs in Overview.
 
 ### Menu bar and windows
 

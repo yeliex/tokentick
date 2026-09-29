@@ -201,6 +201,13 @@ enum StoreSchema {
                  END;
                 """, arguments: [TimeZone.current.identifier])
         }
+        migrator.registerMigration("weekly-cycles.2") { db in
+            try db.execute(sql: """
+                DELETE FROM weekly_limit_cycles;
+                DELETE FROM app_metadata WHERE key='weekly_cycles_revision' OR key LIKE 'device_full_manifest:%';
+                INSERT INTO app_metadata(key,value) VALUES ('weekly_cycles_rebuild','pending');
+                """)
+        }
         return migrator
     }
 }
