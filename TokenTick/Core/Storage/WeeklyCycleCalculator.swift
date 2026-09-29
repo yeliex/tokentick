@@ -27,10 +27,6 @@ struct WeeklyCycleCalculator: Sendable {
     }
 
     mutating func merge(_ window: Window) {
-        // Replace the same source's accountless observation when its task account becomes available.
-        if window.account != nil, let file = window.file {
-            windows.removeAll { $0.account == nil && $0.file == file && abs($0.reset - window.reset) <= 60 }
-        }
         if let index = windows.firstIndex(where: { $0.account == window.account && abs($0.reset-window.reset) <= 60 }) {
             let first = min(windows[index].first, window.first)
             let positive = windows[index].positive || window.positive

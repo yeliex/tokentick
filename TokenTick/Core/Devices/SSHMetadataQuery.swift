@@ -58,6 +58,14 @@ struct SSHMetadataQuery: Sendable {
             for (const p of ['/Applications', path.join(os.homedir(), 'Applications')])
                 for (const app of ['Codex.app', 'ChatGPT.app']) candidates.push(path.join(p, app, 'Contents/Resources/codex'));
         }
+        if (windows && process.env.ProgramFiles) {
+            const apps = path.join(process.env.ProgramFiles, 'WindowsApps');
+            try {
+                for (const name of fs.readdirSync(apps).filter(n => n.startsWith('OpenAI.Codex_'))
+                    .sort((a, b) => b.localeCompare(a, undefined, {numeric: true})))
+                    candidates.push(path.join(apps, name, 'app/resources/codex.exe'));
+            } catch {}
+        }
         const executable = candidates.find(p => {
             try { fs.accessSync(p, fs.constants.X_OK); return fs.statSync(p).isFile(); } catch { return false; }
         });
