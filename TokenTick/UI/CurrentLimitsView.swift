@@ -6,6 +6,7 @@ struct CurrentLimitsView: View {
     @AppStorage("limitsShowRemaining") private var showRemaining = true
     @AppStorage("limitsWorkingDays") private var workingDays = 5
     var compact = false
+    var openOverview: (() -> Void)?
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             VStack(alignment: .leading, spacing: compact ? 12 : 18) {
@@ -16,9 +17,7 @@ struct CurrentLimitsView: View {
                         if let plan = app.currentLimits?.planType, let name = Self.planName(plan) {
                             Text(name).font(.callout).foregroundStyle(.secondary)
                         }
-                        if app.isRefreshingAPI {
-                            ProgressView().controlSize(.small).help(String(localized: "Loading limits…"))
-                        }
+                        refreshControl
                     }
                 }
                 if let snapshot = app.currentLimits {
@@ -27,7 +26,12 @@ struct CurrentLimitsView: View {
                         limitGroup(windows: main, snapshot: snapshot, now: context.date)
                             .help(String(localized: "Last updated: \(Date(timeIntervalSince1970: snapshot.observedAt).formatted(date: .abbreviated, time: .standard))"))
                     }
-                    else { Text(String(localized: "No subscription limits available")).font(.callout).foregroundStyle(.secondary) }
+                    else {
+                        HStack {
+                            Text(String(localized: "No subscription limits available")).font(.callout).foregroundStyle(.secondary)
+                            if compact { Spacer(); refreshControl }
+                        }
+                    }
                     if !compact {
                         let groups = Dictionary(grouping: snapshot.windows.filter { $0.limitID != "codex" }, by: \.limitID)
                         ForEach(groups.keys.sorted(), id: \.self) { name in
@@ -36,15 +40,41 @@ struct CurrentLimitsView: View {
                     }
                 } else {
                     if app.isRefreshingAPI {
-                        if compact { ProgressView().controlSize(.small).frame(maxWidth: .infinity, alignment: .trailing) }
+                        if compact { refreshControl.frame(maxWidth: .infinity, alignment: .trailing) }
                     } else {
-                        Text(String(localized: "No current limits. Refresh or check your Codex sign-in status."))
-                            .font(.callout).foregroundStyle(.secondary)
+                        HStack {
+                            Text(String(localized: "No current limits. Refresh or check your Codex sign-in status."))
+                                .font(.callout).foregroundStyle(.secondary)
+                            if compact { refreshControl }
+                        }
                     }
+                }
+            }
+            .background {
+                if let openOverview {
+                    Button(action: openOverview) {
+                        Color.clear.contentShape(Rectangle())
+                    }.buttonStyle(.plain)
                 }
             }
         }
     }
+    @ViewBuilder private var refreshControl: some View {
+        if compact {
+            CompactLimitRefreshButton()
+        } else if app.isRefreshingAPI {
+            ProgressView().controlSize(.small).help(String(localized: "Loading limits…"))
+        } else {
+            Button { app.synchronize(.api) } label: {
+                Label(String(localized: "Refresh"), systemImage: "arrow.clockwise")
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .help(String(localized: "Refresh"))
+            .disabled(app.isSyncing || app.isDeletingDeviceData || app.store == nil)
+        }
+    }
+
     private func limitGroup(windows: [CurrentLimitWindow], snapshot: CurrentLimitSnapshot, now: Date) -> some View {
         VStack(alignment: .leading, spacing: compact ? 8 : 14) {
             ForEach(windows.sorted { ($0.durationMinutes ?? 0) < ($1.durationMinutes ?? 0) }) { window in
@@ -123,21 +153,26 @@ struct CurrentLimitsView: View {
                 Text(periodName(window)).font(.callout).foregroundStyle(.secondary)
             }
             if expired {
-                Text(String(localized: "Waiting for limit reset")).foregroundStyle(.secondary)
+                HStack {
+                    Text(String(localized: "Waiting for limit reset")).foregroundStyle(.secondary)
+                    if self.compact { Spacer(); refreshControl }
+                }
             } else {
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
                     if compact {
                         Text("\(displayPercent(window).formatted(.number.precision(.fractionLength(0...1))))%")
                             .font(.system(size: 16, weight: .semibold)).monospacedDigit()
-                        Text(periodName(window)).font(.callout).foregroundStyle(.secondary)
-                        Text(showRemaining ? String(localized: "remaining") : String(localized: "used")).font(.callout).foregroundStyle(.secondary)
+                        Text(periodName(window)).font(self.compact ? .caption : .callout).foregroundStyle(.secondary)
+                        Text(showRemaining ? String(localized: "remaining") : String(localized: "used")).font(self.compact ? .caption : .callout).foregroundStyle(.secondary)
                     } else {
                         Text("\(displayPercent(window).formatted(.number.precision(.fractionLength(0...1))))%")
                             .font(.system(size: 36, weight: .semibold, design: .rounded)).monospacedDigit()
                         Text(showRemaining ? String(localized: "remaining") : String(localized: "used")).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    if let reset = window.resetsAt {
+                    if self.compact {
+                        CompactLimitRefreshButton(resetTime: window.resetsAt.map { resetTime($0, now: now) })
+                    } else if let reset = window.resetsAt {
                         Text(resetTime(reset, now: now))
                             .font(.caption).foregroundStyle(.secondary)
                             .help(UsageFormatting.timestamp(Double(reset)))
@@ -213,6 +248,44 @@ struct CurrentLimitsView: View {
         if minutes >= 1440 { return String(localized: "\(minutes / 1440)d \((minutes % 1440) / 60)h") }
         if minutes >= 60 { return String(localized: "\(minutes / 60)h \(minutes % 60)m") }
         return String(localized: "\(minutes) min")
+    }
+}
+
+private struct CompactLimitRefreshButton: View {
+    @Environment(ApplicationModel.self) private var app
+    var resetTime: String?
+
+    var body: some View {
+        let isRefreshing = app.isRefreshingAPI
+        let isDisabled = app.isSyncing || app.isDeletingDeviceData || app.store == nil
+        return Button { app.synchronize(.api) } label: {
+            HStack(alignment: .center, spacing: 7) {
+                if let resetTime { Text(resetTime) }
+                ZStack {
+                    if isRefreshing {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }.frame(width: 12, height: 12)
+            }
+            .font(.caption).foregroundStyle(.secondary)
+            .padding(.vertical, 3)
+            .padding(.horizontal, 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(LimitRefreshButtonStyle())
+        .accessibilityLabel(String(localized: "Refresh"))
+        .help(isRefreshing ? String(localized: "Loading limits…") : String(localized: "Refresh"))
+        .disabled(isDisabled)
+    }
+}
+
+private struct LimitRefreshButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .contentShape(Rectangle())
+            .opacity(configuration.isPressed ? 0.6 : 1)
     }
 }
 

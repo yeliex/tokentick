@@ -20,24 +20,20 @@ struct MenuBarView: View {
                     .controlSize(.small)
                     .frame(maxWidth: .infinity, minHeight: 100)
             } else {
-                if app.currentLimits != nil {
-                    subscriptionHeader
-                    Divider()
-                }
-                CurrentLimitsView(compact: true)
+                Button { showPage(.overview) } label: { subscriptionHeader }
+                    .buttonStyle(.plain)
+                Divider()
+                CurrentLimitsView(compact: true, openOverview: { showPage(.overview) })
+                    .accessibilityAction(named: Text(String(localized: "Overview"))) { showPage(.overview) }
                     .padding(.bottom, -6)
             }
             Divider()
-            MenuUsageView()
+            MenuUsageView { showPage(.overview) }
             Divider()
             VStack(spacing: 0) {
                 ForEach(AppPage.allCases) { page in
                     Button {
-                        dismiss()
-                        app.requestedPage = page
-                        NSApp.setActivationPolicy(.regular)
-                        openWindow(id: "main")
-                        NSApp.activate(ignoringOtherApps: true)
+                        showPage(page)
                     } label: { menuLabel(page.title, symbol: page.symbol) }
                 }
                 Button { NSApp.terminate(nil) } label: {
@@ -56,6 +52,14 @@ struct MenuBarView: View {
             MainWindowSettingsButton().frame(width: 0, height: 0).clipped().opacity(0).accessibilityHidden(true)
         }
         .task { await app.start(); await app.refreshExpiredLimits() }
+    }
+
+    private func showPage(_ page: AppPage) {
+        dismiss()
+        app.requestedPage = page
+        NSApp.setActivationPolicy(.regular)
+        openWindow(id: "main")
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private var subscriptionLoading: Bool {

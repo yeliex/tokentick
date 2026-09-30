@@ -4,6 +4,7 @@ import Charts
 import TokenTickCore
 
 struct MenuUsageView: View {
+    var openOverview: () -> Void
     @Environment(ApplicationModel.self) private var app
     @State private var totals: [OverviewPeriod: UsageSummary] = [:]
     @State private var month: OverviewReport?
@@ -33,7 +34,12 @@ struct MenuUsageView: View {
                         }.monospacedDigit().frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+                .contentShape(Rectangle())
+                .onTapGesture(perform: openOverview)
+                .accessibilityAction(named: Text(String(localized: "Overview")), openOverview)
                 chart(month)
+                    .simultaneousGesture(TapGesture().onEnded { openOverview() })
+                    .accessibilityAction(named: Text(String(localized: "Overview")), openOverview)
             } else {
                 ProgressView(String(localized: "Loading usage…")).frame(maxWidth: .infinity, minHeight: 180)
             }

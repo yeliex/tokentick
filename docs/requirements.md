@@ -85,7 +85,7 @@ Show the main `codex` bucket prominently and other buckets as secondary cards. W
 
 The default percentage text shows remaining allowance, configurable to used percentage. This preference changes only the text; the progress bar always fills from left to right with used percentage, and all markers use the same used-percentage coordinates. Weekly tick divisions use 4, 5, or 7 equal parts (default 5), plus 50% and 80% used markers. Five-hour windows omit those equal divisions. The time marker reflects elapsed natural time; the setting does not skip weekends or change the window duration.
 
-The current-limits module shows a small upper-right loading indicator while requesting the API, without replacing cached cards. A failed refresh retains the last known snapshot; a confirmed missing account clears it. Cache files are disposable, atomically replaced on successful refresh, and stored beside the TokenTick database. Invalid or missing files fall back to live fetching.
+The Overview current-limits module has a dedicated upper-right refresh button that requests API data without scanning local logs or refreshing remote devices and prices. It is unavailable during synchronization, device-data deletion, or database initialization, and becomes a small loading indicator while requesting the API without replacing cached cards. A failed refresh retains the last known snapshot; a confirmed missing account clears it. Cache files are disposable, atomically replaced on successful refresh, and stored beside the TokenTick database. Invalid or missing files fall back to live fetching.
 
 Within the same login session, an expired observation may remain visible as the latest known snapshot while the app silently refreshes on window activation. Stale observations cannot support forecasts.
 
@@ -133,7 +133,7 @@ Use one main window and a separate Settings scene, with native keyboard, selecti
 
 The menu-bar label uses a template icon with the rounded main-limit percentage, preferring the weekly window. Missing or reset-expired limits fall back to the plain icon when the label updates. Tooltips and accessibility text include the period and full percentage.
 
-The compact menu panel shares current main-limit data and shows Today/7/30/90-day usage plus a 30-day token/cost chart. Keep the chart's hover interaction, daily averages, and independent peaks. Its only page/action rows are Overview, Usage details, Plan usage, and Quit; ⌘, still opens Settings.
+The compact menu panel shares current main-limit data and shows Today/7/30/90-day usage plus a 30-day token/cost chart. Clicking the subscription header, limits, usage totals, or chart opens the main Overview window. The reset time and adjacent refresh icon form one clickable button that requests API data without opening the window. Its loading indicator uses the same footprint as the refresh icon and follows shared API refresh state, including requests started from Overview or automatic synchronization; log-only collection does not activate it. Keep the chart's hover interaction, daily averages, and independent peaks. Its only page/action rows are Overview, Usage details, Plan usage, and Quit; ⌘, still opens Settings.
 
 ### Settings, language, and presentation
 
