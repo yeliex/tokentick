@@ -42,3 +42,30 @@
 "Unable to identify the rollout file. No conversation ID was inferred." = "Unable to identify the rollout file. No conversation ID was inferred.";
 "Zstandard decompression failed: %@" = "Zstandard decompression failed: %@";
 "limit must be 1–10000 and offset cannot be negative." = "limit must be 1–10000 and offset cannot be negative.";
+
+"Enter a valid SSH address with a numeric port, or choose a folder." = "Enter a valid SSH address with a numeric port, or choose a folder.";
+"The device configuration no longer exists." = "The device configuration no longer exists.";
+"The device configuration is invalid. Existing settings were kept." = "The device configuration is invalid. Existing settings were kept.";
+
+"The device did not respond in time. Try again when it is reachable." = "The device did not respond in time. Try again when it is reachable.";
+
+"The device response exceeded the safe transfer limit." = "The device response exceeded the safe transfer limit.";
+
+"Unable to communicate with the device worker." = "Unable to communicate with the device worker.";
+
+"The Codex directory is unavailable. Check the connection and directory permissions." = "The Codex directory is unavailable. Check the connection and directory permissions.";
+
+"The source file changed during reading. It will be checked again before resuming." = "The source file changed during reading. It will be checked again before resuming.";
+
+"The source path leaves the selected Codex directory." = "The source path leaves the selected Codex directory.";
+
+"The device returned an invalid response." = "The device returned an invalid response.";
+
+"The device does not provide the required file access capabilities." = "The device does not provide the required file access capabilities.";
+
+"The device requires authentication. Check its connection settings." = "The device requires authentication. Check its connection settings.";
+
+"Verify this SSH host in Terminal before connecting with TokenTick." = "Verify this SSH host in Terminal before connecting with TokenTick.";
+"The SSH configuration conflicts with the collection command. Check this host's SSH settings." = "The SSH configuration conflicts with the collection command. Check this host's SSH settings.";
+
+"SMB-mounted folders are not supported. Use an SSH connection for this device." = "SMB-mounted folders are not supported. Use an SSH connection for this device.";

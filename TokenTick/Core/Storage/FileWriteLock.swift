@@ -6,6 +6,23 @@ struct FileWriteLock {
     let url: URL
     enum LockError: Error { case busy }
 
+    /// Device-specific coordination may span network awaits without holding the database writer lock.
+    func withAsyncLock<T: Sendable>(_ operation: @Sendable () async throws -> T) async throws -> T {
+        let descriptor = open(url.path, O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { close(descriptor) }
+        while true {
+            try Task.checkCancellation()
+            if flock(descriptor, LOCK_EX | LOCK_NB) == 0 { break }
+            if errno == EINTR { continue }
+            guard errno == EWOULDBLOCK else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        defer { flock(descriptor, LOCK_UN) }
+        try Task.checkCancellation()
+        return try await operation()
+    }
+
     func withLock<T>(nonBlocking: Bool = false, _ operation: () throws -> T) throws -> T {
         let descriptor = open(url.path, O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR)
         guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }

@@ -4,75 +4,75 @@ import Testing
 @testable import TokenTickCore
 
 struct TurnUsageTests {
-    @Test func reasoningEffortBackfillsWithoutDuplicatingRequestsAndDoesNotLeakAcrossTurns() throws {
+    @Test func reasoningEffortBackfillsWithoutDuplicatingRequestsAndDoesNotLeakAcrossTurns() async throws {
         let f = try Fixture(); defer { f.clean() }
         let body = f.turn("one") + f.count(1)
         _ = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: body)
-        _ = try f.scan()
+        _ = try await f.scan()
         let updated = f.turn("one").replacingOccurrences(of: "\"model\":", with: "\"effort\":\"high\",\"model\":")
             + f.count(1) + f.turn("two") + f.count(2)
         _ = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: updated)
-        #expect(try f.scan().issueCount == 0)
-        let rows = try f.store.pool.read { try Row.fetchAll($0, sql: "SELECT turn_id,reasoning_effort AS effort FROM usage ORDER BY turn_id") }
+        #expect(try await f.scan().issueCount == 0)
+        let rows = try f.rows("SELECT turn_id,reasoning_effort AS effort FROM usage ORDER BY turn_id")
         #expect(rows.count == 2)
         #expect(rows[0]["effort"] as String? == "high")
         #expect(rows[1]["effort"] as String? == nil)
-        #expect(try f.scan().insertedRequests == 0)
+        #expect(try await f.scan().insertedRequests == 0)
     }
 
-    @Test func forkCopiesUseOriginalCompleteTurnAndOriginalCanKeepGrowing() throws {
+    @Test func forkCopiesUseOriginalCompleteTurnAndOriginalCanKeepGrowing() async throws {
         let f = try Fixture(); defer { f.clean() }
         let original = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: f.turn("shared") + f.count(1) + f.count(2))
         _ = try f.write(thread: f.child, created: "2026-09-02T00:00:00Z", body:
             (f.turn("shared") + f.count(1)).replacingOccurrences(of: "2026-09-01", with: "2026-09-02") + f.turn("child-only") + f.count(3))
-        #expect(try f.scan().issueCount == 0)
+        #expect(try await f.scan().issueCount == 0)
         #expect(try f.total() == 360)
-        #expect(try f.store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(DISTINCT turn_key) FROM usage") } == 2)
+        #expect(try await f.store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(DISTINCT turn_key) FROM usage") } == 2)
         try f.append(f.count(3), to: original)
-        #expect(try f.scan().issueCount == 0)
+        #expect(try await f.scan().issueCount == 0)
         #expect(try f.total() == 480)
-        let rows = try f.store.pool.read { try Row.fetchAll($0, sql: "SELECT * FROM usage WHERE turn_id='shared'") }
+        let rows = try f.rows("SELECT * FROM usage WHERE turn_id='shared'")
         #expect(rows.count == 3)
         #expect(rows.first?["thread_id"] as String? == f.parent)
         #expect(rows.reduce(Int64(0)) { $0 + ($1["total_tokens"] as Int64) } == 360)
         #expect(try f.store.threadInfo(ids: [f.parent])[f.parent]?.lastActiveAt == DateParsing.parseTimestamp("2026-09-01T00:00:03Z")?.timeIntervalSince1970)
-        #expect(try f.scan().insertedRequests == 0)
+        #expect(try await f.scan().insertedRequests == 0)
     }
 
-    @Test func earlierOriginalArrivingLaterReplacesOwnerDateAndPartialCopy() throws {
+    @Test func earlierOriginalArrivingLaterReplacesOwnerDateAndPartialCopy() async throws {
         let f = try Fixture(); defer { f.clean() }
         _ = try f.write(thread: f.child, created: "2026-09-02T00:00:00Z", body:
             (f.turn("shared") + f.count(1)).replacingOccurrences(of: "2026-09-01", with: "2026-09-02"))
-        _ = try f.scan()
+        _ = try await f.scan()
         _ = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: f.turn("shared") + f.count(1) + f.count(2))
         let reopened = try UsageStore(databaseURL: f.store.databaseURL)
-        #expect(try LocalUsageScanner(store: reopened).scan(codexHome: f.root).issueCount == 0)
+        #expect(try await LocalUsageScanner(store: reopened).scan(codexHome: f.root).issueCount == 0)
         #expect(try f.total() == 240)
-        let row = try f.store.pool.read { try Row.fetchOne($0, sql: "SELECT thread_id,usage_date FROM usage") }
+        let row = try f.rows("SELECT thread_id,usage_date FROM usage").first
         #expect(row?["thread_id"] as String? == f.parent)
         #expect(row?["usage_date"] as String? == "2026-09-01")
-        #expect(try f.store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(DISTINCT turn_key) FROM usage") } == 1)
+        #expect(try await f.store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(DISTINCT turn_key) FROM usage") } == 1)
     }
 
-    @Test func mixedFormatsWithDifferentCumulativeBaselinesSurviveRestartAndReplay() throws {
+    @Test func mixedFormatsWithDifferentCumulativeBaselinesSurviveRestartAndReplay() async throws {
         let f = try Fixture(); defer { f.clean() }
         let first = f.record(1, input: 171_813, output: 231, cumulative: 172_044)
         let legacy = f.count(1, input: 171_813, output: 231, cumulative: 419_766_598)
         let second = f.record(2, input: 178_000, output: 370, cumulative: 350_414)
             + f.count(2, input: 178_000, output: 370, cumulative: 419_944_968)
         let file = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: f.turn("shared") + first)
-        _ = try f.scan()
+        _ = try await f.scan()
         try f.append(legacy + second, to: file)
         let reopened = try UsageStore(databaseURL: f.store.databaseURL)
-        #expect(try LocalUsageScanner(store: reopened).scan(codexHome: f.root).issueCount == 0)
+        #expect(try await LocalUsageScanner(store: reopened).scan(codexHome: f.root).issueCount == 0)
         #expect(try f.total() == 350_414)
         #expect(try f.store.tableCounts()["usage"] == 2)
         _ = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: f.turn("shared") + first + legacy + second)
-        #expect(try f.scan().issueCount == 0)
+        #expect(try await f.scan().issueCount == 0)
         #expect(try f.total() == 350_414)
     }
 
-    @Test func oneTurnKeepsModelDayAndPricingModesWithoutUsingTurnTotalAsContext() throws {
+    @Test func oneTurnKeepsModelDayAndPricingModesWithoutUsingTurnTotalAsContext() async throws {
         let f = try Fixture(); defer { f.clean() }
         let base = f.turn("shared", model: "gpt-6-astra")
             + f.count(1, input: 200_000, output: 20, cumulative: 200_020)
@@ -83,10 +83,10 @@ struct TurnUsageTests {
         let other = f.turn("shared", model: "gpt-5.5") + f.count(5, cumulative: 1_000_200)
         let nextDay = f.count(6, cumulative: 1_000_320).replacingOccurrences(of: "2026-09-01", with: "2026-09-02")
         _ = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: base + long + fast + other + nextDay)
-        #expect(try f.scan().issueCount == 0)
-        #expect(try f.store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(DISTINCT turn_key) FROM usage") } == 1)
+        #expect(try await f.scan().issueCount == 0)
+        #expect(try await f.store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(DISTINCT turn_key) FROM usage") } == 1)
         #expect(try f.store.tableCounts()["usage"] == 6)
-        let rows = try f.store.pool.read { try Row.fetchAll($0, sql: "SELECT * FROM usage WHERE model='gpt-6-astra' ORDER BY id") }
+        let rows = try f.rows("SELECT * FROM usage WHERE model='gpt-6-astra' ORDER BY id")
         #expect(rows.count == 4)
         #expect(rows[0]["input_tokens"] as Int64? == 200_000)
         #expect(rows[0]["is_long_context"] as Bool? == false)
@@ -95,31 +95,31 @@ struct TurnUsageTests {
         #expect(rows.allSatisfy { ($0["amount"] as Int64?) != nil })
     }
 
-    @Test func changingTimezoneRebucketsIndividualEventsWithoutLosingDates() throws {
+    @Test func changingTimezoneRebucketsIndividualEventsWithoutLosingDates() async throws {
         let f = try Fixture(); defer { f.clean() }
         try f.store.setStatisticsTimezone("UTC")
         let body = f.turn("shared") + f.count(1).replacingOccurrences(of: "00:00:01", with: "15:59:01")
             + f.count(2).replacingOccurrences(of: "00:00:02", with: "16:01:02")
         _ = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: body)
-        _ = try f.scan()
+        _ = try await f.scan()
         #expect(try f.store.tableCounts()["usage"] == 2)
         #expect(try f.store.usageReport(UsageQuery(grouping: .total, timezone: "UTC")).unknownDateTokens == 0)
         #expect(try f.store.usageReport(UsageQuery(grouping: .total, timezone: "Asia/Shanghai")).unknownDateTokens == 0)
     }
 
-    @Test func aggregateOverflowFailsWithoutConvertingIndividualTokensToFloatingPoint() throws {
+    @Test func aggregateOverflowFailsWithoutConvertingIndividualTokensToFloatingPoint() async throws {
         let f = try Fixture(); defer { f.clean() }
         let input = Int.max / 2 + 100
         _ = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: f.turn("shared")
             + f.record(1, input: input, output: 20, cumulative: 1)
             + f.record(2, input: input, output: 20, cumulative: 2))
-        #expect(try f.scan().issueCount == 0)
+        #expect(try await f.scan().issueCount == 0)
         #expect(try f.store.tableCounts()["usage"] == 2)
         #expect(throws: (any Error).self) { try f.total() }
-        #expect(try f.store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM usage WHERE typeof(total_tokens)='integer'") } == 2)
+        #expect(try await f.store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM usage WHERE typeof(total_tokens)='integer'") } == 2)
     }
 
-    @Test func separateResponsesWithEqualTokensKeepTheirOrdinalsAndMixedReportsCountOnce() throws {
+    @Test func separateResponsesWithEqualTokensKeepTheirOrdinalsAndMixedReportsCountOnce() async throws {
         let f = try Fixture(); defer { f.clean() }
         func ordinal(_ json: String, _ value: Int) -> String {
             json.replacingOccurrences(of: "{\"timestamp\":", with: "{\"ordinal\":\(value),\"timestamp\":")
@@ -130,32 +130,32 @@ struct TurnUsageTests {
             + ordinal(f.record(2, input: 100, output: 20, cumulative: 240), 20)
             + ordinal(f.count(2), 22)
         _ = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: body)
-        #expect(try f.scan().issueCount == 0)
+        #expect(try await f.scan().issueCount == 0)
         let rows = try f.store.usageRecords(UsageQuery(sort: .automatic)).rows.sorted { $0.id < $1.id }
         #expect(rows.count == 2 && rows.map(\.responseID) == ["resp-1","resp-2"])
         #expect(rows.map(\.sourceOrdinal) == [10,20])
         #expect(try f.total() == 240)
-        #expect(try f.scan().insertedRequests == 0)
+        #expect(try await f.scan().insertedRequests == 0)
     }
 
-    @Test func utcHourMinuteAndDateStayConsistentAcrossMidnightAndTimezoneChanges() throws {
+    @Test func utcHourMinuteAndDateStayConsistentAcrossMidnightAndTimezoneChanges() async throws {
         let f = try Fixture(); defer { f.clean() }
         let body = f.turn("shared")
             + f.count(1).replacingOccurrences(of: "2026-09-01T00:00:01Z", with: "2026-09-01T23:59:59Z")
             + f.count(2).replacingOccurrences(of: "2026-09-01T00:00:02Z", with: "2026-09-02T00:00:01Z")
         _ = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: body)
-        #expect(try f.scan().issueCount == 0)
+        #expect(try await f.scan().issueCount == 0)
         let rows = try f.store.usageRecords(UsageQuery(timezone: "Asia/Kathmandu")).rows.sorted { $0.id < $1.id }
         #expect(rows.map(\.hour) == [23,0] && rows.map(\.minute) == [59,0])
         #expect(rows.map(\.usageDate) == ["2026-09-01","2026-09-02"])
         #expect(rows.allSatisfy { $0.statisticalDate == "2026-09-02" && $0.sourceOrdinal == nil && $0.responseID == nil })
-        let before = try f.store.pool.read { try Row.fetchAll($0, sql: "SELECT usage_date,hour,minute,SUM(total_tokens) AS tokens FROM usage GROUP BY usage_date,hour,minute ORDER BY usage_date,hour,minute") }
+        let before = try f.rows("SELECT usage_date,hour,minute,SUM(total_tokens) AS tokens FROM usage GROUP BY usage_date,hour,minute ORDER BY usage_date,hour,minute")
         #expect(before.count == 2 && before.allSatisfy { $0["tokens"] as Int64 == 120 })
         try f.store.setStatisticsTimezone("America/New_York")
         _ = try f.store.rebuildStatistics()
-        #expect(try f.store.pool.read { try Row.fetchAll($0, sql: "SELECT usage_date,hour,minute,SUM(total_tokens) AS tokens FROM usage GROUP BY usage_date,hour,minute ORDER BY usage_date,hour,minute") } == before)
-        #expect(throws: (any Error).self) { try f.store.pool.write { try $0.execute(sql: "UPDATE usage SET hour=24") } }
-        #expect(throws: (any Error).self) { try f.store.pool.write { try $0.execute(sql: "UPDATE usage SET minute=60") } }
+        #expect(try f.rows("SELECT usage_date,hour,minute,SUM(total_tokens) AS tokens FROM usage GROUP BY usage_date,hour,minute ORDER BY usage_date,hour,minute") == before)
+        await #expect(throws: (any Error).self) { try await f.store.pool.write { try $0.execute(sql: "UPDATE usage SET hour=24") } }
+        await #expect(throws: (any Error).self) { try await f.store.pool.write { try $0.execute(sql: "UPDATE usage SET minute=60") } }
     }
 
     private struct Fixture {
@@ -190,7 +190,8 @@ struct TurnUsageTests {
             let handle = try FileHandle(forWritingTo: url); defer { try? handle.close() }
             try handle.seekToEnd(); try handle.write(contentsOf: Data(body.utf8))
         }
-        func scan() throws -> ScanReport { try LocalUsageScanner(store: store).scan(codexHome: root) }
+        func rows(_ sql: String) throws -> [Row] { try store.pool.read { try Row.fetchAll($0, sql: sql) } }
+        func scan() async throws -> ScanReport { try await LocalUsageScanner(store: store).scan(codexHome: root) }
         func total() throws -> Int64 { try store.pool.read { try Int64.fetchOne($0, sql: "SELECT COALESCE(SUM(total_tokens),0) FROM usage") ?? 0 } }
         func clean() { try? FileManager.default.removeItem(at: root) }
     }

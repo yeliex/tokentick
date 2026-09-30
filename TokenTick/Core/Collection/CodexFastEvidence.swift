@@ -1,9 +1,7 @@
-import CryptoKit
 import Foundation
-import GRDB
 
 /// Cache only Fast evidence needed for statistics, not request bodies from traces.
-struct CodexFastEvidence: Codable {
+struct CodexFastEvidence: Codable, Sendable {
     let threadID: String
     let turnID: String
     let fileName: String
@@ -59,60 +57,11 @@ struct CodexFastEvidence: Codable {
         return quoted
     }
 
-    struct Cursor: Codable {
+    struct Cursor: Codable, Sendable, Equatable {
         let inode: UInt64
         let device: UInt64
         let lastID: Int64
         let anchor: String?
     }
 
-    /// The caller holds the destination write lock; read traces through a read-only connection and commit evidence with cursors.
-    static func collect(codexHome: URL, store: UsageStore) throws {
-        let urls = try FileManager.default.contentsOfDirectory(at: codexHome, includingPropertiesForKeys: nil)
-            .filter { $0.lastPathComponent.hasPrefix("logs_") && $0.pathExtension == "sqlite" }.sorted { $0.path < $1.path }
-        for url in urls {
-            try Task.checkCancellation()
-            let source = try CodexSourceDatabase.open(url, busyTimeout: 0.25)
-            defer { try? source.close() }
-            let file = try FileSnapshot(url: url, compressed: false)
-            let key = "fast_trace_cursor:" + url.standardizedFileURL.path
-            let previous = try store.fastEvidenceCursor(key: key)
-            try source.read { db in
-                let maximum = try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM logs") ?? 0
-                func anchor(_ id: Int64) throws -> String? {
-                    try String.fetchOne(db, sql: "SELECT json_array(ts,length(feedback_log_body),substr(feedback_log_body,1,512)) FROM logs WHERE id=?", arguments: [id])
-                        .map { SHA256.hash(data: Data($0.utf8)).map { String(format: "%02x", $0) }.joined() }
-                }
-                var start: Int64 = 0
-                if let previous, previous.inode == file.inode, previous.device == file.device,
-                   previous.lastID <= maximum, try previous.anchor == anchor(previous.lastID) { start = previous.lastID }
-                guard start < maximum else { return }
-                let threadColumn = try db.columns(in: "logs").contains(where: { $0.name == "thread_id" }) ? "thread_id" : "NULL AS thread_id"
-                let rows = try Row.fetchCursor(db, sql: """
-                    SELECT id,ts,\(threadColumn),feedback_log_body FROM logs
-                    WHERE id > ? AND id <= ? AND length(feedback_log_body) <= 4194304
-                      AND (feedback_log_body LIKE '%websocket request:%' OR feedback_log_body LIKE '%Submission sub=Submission {%')
-                    ORDER BY id
-                    """, arguments: [start, maximum])
-                var batch: [Self] = []
-                var count = 0
-                func commit(_ lastID: Int64) throws {
-                    let cursor = Cursor(inode: file.inode, device: file.device, lastID: lastID, anchor: try anchor(lastID))
-                    try store.commitFastEvidence(batch, cursor: cursor, key: key)
-                    batch.removeAll(keepingCapacity: true)
-                }
-                while let row = try rows.next() {
-                    try autoreleasepool {
-                        try Task.checkCancellation()
-                        if let body: String = row["feedback_log_body"],
-                           let evidence = parse(body: body, threadID: row["thread_id"], fileName: url.lastPathComponent,
-                                                rowID: row["id"], timestamp: row["ts"]) { batch.append(evidence) }
-                        count += 1
-                        if count % 256 == 0 { try commit(row["id"]) }
-                    }
-                }
-                try commit(maximum)
-            }
-        }
-    }
 }

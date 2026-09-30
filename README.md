@@ -86,6 +86,20 @@ ditto bin/TokenTick_TokenTickCore.bundle "$HOME/.local/bin/TokenTick_TokenTickCo
 
 Add `$HOME/.local/bin` to your PATH. This independent copy is updated manually and requires the resource bundle beside it.
 
+## Remote devices
+
+Add devices in Settings → Remote Devices using an SSH address or **Use Local Folder**. Select the Codex data folder itself. Connections can be tested, synced, paused, edited, or removed individually. Remote collection is available in the app.
+
+| Address | Meaning |
+| --- | --- |
+| `ssh://workstation` | Use an existing SSH host alias and discover the Codex directory |
+| `ssh://user@host:2222/home/user/.codex` | Specify the user, port, and Codex directory |
+| `ssh://workstation/D:/Users/user/.codex` | Specify a Windows Codex directory |
+
+SSH uses your existing system configuration. If the address has no path, TokenTick uses the remote `CODEX_HOME` or `~/.codex`.
+
+Overview groups usage across devices by account. Filter by account in Overview or by device in usage details. When removing a connection, choose whether to keep its collected history. Account limits and storage information remain specific to your local device.
+
 ## CLI
 
 ```sh
@@ -100,6 +114,10 @@ Run `tokentick --help` for filtering, pricing, and export options.
 ## Diagnostics
 
 The macOS app sends crash reports, sanitized operational errors, and session statistics to Sentry. An anonymous installation ID measures active installations and version adoption; it is not a Codex account or a count of people. Error reports include diagnostic messages and related file locations, with credential patterns redacted. Codex conversations, credentials, usage records, and full API responses are not intentionally collected. The CLI does not initialize Sentry.
+
+## Testing
+
+Run `swift test` for Core tests. Set `TOKENTICK_TEST_NODE` to a Node.js executable with `node:sqlite` support to include the SQLite query contract tests; otherwise those tests are skipped. With Docker running, `script/test_remote_ssh.sh` tests incremental collection against an isolated SSH container using temporary keys. It does not use configured remote devices or modify your SSH configuration.
 
 ## Documentation
 

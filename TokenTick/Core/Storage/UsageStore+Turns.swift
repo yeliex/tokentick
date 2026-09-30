@@ -7,7 +7,7 @@ extension UsageStore {
     }
 
     /// Keep turn ownership and cumulative components; deduplicate mixed formats by response or full cumulative values.
-    static func collectTurns(_ usages: [CollectedUsage], session: RolloutEvent.Session?, db: Database) throws
+    static func collectTurns(_ usages: [CollectedUsage], session: RolloutEvent.Session?, device: String = "local", priority: DevicePriority = DevicePriority(), db: Database) throws
         -> (inserted: Int, upgraded: Int, duplicates: Int) {
         var inserted = 0, upgraded = 0, duplicates = 0
         var calendar = Calendar(identifier: .gregorian); calendar.timeZone = .gmt
@@ -60,10 +60,15 @@ extension UsageStore {
                 for row in ordered where row["id"] as Int64 != id {
                     try db.execute(sql: "DELETE FROM usage WHERE id=?", arguments: [row["id"] as Int64])
                 }
-                let preferIncoming = usage.evidence.record != nil && (existing["response_id"] as String?) == nil
-                let columns = ["response_id","model","tier","reasoning_effort","legacy_total","legacy_input","legacy_output",
+                // Reassign only after semantic identity and components have matched.
+                let preferSource = priority.prefers(device, over: existing["device"])
+                let preferIncoming = preferSource || (usage.evidence.record != nil
+                    && (existing["response_id"] as String?) == nil
+                    && (existing["device"] as String) == device)
+                let columns = ["account_id","response_id","model","tier","reasoning_effort","legacy_total","legacy_input","legacy_output",
                     "legacy_cache_read","legacy_cache_write","legacy_reasoning","turn_started_at"]
                 let values: [(any DatabaseValueConvertible)?] = [
+                    session?.creator_account_id.flatMap { $0.isEmpty ? nil : $0 } ?? (existing["account_id"] as String?) ?? usage.accountID,
                     usage.responseID ?? existing["response_id"], usage.model ?? existing["model"], tier ?? existing["tier"],
                     usage.evidence.reasoningEffort ?? existing["reasoning_effort"],
                     legacy?.totalTokens ?? existing["legacy_total"], legacy == nil ? (existing["legacy_input"] as Int64?) : legacy?.inputTokens,
@@ -76,19 +81,19 @@ extension UsageStore {
                     arguments: StatementArguments(values + [id] + values))
                 let changed = db.changesCount > 0 || ordered.count > 1 || preferIncoming
                 if preferIncoming {
-                    try db.execute(sql: "UPDATE usage SET occurred_at=?,usage_date=?,hour=?,minute=?,rollout_id=?,source_line=?,source_ordinal=? WHERE id=?",
-                        arguments: [time,usage.timestamp.formatted(.iso8601.year().month().day().dateSeparator(.dash)),
+                    try db.execute(sql: "UPDATE usage SET device=?,occurred_at=?,usage_date=?,hour=?,minute=?,rollout_id=?,source_line=?,source_ordinal=? WHERE id=?",
+                        arguments: [device,time,usage.timestamp.formatted(.iso8601.year().month().day().dateSeparator(.dash)),
                             parts.hour,parts.minute,usage.rolloutID,usage.line,usage.evidence.ordinal.flatMap(Int64.init(exactly:)),id])
                 }
                 if changed { upgraded += 1 } else { duplicates += 1; continue }
             } else {
                 try db.execute(sql: """
-                    INSERT INTO usage(turn_key,thread_id,turn_id,response_id,occurred_at,usage_date,hour,minute,model,tier,reasoning_effort,
+                    INSERT INTO usage(account_id,device,turn_key,thread_id,turn_id,response_id,occurred_at,usage_date,hour,minute,model,tier,reasoning_effort,
                         input_tokens,output_tokens,cache_read_tokens,cache_write_tokens,reasoning_tokens,total_tokens,
                         source,rollout_id,source_line,source_ordinal,turn_started_at,source_created_at,
                         legacy_total,legacy_input,legacy_output,legacy_cache_read,legacy_cache_write,legacy_reasoning)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'local',?,?,?,?,?,?,?,?,?,?,?)
-                    """, arguments: [key,usage.threadID,usage.turnID,usage.responseID,time,
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'local',?,?,?,?,?,?,?,?,?,?,?)
+                    """, arguments: [usage.accountID,device,key,usage.threadID,usage.turnID,usage.responseID,time,
                         usage.timestamp.formatted(.iso8601.year().month().day().dateSeparator(.dash)),parts.hour,parts.minute,
                         usage.model,tier,usage.evidence.reasoningEffort,usage.tokens.inputTokens,usage.tokens.outputTokens,
                         usage.tokens.cachedInputTokens,usage.tokens.cacheWriteInputTokens,usage.tokens.reasoningOutputTokens,usage.tokens.totalTokens,

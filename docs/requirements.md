@@ -10,13 +10,25 @@ The current app has three main pages: Overview, Usage details, and Plan usage, p
 
 The scope excludes other model providers, Intel support, a cross-platform CLI, a cloud synchronization service, and an independent background daemon. Amounts are estimates based on public model prices, not subscription charges.
 
+## Remote devices
+
+The app supports multiple user-configured SSH connections and selected Codex folders. They share local parsing, pricing, historical-cycle recovery, and deduplication. Remote configuration and collection are app-only. Collection progress shows completed and total files. Current-account limits and daily API reference data use the built-in local login; other accounts' server usage is future work. Storage analysis remains local-only.
+
+- Settings presents one card per device, with a name, address, connection test, sync, pause, edit, and removal actions. One plain-text address field accepts an SSH URL or the path filled by Use Local Folder. The add/edit sheet can test the current address before saving. Saved displays hide the password. Connection addresses always come from the user.
+- Save the original URL, including an optional password, in the connection configuration. Use existing system SSH settings. An explicit SSH path wins; otherwise use the remote `CODEX_HOME`, then the remote user's `.codex`. Use selected folders exactly as chosen, without searching for a nested `.codex`. Accessible empty directories are successful empty results. Selected SMB mounts cannot supply the required SQLite access and report an actionable error.
+- The built-in source is `local`; every added source has a stable device ID, even a folder on this Mac. Editing preserves the ID and history. Changing the endpoint invalidates reading progress; renaming or changing only the password preserves it. Device identity describes the collected source, not a proven execution location.
+- Deduplicate usage globally, excluding device identity. Prefer local copies, then the earliest configured device, with stable IDs breaking ties. Keep titles and projects separately for each task and device, including reassignment and clearing. Resolve each source’s Codex login before scanning. Attribute usage to the log’s `creator_account_id`, falling back to that source’s login, then unknown.
+- Overview shows the account filter only when usage has multiple known accounts and filters across all devices; the menu-bar usage follows that selection. Unknown-account usage remains separate. Usage details retain device filters carried into drill-down and export, including configured devices without usage and removed devices with retained history. Only reveal logs in Finder for accessible local or configured-folder sources.
+- Connection tests are one-time access and identity checks, independent of collection, saved facts, synchronization status, and polling schedules. Background collection reads incrementally, backs off when unchanged or unavailable, and resumes interrupted history import. Show partial coverage and errors without discarding collected data.
+- Removing a connection offers to retain all collected data or delete that device's data. Retention preserves facts, task mappings, checkpoints, completion records, and the display name; both choices remove connection details and stored credentials. Remaining sources can collect shared events again after deletion. Pausing retains data. Rebuilding the database preserves connection configuration.
+
 ## Usage records and attribution
 
 - Retain each valid usage event with its available response ID, turn ID, source ordinal, timestamp, UTC date/hour/minute, model, token components, applied prices, and source location.
 - Preserve real source identifiers. Missing historical IDs remain null; do not generate a response ID from a turn or ordinal.
 - Across tasks containing the same turn, retain only the source task created earliest. A fork's new turns count normally. Discovering the original later changes ownership transactionally without adding duplicate consumption.
 - Count old and new reports of the same consumption once. Equal token counts alone do not make two distinct responses duplicates.
-- Include unknown-account usage in global totals. Account filters include only matching evidence; the current login does not fill historical account gaps.
+- Include unknown-account usage in global totals. Local and remote collection use the same task-account rule. Remote sources use their own login, never the built-in local login. Keep the resolved account when resuming an existing task. Historical limit cycles use the same task account: copies from the same account merge, while different accounts remain separate.
 - Keep unknown models in token totals and expose incomplete pricing. Missing values and zero are different.
 - Use the latest task title and project mapping. Project renames or reassignment update historical grouping without changing tokens or timestamps. Projects with the same resolved name share a group.
 - Resolve projects from Codex's saved projects and explicit task assignments. An arbitrary working-directory basename is not a project. Explicit projectless tasks use the `Chat` group; missing information alone is not proof of projectless status.
@@ -87,9 +99,9 @@ Estimate exhaustion and remaining allowance at reset from recent percentage obse
 
 Persist only completed seven-day windows of the main `codex` bucket, identified by a duration of 10,080 minutes, not by `primary` or `secondary` naming. Five-hour and additional-model windows are excluded from history.
 
-A stable reset deadline provides the inferred start seven days earlier. A new window observed before the previous deadline establishes an early reset; use the first new-window observation as an approximate boundary when the exact event is unavailable. Do not distinguish a reset credit from another early reset without evidence. Idle zero-use deadline movement must not generate overlapping cycles.
+Use the first accepted limit observation of a cycle as its start and the reported reset deadline as its end. Never derive the start by subtracting seven days. Recognize a confirmed early reset separately: the deadline moves forward, usage falls from above 1% to at most 5%, and a subsequent reading supports the new window. End the old cycle at the first observation of the confirmed new window; otherwise keep the reported deadline. Reject an early reset if subsequent readings of the previous window show usage growing above its pre-reset percentage before its deadline and beyond the last reading of the candidate window. Reevaluate earlier decisions when new evidence arrives. Ignore conflicting limit windows without discarding messages or usage. A zero-only candidate must not end the existing cycle or block subsequent candidates. Idle gaps between cycles are valid. Same-account deadlines within 60 seconds represent one cycle, including across scans and restarts. Upgrades rebuild affected historical cycles through normal resumable local and remote collection, preserving usage facts and prices.
 
-Store the last observed percentage, not a claimed final billed percentage. Persist local record counts, tokens, complete costs, and known cost components for each ended cycle during synchronization. Attribute usage using the turn start, falling back to its occurrence time when unavailable. Update aggregates after new logs, boundary corrections, or repricing. Resume historical detection from minimal scan checkpoints without persisting full current snapshots or individual observations.
+Store the highest observed percentage within the accepted cycle, not a claimed final billed percentage. Collection only checkpoints evidence; resolve cycle boundaries and refresh aggregates after each synchronization pass, using all collected sources. Persist local record counts, tokens, complete costs, and known cost components for each ended cycle during synchronization. Attribute usage using the turn start, falling back to its occurrence time when unavailable. Update aggregates after new logs, boundary corrections, or repricing. Resume historical detection from minimal scan checkpoints without persisting full current snapshots or individual observations.
 
 ## App experience
 
@@ -113,7 +125,7 @@ Show tokens, costs, and event counts above a paginated table. Selecting a day or
 
 Show ended cycles in a list with the selected cycle's details alongside it. Date presets are 30 days, 90 days, 1 year, and Lifetime, plus custom dates. Show account selection only when multiple known accounts exist, while global results retain unknown-account usage.
 
-The detail card combines percentage, progress, local tokens, estimated costs, and event counts. Its heading shows the start and actual end boundary including time; early-reset cycles additionally show the scheduled deadline. Keep these extra times out of the list. The current window belongs in Overview.
+The detail card combines percentage, progress, local tokens, estimated costs, and event counts. Its heading shows the first-observation time and reported reset deadline including time. Keep these extra times out of the list. The current window belongs in Overview.
 
 ### Menu bar and windows
 
@@ -125,7 +137,7 @@ The compact menu panel shares current main-limit data and shows Today/7/30/90-da
 
 ### Settings, language, and presentation
 
-Settings has General, Data, and About sections for login items, limit display, synchronization and prices, update controls, CLI installation, and paths/database size. General includes a persistent theme preference: Follow System (default), Light, or Dark. Changes apply immediately to the main window, Settings, and menu-bar panel. General settings creates `/usr/local/bin/tokentick` as a symbolic link to the bundled CLI without administrator privileges. Existing files and other links are never overwritten; installation reports conflicts and permission failures. The linked CLI updates with the app. App usage follows system timezone changes and automatic synchronization is part of normal operation.
+Settings has General, Data, Remote Devices, and About sections for login items, limit display, synchronization and prices, update controls, CLI installation, and paths/database size. General includes a persistent theme preference: Follow System (default), Light, or Dark. Changes apply immediately to the main window, Settings, and menu-bar panel. General settings creates `/usr/local/bin/tokentick` as a symbolic link to the bundled CLI without administrator privileges. Existing files and other links are never overwritten; installation reports conflicts and permission failures. The linked CLI updates with the app. App usage follows system timezone changes and automatic synchronization is part of normal operation.
 
 General includes an opt-in reset reminder switch and a method picker: Notification only (default), Confetti, Fireworks, or Random (chooses one of the two effects). All methods send normal system notifications, subject to macOS permission and delivery settings. Request notification permission when enabling reminders, show a System Settings action after denial, and refresh permission state on activation. A Test reminder action previews the selected delivery without changing usage or reset detection.
 

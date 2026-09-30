@@ -10,10 +10,13 @@ final class ApplicationModel {
     @ObservationIgnored private var automatic: AutomaticSyncController?
     private var started = false
     let storage = CodexStorageModel()
+    let devices = RemoteDevicesModel()
+    var selectedAccount: UsageAccountScope = .all
     let resetReminders = ResetReminderController()
     var requestedPage: AppPage?
     var isRefreshingAPI = false
     @ObservationIgnored private let displayCache = LocalDisplayCache(onDiagnostic: { AppTelemetry.capture($0) })
+    private(set) var isDeletingDeviceData = false
     var isSyncing = false
     var progress: SynchronizationProgress?
     var status: StoreStatus?
@@ -68,6 +71,12 @@ final class ApplicationModel {
                 }
             }
             configureAutomaticSync()
+            if let store {
+                devices.start(store: store) { [weak self] in
+                    guard let self else { return }
+                    await self.refresh()
+                }
+            }
         } catch {
             AppTelemetry.capture(error, operation: "database.open")
             self.error = error.localizedDescription; started = false
@@ -83,7 +92,8 @@ final class ApplicationModel {
     }
 
     func synchronize(_ scope: SynchronizationScope = .all) {
-        guard !isSyncing, let store else { return }
+        guard !isSyncing, !isDeletingDeviceData, let store else { return }
+        if scope == .all { devices.refreshAll() }
         checkLoginEnvironment()
         let limitGeneration = limitSession.generation
         isSyncing = true
@@ -141,6 +151,27 @@ final class ApplicationModel {
     }
 
     func cancelSync() { automatic?.cancelled(); syncTask?.cancel() }
+
+    func removeDevice(_ device: RemoteDevice, deleteUsage: Bool) async throws {
+        guard !isDeletingDeviceData else { return }
+        guard deleteUsage else {
+            try await devices.remove(device, deleteUsage: false)
+            return
+        }
+        isDeletingDeviceData = true
+        defer {
+            isDeletingDeviceData = false
+            devices.resumeCollection()
+            automatic?.finished()
+        }
+        // Deletion invalidates other sources' cursors. Wait for every in-flight commit first.
+        let local = syncTask
+        local?.cancel()
+        await devices.pauseCollection()
+        await local?.value
+        try Task.checkCancellation()
+        try await devices.remove(device, deleteUsage: true)
+    }
 
     private func receiveCurrentLimits(_ snapshot: CurrentLimitSnapshot?, generation: Int) async {
         checkLoginEnvironment()
@@ -200,6 +231,7 @@ final class ApplicationModel {
             status = result.0
             lastSync = result.1
             refreshID += 1
+            await devices.refreshCollectionDates()
         } catch {
             AppTelemetry.capture(error, operation: "database.refresh")
             self.error = error.localizedDescription

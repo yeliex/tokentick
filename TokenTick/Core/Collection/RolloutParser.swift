@@ -30,6 +30,7 @@ struct RolloutParser {
             }
             if session.timestamp == nil { session.timestamp = event.timestamp }
             state.session = session
+            if let account = session.creator_account_id, !account.isEmpty { state.accountID = account }
             return nil
         case .turn(let turn):
             let sameTurn = turn.turn_id != nil && turn.turn_id == state.turnID
@@ -69,8 +70,9 @@ struct RolloutParser {
             if let raw = count.rate_limits, let session = state.session,
                let timestamp = event.timestamp.flatMap(DateParsing.parseTimestamp) {
                 currentLimits = try CurrentLimitSnapshot.log(raw: raw, observedAt: timestamp.timeIntervalSince1970,
-                    threadID: session.id, fileName: identity.fileName, line: line)
+                    threadID: session.id, fileName: identity.fileName, line: line, accountID: state.accountID)
                 currentLimits?.turnID = state.turnID
+                currentLimits?.turnStartedAt = state.turnStartedAt.flatMap(DateParsing.parseTimestamp)?.timeIntervalSince1970
                 if try isInherited(event, session: session) { currentLimits?.historyExclusion = "inherited" }
                 else if session.forked_from_id != nil, let created = session.timestamp.flatMap(DateParsing.parseTimestamp), timestamp <= created {
                     currentLimits?.historyExclusion = "fork_replay"
@@ -158,7 +160,7 @@ struct RolloutParser {
                            thread: String, turn: String?, line: Int,
                            evidence: UsageEvidence) throws -> CollectedUsage {
         guard let timestamp = DateParsing.parseTimestamp(evidence.timestamp) else { throw ParseError.missingTimestamp }
-        return CollectedUsage(responseID: responseID, legacyCumulative: legacy, threadID: thread.lowercased(),
+        return CollectedUsage(accountID: state.accountID, responseID: responseID, legacyCumulative: legacy, threadID: thread.lowercased(),
                               turnID: turn, timestamp: timestamp,
                               model: turn == state.turnID ? state.model : nil, tokens: usage,
                               rolloutID: identity.rolloutID.uuidString.lowercased(), line: line, evidence: evidence)

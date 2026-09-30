@@ -7,14 +7,16 @@ struct OverviewView: View {
     var openConversation: (UsageQuery) -> Void
     @SceneStorage("overview.period") private var storedPeriod = OverviewPeriod.week.rawValue
     private var period: OverviewPeriod { OverviewPeriod(rawValue: storedPeriod) ?? .week }
+    @State private var accounts: [String] = []
     @State private var loadedPeriod: OverviewPeriod?
     @State private var report: OverviewReport?
     @State private var loading = false
     @State private var error: String?
     @State private var refreshedAt = Date()
-    private struct Request: Hashable { let period: OverviewPeriod; let refresh: Int; let timezone: String; let now: Date }
+    private struct Request: Hashable { let period: OverviewPeriod; let refresh: Int; let timezone: String; let now: Date; let account: UsageAccountScope }
     private var timezone: String { app.status?.timezone ?? TimeZone.current.identifier }
-    private var request: Request { Request(period: period, refresh: app.usageRefreshID, timezone: timezone, now: refreshedAt) }
+    private var request: Request { Request(period: period, refresh: app.usageRefreshID, timezone: timezone, now: refreshedAt, account: app.selectedAccount) }
+    private var selectionChanged: Bool { loadedPeriod != period || report?.query.account != app.selectedAccount }
 
     var body: some View {
         ScrollView {
@@ -23,12 +25,25 @@ struct OverviewView: View {
                 HStack {
                     Text(String(localized: "Usage")).font(.title2.weight(.semibold))
                     Spacer()
-                    Picker(String(localized: "Period"), selection: Binding(get: { period }, set: { storedPeriod = $0.rawValue })) {
-                        ForEach(OverviewPeriod.allCases) { Text($0.title).tag($0) }
-                    }.pickerStyle(.segmented).labelsHidden().controlSize(.regular)
-                        .fixedSize(horizontal: true, vertical: true).frame(width: 410, alignment: .trailing)
+                    HStack(alignment: .center, spacing: 8) {
+                        if accounts.count > 1 {
+                            Picker(String(localized: "Account"), selection: Binding(get: { app.selectedAccount }, set: { app.selectedAccount = $0 })) {
+                                Text(String(localized: "All accounts")).tag(UsageAccountScope.all)
+                                ForEach(accounts, id: \.self) { id in
+                                    Text(id == app.currentLimits?.accountID ? String(localized: "Current account") : String(localized: "Account · ") + String(id.suffix(8)))
+                                        .help(id).tag(UsageAccountScope.account(id))
+                                }
+                                Text(String(localized: "Unknown account")).tag(UsageAccountScope.unknown)
+                            }.labelsHidden().controlSize(.small).fixedSize()
+                        }
+                        Picker(String(localized: "Period"), selection: Binding(get: { period }, set: { storedPeriod = $0.rawValue })) {
+                            ForEach(OverviewPeriod.allCases) { Text($0.title).tag($0) }
+                        }.pickerStyle(.segmented).labelsHidden().controlSize(.small)
+                            .fixedSize(horizontal: true, vertical: true)
+                    }
+                    .alignmentGuide(VerticalAlignment.center) { $0[VerticalAlignment.center] + 1 }
                 }
-                if loading && (report == nil || loadedPeriod != period) {
+                if selectionChanged && (loading || report != nil) {
                     ProgressView(String(localized: "Summarizing usage")).frame(maxWidth: .infinity, minHeight: 260)
                 } else if let error {
                     ContentUnavailableView(String(localized: "Unable to load usage"), systemImage: "exclamationmark.triangle", description: Text(error))
@@ -103,7 +118,7 @@ struct OverviewView: View {
                     ContentUnavailableView(String(localized: "No usage in the selected period"), systemImage: "chart.bar")
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
-                if report?.total == nil || error != nil || (loading && loadedPeriod != period) {
+                if report?.total == nil || error != nil || (selectionChanged && (loading || report != nil)) {
                     CodexStorageSummaryView()
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
@@ -112,14 +127,17 @@ struct OverviewView: View {
         .task(id: request) {
             guard let store = app.store else { return }
             let current = request
-            loading = report == nil || loadedPeriod != current.period; error = nil
+            loading = report == nil || selectionChanged; error = nil
             do {
                 let worker = Task.detached(priority: .userInitiated) {
-                    try store.overviewReport(period: current.period, now: current.now, timezone: current.timezone)
+                    let report = try store.overviewReport(period: current.period, now: current.now, timezone: current.timezone, account: current.account)
+                    return (report, try store.usageFilterOptions().accounts)
                 }
                 let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                 guard !Task.isCancelled else { return }
-                if report?.hasSameContent(as: result) != true || loadedPeriod != current.period { report = result }
+                accounts = result.1
+                if accounts.count <= 1, app.selectedAccount != .all { app.selectedAccount = .all }
+                if report?.hasSameContent(as: result.0) != true || loadedPeriod != current.period { report = result.0 }
                 loadedPeriod = current.period
             } catch {
                 guard !Task.isCancelled else { return }

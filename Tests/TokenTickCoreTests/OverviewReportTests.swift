@@ -4,6 +4,84 @@ import Testing
 @testable import TokenTickCore
 
 struct OverviewReportTests {
+    @Test func accountOverviewCombinesDevicesAndSeparatesUnknownUsage() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        try store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO usage(device,account_id,source_line,rollout_id,model,reasoning_effort,total_tokens,usage_date,source) VALUES
+                    ('local','account-a',1,'one','model-a','high',100,'2026-09-01','local'),
+                    ('remote','account-a',1,'two','model-a','high',200,'2026-09-01','local'),
+                    ('remote','account-b',1,'three','model-b','low',400,'2026-09-01','local'),
+                    ('local',NULL,1,'four','model-c','low',800,'2026-09-01','local');
+                """)
+        }
+        _ = try store.rebuildStatistics(timezone: "UTC")
+        let report = try store.overviewReport(period: .all, now: Date(), timezone: "UTC", account: .account("account-a"))
+        #expect(report.total?.totalTokens == 300)
+        #expect(report.models.map(\.group) == ["model-a"])
+        #expect(report.efforts.map(\.name) == ["high"])
+        #expect(report.efforts.reduce(0) { $0 + $1.tokens } == 300)
+        #expect(report.modes.reduce(0) { $0 + $1.tokens } == 300)
+        #expect(report.trend.reduce(0) { $0 + $1.summary.totalTokens } == 300)
+        #expect(report.query.account == .account("account-a"))
+        #expect(report.query.filters.device == .all)
+        let unknown = try store.overviewReport(period: .all, now: Date(), timezone: "UTC", account: .unknown)
+        #expect(unknown.total?.totalTokens == 800)
+        let all = try store.overviewReport(period: .all, now: Date(), timezone: "UTC")
+        #expect(all.total?.totalTokens == 1500)
+    }
+
+    @Test func deviceCostsPartitionKnownAmountsAndKeepUnknownPricing() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        try store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO usage(device,source_line,rollout_id,total_tokens,usage_date,source,amount,input_amount) VALUES
+                    ('local',1,'local-priced',100,'2026-09-01','local',1000,1000),
+                    ('remote',1,'remote-priced',200,'2026-09-01','local',2000,2000),
+                    ('remote',1,'remote-partial',300,'2026-09-01','local',NULL,500),
+                    ('remote',1,'remote-unknown',400,'2026-09-01','local',NULL,NULL);
+                """)
+        }
+        _ = try store.rebuildStatistics(timezone: "UTC")
+        let now = Date()
+        let remote = try store.overviewReport(period: .all, now: now, timezone: "UTC", device: .value("remote"))
+        let local = try store.overviewReport(period: .all, now: now, timezone: "UTC", device: .value("local"))
+        let all = try store.overviewReport(period: .all, now: now, timezone: "UTC")
+        #expect(remote.total?.knownAmountNanoUSD == 2500)
+        #expect(remote.total?.unpricedRecords == 2 && remote.total?.unpricedTokens == 700)
+        #expect(local.total?.knownAmountNanoUSD == 1000 && local.total?.unpricedRecords == 0)
+        #expect(all.total?.knownAmountNanoUSD == 3500 && all.total?.totalTokens == 1000)
+        let records = try store.usageRecords(remote.query).rows
+        #expect(records.count == 3 && records.allSatisfy { $0.device == "remote" })
+        #expect(remote.trend.reduce(0) { $0 + ($1.summary.knownAmountNanoUSD ?? 0) } == 2500)
+    }
+
+    @Test func deviceFilterAppliesToEveryOverviewSectionAndDrilldown() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        try store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO usage(device,source_line,rollout_id,thread_id,total_tokens,usage_date,source,model,reasoning_effort) VALUES
+                    ('local',1,'a','local-task',100,'2026-09-01','local','model-a','low'),
+                    ('remote',1,'b','remote-task',200,'2026-09-01','local','model-b','high');
+                """)
+        }
+        let now = Date()
+        let report = try store.overviewReport(period: .all, now: now, timezone: "UTC", device: .value("remote"))
+        #expect(report.total?.totalTokens == 200)
+        #expect(report.models.map(\.group) == ["model-b"])
+        #expect(report.efforts.map(\.name) == ["high"])
+        #expect(report.trend.reduce(0) { $0 + $1.summary.totalTokens } == 200)
+        #expect(report.query.filters.device == .value("remote"))
+        let first = try store.overviewReport(period: .all, now: now, timezone: "UTC", device: .value("missing-one"))
+        let second = try store.overviewReport(period: .all, now: now, timezone: "UTC", device: .value("missing-two"))
+        #expect(!first.hasSameContent(as: second))
+    }
 
 
     @Test func fastTraceOnlyAppliesWhenObservedTierIsAbsent() throws {

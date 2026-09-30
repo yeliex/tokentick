@@ -102,8 +102,18 @@ struct UsageRecordsView: View {
 }
 
 private struct UsageRecordDetail: View {
+    @Environment(ApplicationModel.self) private var app
     let record: UsageRecord
     let timezone: TimeZone
+    private var localLogURL: URL? {
+        guard let path = record.lastKnownPath else { return nil }
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        if record.device == "local" { return url }
+        guard let device = app.devices.configuration.devices.first(where: { $0.id == record.device }),
+              case .directory(let root, _) = device.connection else { return nil }
+        let directory = URL(fileURLWithPath: root, isDirectory: true).standardizedFileURL.path
+        return url.path.hasPrefix(directory == "/" ? directory : directory + "/") ? url : nil
+    }
     var body: some View {
         Form {
             Section(String(localized: "Turn attribution")) {
@@ -146,16 +156,19 @@ private struct UsageRecordDetail: View {
                 UsageDetailField(String(localized: "Full cost"), value: UsageFormatting.exactMoney(record.amountNanoUSD))
             }
             Section(String(localized: "Source information")) {
-                UsageDetailField(String(localized: "Source"), value: record.source == "local" ? String(localized: "Local logs") : "API")
+                UsageDetailField(String(localized: "Device"), value: app.devices.name(record.device))
+                UsageDetailField(String(localized: "Source"), value: record.source == "local" ? String(localized: "Codex logs") : "API")
                 UsageDetailField("Rollout ID", value: record.rolloutID ?? String(localized: "Unknown"))
                 UsageDetailField(String(localized: "File name"), value: record.fileName ?? String(localized: "Unknown"))
                 UsageDetailField(String(localized: "Original event index"), value: record.sourceOrdinal.map(String.init) ?? String(localized: "Unknown"))
                 UsageDetailField(String(localized: "Decompressed line number"), value: record.sourceLine.map(String.init) ?? String(localized: "Unknown"))
                 if let path = record.lastKnownPath {
                     UsageDetailField(String(localized: "Last scan position"), value: path)
-                    Button(String(localized: "Show log in Finder")) {
-                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
-                    }.disabled(!FileManager.default.fileExists(atPath: path))
+                    if let url = localLogURL {
+                        Button(String(localized: "Show log in Finder")) {
+                            NSWorkspace.shared.activateFileViewerSelecting([url])
+                        }.disabled(!FileManager.default.fileExists(atPath: url.path))
+                    }
                 }
                 UsageDetailField(String(localized: "Reasoning effort"), value: record.reasoningEffort ?? String(localized: "Unknown"))
                 UsageDetailField(String(localized: "Pricing mode"), value: record.pricingIsFast ? String(localized: "Fast") : String(localized: "Standard"))

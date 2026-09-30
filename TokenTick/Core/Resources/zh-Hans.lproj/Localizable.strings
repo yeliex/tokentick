@@ -42,3 +42,30 @@
 "Unable to identify the rollout file. No conversation ID was inferred." = "无法识别 rollout 文件身份，未猜测对话 ID。";
 "Zstandard decompression failed: %@" = "Zstandard 解压失败：%@";
 "limit must be 1–10000 and offset cannot be negative." = "limit 必须为 1–10000，offset 不能为负数。";
+
+"Enter a valid SSH address with a numeric port, or choose a folder." = "请输入有效的 SSH 地址（端口须为数字），或选择文件夹。";
+"The device configuration no longer exists." = "设备配置已不存在。";
+"The device configuration is invalid. Existing settings were kept." = "设备配置无效，已保留现有设置。";
+
+"The device did not respond in time. Try again when it is reachable." = "设备响应超时。请在设备可连接后重试。";
+
+"The device response exceeded the safe transfer limit." = "设备响应超过安全传输限制。";
+
+"Unable to communicate with the device worker." = "无法与设备读取进程通信。";
+
+"The Codex directory is unavailable. Check the connection and directory permissions." = "无法访问 Codex 目录。请检查连接和目录权限。";
+
+"The source file changed during reading. It will be checked again before resuming." = "读取期间源文件发生变化。恢复前将重新检查文件。";
+
+"The source path leaves the selected Codex directory." = "源文件路径超出了所选 Codex 目录。";
+
+"The device returned an invalid response." = "设备返回了无效响应。";
+
+"The device does not provide the required file access capabilities." = "设备未提供所需的文件访问能力。";
+
+"The device requires authentication. Check its connection settings." = "设备需要认证。请检查连接设置。";
+
+"Verify this SSH host in Terminal before connecting with TokenTick." = "请先在终端中验证此 SSH 主机，再使用 TokenTick 连接。";
+"The SSH configuration conflicts with the collection command. Check this host's SSH settings." = "SSH 配置与采集命令冲突，请检查该主机的 SSH 设置。";
+
+"SMB-mounted folders are not supported. Use an SSH connection for this device." = "不支持 SMB 挂载目录。请为该设备使用 SSH 连接。";

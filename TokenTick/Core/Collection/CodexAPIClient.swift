@@ -134,11 +134,16 @@ final class CodexAPISession {
                                   rpcMethod: lastRequestMethod, durationMilliseconds: durationMilliseconds)
     }
 
-    init(executable: URL, codexHome: URL, timeout: TimeInterval = 30) throws {
+    convenience init(executable: URL, codexHome: URL, timeout: TimeInterval = 30) throws {
+        try self.init(executable: executable, arguments: ["app-server", "--stdio"],
+            environment: ProcessInfo.processInfo.environment.merging(["CODEX_HOME": codexHome.path]) { _, new in new }, timeout: timeout)
+    }
+
+    init(executable: URL, arguments: [String], environment: [String: String], timeout: TimeInterval = 30) throws {
         self.timeout = timeout
         process.executableURL = executable
-        process.arguments = ["app-server", "--stdio"]
-        process.environment = ProcessInfo.processInfo.environment.merging(["CODEX_HOME": codexHome.path]) { _, new in new }
+        process.arguments = arguments
+        process.environment = environment
         process.standardInput = input
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice

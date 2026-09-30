@@ -11,6 +11,7 @@ This guide describes TokenTick's current data model, algorithms, and maintenance
 | `TokenTick/TokenTickApp.swift` | App lifecycle, main window, menu bar, and Settings commands |
 | `TokenTick/cli.swift` | CLI parsing, commands, text output, and JSON encoding |
 | `TokenTick/Core/Collection` | Log discovery, streaming, parsing, source identity, project metadata, and Codex API |
+| `TokenTick/Core/Devices` | Source access, connection configuration, metadata queries, and remote polling policy |
 | `TokenTick/Core/Synchronization` | Shared sync orchestration and trigger scheduling |
 | `TokenTick/Core/Pricing` | Bundled catalog, models.dev parsing, and exact cost calculations |
 | `TokenTick/Core/Storage` | SQLite schema, transactions, ownership, queries, pricing, and caches |
@@ -28,7 +29,7 @@ Collection submits parsed data through `UsageStore`; destination SQL belongs in 
 
 The default database is `~/Library/Application Support/TokenTick/usage.sqlite`. CLI `--database` and app `TOKENTICK_DATABASE` can select an isolated database.
 
-Each operation reads `CODEX_HOME` through the current process environment, with `~/.codex` as the empty/unset fallback. The scanner holds one root for the operation. Directory watcher rebinding follows environment changes. No app setting or CLI option duplicates this source selection.
+Each built-in local operation reads `CODEX_HOME` through the current process environment, with `~/.codex` as the empty/unset fallback. The scanner holds one root for the operation. Directory watcher rebinding follows environment changes. Added sources have independent connection settings; they do not replace the built-in local root.
 
 Source files are read-only. The Codex app-server owns authentication; TokenTick does not copy credentials. Login-session tracking inspects `auth.json` identity, modification time, and size without reading its contents. API identity still comes from a confirmed account response. Authentication changes outside that file are detected through subsequent API checks rather than guaranteed immediate notification.
 
@@ -52,15 +53,19 @@ Input includes cache-read/write tokens and output includes reasoning tokens. Pre
 
 ### `threads`
 
-`thread_id` is the primary key; `title` and `project_name` hold the latest mapping. `Chat` represents explicit projectless tasks. There is no separate project history table or project column copied into every usage row. Joins apply new mappings to history; project changes invalidate statistics.
+`threads` is keyed by `(thread_id, device)`. Each source updates only its own title and project, including clearing either value. Usage joins task metadata on both columns, while event deduplication remains global. Device-specific queries use that source's mapping; combined task summaries display the latest active source's title. Project changes invalidate statistics. Removing a connection while retaining data preserves all facts, mappings, checkpoints, completion records, and the display name. Deleting data removes that device's rows without testing whether another device has the same task.
 
 ### `scan_files`
 
-`rollout_id` is the stable logical source key. `thread_id`, `file_name`, and `current_path` identify the task and latest location. `scanned_line` and `scanned_offset` record committed complete lines and decompressed byte position; `last_scanned_at` records the last scan.
+`rollout_id` is the stable logical source key. The primary key is `(device, rollout_id)` so a copy on one device cannot suppress another copy's appended tail. `source_revision` invalidates checkpoints when a connection changes its source. `thread_id`, `file_name`, and `current_path` identify the task and latest location. `scanned_line` and `scanned_offset` record committed complete lines and decompressed byte position; `last_scanned_at` records the last scan.
 
-`file_state_json` tracks physical file state and validation information. `parser_state_json` retains the parser version, session/model/tier context, cumulative baselines, duplicate-report matching state, and minimal last-window summaries needed to resume historical limit detection.
+`file_state_json` tracks physical file state and validation information. Remote checkpoints retain the opaque source identity and a stable fingerprint of verified same-device copy metadata, so unchanged verified copies need no body transfer. `parser_state_json` retains the parser version, session/model/tier context, cumulative baselines, duplicate-report matching state, and minimal last-window summaries needed to resume historical limit detection.
+
+Each device retains its own file, line, and byte-offset checkpoints. A first-seen copy is parsed with global event deduplication; later scans read its new tail. Checkpoints are never inherited across devices, and collection does not compute full-prefix block hashes. Existing small boundary checks still detect truncation or replacement.
 
 These JSON fields are checkpoints, not an evidence archive. Keep only state needed to resume correctly. Cursors and their usage batch commit together. Parser format changes invalidate the checkpoint and trigger a deduplicated rescan.
+
+Background device scans use a full-manifest timestamp keyed by device and source revision. For 30 minutes after a completed full pass, they enumerate known log directories and recent UTC date directories, including adjacent dates. Selected traversals deduplicate overlapping directories and tolerate missing date directories. First collection, manual refresh, expired markers, or an oversized selected-path request use full traversal. Starting a full pass invalidates its prior marker; only an error-free pass with no pending files renews it, so interrupted historical discovery cannot silently become a partial directory check.
 
 ### `prices`
 
@@ -84,28 +89,66 @@ Each row is one effective usage event, not an aggregate turn and not necessarily
 | `input_price`, `output_price`, `cache_read_price`, `cache_write_price` | Rates actually applied |
 | `input_amount`, `output_amount`, `cache_read_amount`, `cache_write_amount`, `amount` | Component costs and complete total |
 | `pricing_tier`, `pricing_source`, `price_date` | Applied pricing selection, separate from observed tier |
-| `source`, `rollout_id`, `source_line`, `source_ordinal` | Structured source evidence and location |
+| `device`, `source`, `rollout_id`, `source_line`, `source_ordinal` | Stable device ID, structured source evidence, and location |
 | `legacy_total`, `legacy_input`, `legacy_output`, `legacy_cache_read`, `legacy_cache_write`, `legacy_reasoning` | Cumulative vectors for matching older Codex reports |
 
 Do not persist report bodies, alternate reports, or `evidence_json`. The schema's source constraint permits `local` and `api`, but current daily API reference buckets are not inserted into this table.
 
-Indexes cover occurrence time, thread/account/model time, UTC day/hour/minute, source position, turn key, and legacy matching. A partial unique index on `(turn_key, response_id)` protects identified responses; semantic deduplication still happens before insertion.
+Indexes cover occurrence time, thread/account/model time, UTC day/hour/minute, source position, turn key, and legacy matching. A partial unique index on `(turn_key, response_id)` protects identified responses; semantic deduplication still happens before insertion. Device identity is excluded from semantic deduplication. When matching events have equal components, a local copy takes ownership from a remote copy without changing account attribution. `device` is `local` for the built-in source and a configuration UUID for added sources; `source` continues to distinguish logs from API facts, not devices.
 
 ### `weekly_limit_cycles`
 
-Store only ended main seven-day cycles. Identity and boundaries use `id`, `account_id`, `limit_id`, `started_at`, `scheduled_reset_at`, `ended_at`, and `reset_kind` (`natural` or `early`). `last_observed_at`, `last_used_percent`, `source_file`, and `source_line` retain the final known evidence.
+Store only ended main seven-day cycles. Start at the first accepted limit observation in the cycle; normally end at the reported deadline. Do not subtract seven days. Retain first, peak, and last readings for each consecutive deadline segment. Group readings by account and reset deadline before relating cycles, independently of file arrival order. Batch commits only checkpoint evidence; the synchronization completion step resolves history and aggregates. An early reset requires a forward deadline, a drop from above 1% to at most 5%, and a later confirming reading without an intervening accepted old-window reading. Later growth above the pre-reset percentage in the previous window beyond the candidate window’s last reading disproves an early reset; stale or lower readings alone do not. Reconstruct history when later evidence changes that decision. A confirmed early reset ends the previous cycle at the new cycle’s first observation. Other conflicting windows do not update cycle history. A zero-only candidate must not end the existing cycle or block subsequent candidates. Idle gaps are valid. Identity and boundaries use `id`, `account_id`, `limit_id`, `started_at`, `scheduled_reset_at`, `ended_at`, and `reset_kind` (`natural` or `early`). Match same-account reset deadlines within 60 seconds in memory and storage, retaining one persisted ID across later observations. `last_observed_at`, `last_used_percent`, `source_file`, and `source_line` retain the latest observation location and highest accepted percentage.
 
-`total_tokens`, `request_count`, `amount`, and `known_amount` are computed during synchronization. The history page reads these values directly; it does not aggregate all usage on every selection. New facts, changed boundaries, or repricing invalidate the cycle aggregates. No separate current-window or individual-observation table is needed.
+`total_tokens`, `request_count`, `amount`, and `known_amount` are computed during synchronization. The history page reads these values directly; it does not aggregate all usage on every selection. New facts, changed boundaries, or repricing invalidate the cycle aggregates. No separate current-window or individual-observation table is needed. Totals are queried by account and message time within the cycle interval; usage rows do not store cycle membership.
+
+The `weekly-cycles.2` runtime migration clears only derived cycle history and forces full source discovery. Parser checkpoint version 12 replays local and remote logs using the existing resumable scanner. Facts and prices are retained. Compact deadline-segment evidence remains in each file checkpoint so restart and late files can confirm or disprove transitions. The rebuild stays pending while any saved file checkpoint is old or incomplete; successful replay is not repeated on restart.
 
 ### `statistics` and `app_metadata`
 
-Statistics are unique by `(account_key, date, timezone, dimension, dimension_value)` and contain token/cost components, known/complete amounts, unpriced and unattributed counts, and record counts. Dimensions are `all`, `thread`, `project`, and `model`. Month/year queries combine days; cross-dimension and exact rolling filters query facts directly.
+Statistics are unique by `(device, account_key, date, timezone, dimension, dimension_value)` and contain token/cost components, known/complete amounts, unpriced and unattributed counts, and record counts. Dimensions are `all`, `thread`, `project`, and `model`. Unfiltered reports sum devices; device filters aggregate matching facts with the other selected filters. Month/year queries combine days; cross-dimension and exact rolling filters query facts directly.
 
 `app_metadata` tracks fact/cache revisions, dirty dates, timezone, price status, Fast evidence, and required maintenance checkpoints. UTC dirty dates invalidate adjacent local days as needed for timezone offsets. Project changes invalidate the full grouping cache. `weekly_cycles_revision` avoids recomputing unchanged cycle totals.
 
 Do not add tables for every query combination, a `turn_usage` duplicate, or a statistics-rebuild staging area. Publish full cache rebuilds in one transaction; interruption rolls back. Repricing separately uses bounded resumable batches.
 
 ## Collection, deduplication, and mappings
+
+### Shared collection and source access
+
+Local file notifications and remote polling submit to one `CollectionScheduler`, serial per source with at most two active sources. `DeviceSyncService` runs the shared scanner, metadata collectors, and storage operations through `DeviceFileSource`. Transport reads finish before destination write transactions; a per-device process lock serializes scans across processes. Connection tests only probe access and optional account identity, outside collection scheduling and destination storage.
+
+Built-in local reads use native file access. Selected folders reuse one private framed worker per pass, initialized before app models. Both share the file-reading implementation. Workers resolve the chosen root and check the mount table with `getmntinfo_r_np(MNT_NOWAIT)` before opening it; `smbfs` is unsupported because active SQLite WAL databases require same-host coordination. Escaping child symlinks are rejected. Child I/O, deadlines, cancellation, and cleanup are bounded; raw stderr is not displayed.
+
+SSH uses system OpenSSH and SFTP for enumeration and byte-range reads. One bundled JavaScript query uses Codex's Node.js runtime and `node:sqlite` for fixed, paginated, read-only metadata projections. Runtime discovery uses the SFTP login directory's Codex cache; Windows invocation respects OpenSSH DefaultShell. Missing runtime capabilities are reported without copying databases. Log parsing, Fast-evidence interpretation, pricing, and deduplication run in Swift on the Mac. Source queries use short read transactions, not exclusive locks or checkpoints.
+
+SSH inherits exported variables from the user's interactive login shell, read once per app launch with a 10-second timeout. NUL framing excludes shell startup messages; device-specific askpass values are applied afterward. Honor the user's SSH configuration, including authentication, forwarding, RemoteCommand, and multiplexing. Only explicit URL user/port values override it. Cancellation closes owned subprocesses, not user-managed multiplexed masters. An unspecified root is resolved by Node from `process.env.CODEX_HOME`, then `os.homedir()` plus `.codex`; explicit roots bypass discovery. Windows drive and UNC paths are interpreted as remote paths.
+
+### Device configuration and lifecycle
+
+`devices.json` stores stable IDs, names, original addresses, optional directory bookmarks, enabled state, creation times, source revisions, retained-history names, and dismissed discovery IDs. Parsed connection fields are reconstructed on load. Writes are locked, atomic, and restricted to the current user. Passwords remain in the original URL; native askpass reads them by configuration directory and device ID without command-line or environment disclosure. Display addresses hide passwords.
+
+Usage and statistics store device IDs, not connection configuration. Built-in usage uses `local`. A source revision invalidates checkpoints after endpoint changes without deleting facts. Removing a connection with retention stops and awaits that device, preserving all collected data and only its ID/name in configuration. Deleting history pauses scheduling, cancels and awaits all local and remote collection, deletes the device's data transactionally, and invalidates remaining source checkpoints for deduplicated replay. Restore scheduling on success, cancellation, or failure.
+
+Before scanning, obtain the source login through Codex app-server’s `account/rateLimits/read` and `account/read`. Local sources launch Codex directly; SSH sources launch the remote Codex through the existing Node runtime and use the same Swift RPC client. The selected root is passed as `CODEX_HOME`. On Windows, executable discovery also checks the Codex Store package’s `app/resources/codex.exe`. Use `session_meta.creator_account_id` for task attribution, otherwise the source login; unavailable identities remain unknown. Persist that choice in the parser checkpoint for incremental reads. Remote progress exposes the scanner’s completed and total file counts.
+
+### Bounded collection and polling
+
+Remote passes yield after 32 changed files or 64 MiB of parsed input, checked at 512-line commits. A compressed object finishes before yielding to avoid repeatedly transferring its prefix. Task catalogs use 512-row pages and yield after 32 pages; each page and its device/source-revision continuation commit together. Fast trace collection yields after 32 pages per source database. Pending metadata resumes regardless of the hourly refresh interval. Optional metadata failures preserve collected usage.
+
+| Result or trigger | Next action |
+| --- | --- |
+| Changed logs | Check after 2 minutes |
+| Unchanged checks | Back off to 5, 15, then 30 minutes |
+| Pending history or metadata | Continue after 30 seconds |
+| Read or connection failure | Retry after 5, 15, 30, then 60 minutes, with jitter |
+| Catalog/account refresh | Hourly, after changed logs, or on manual refresh |
+| Sleep | Cancel active and queued device work |
+| Wake or network recovery | Coalesce checks; do not replay missed intervals |
+
+Due sources are ordered by next-check time, then configuration order. Remote timers and network monitoring exist only while an enabled device exists. Full-manifest discovery and incremental directory selection follow the `scan_files` contract above.
+
+Only error-free collection with no pending logs or metadata records a device/source-revision completion timestamp. Settings uses this timestamp for Last sync. Database rebuilds clear these markers. Each completed pass refreshes the displayed timestamps independently of dashboard queries. Fact revisions trigger dashboard updates for pricing and project changes; unchanged polls only update device status. Connection tests do not alter collection results, freshness timestamps, or backoff. Accessible empty sources are successful empty scans.
 
 ### File identity and streaming
 
@@ -129,11 +172,11 @@ If tier evidence is missing, read matching top-level `response.create.service_ti
 
 ### Collection boundaries
 
-`RolloutFileSource` provides directory enumeration (including its error callback), regular-file checks, file snapshots, and open seekable byte streams. `LocalRolloutFileSource` is the only implementation. It preserves FileManager enumeration order/options and one FileHandle per stream; reads are bounded and may reach EOF without filling the requested count. `RolloutLineReader` retains the shared line filtering, size limits, decompression, and decompressed offsets. File identity and resume hashes keep their existing serialized representation.
+`DeviceFileSource` provides manifests and bounded range reads for local, selected-directory, and SSH sources. `DeviceRolloutFile` adapts these ranges to `RolloutFileReading`, whose offsets refer to source bytes. `LocalRolloutFile` provides a direct file handle for local byte streams. `RolloutLineReader` alone handles line filtering, incomplete trailing lines, size limits, and streaming decompression; its cursor counts decompressed bytes. Manifest bounds and source identity checks remain in the source adapters.
 
-`RolloutScan` owns parser state, pending usage/weekly observations, and committed line/offset advancement. The scanner checks cancellation at the same boundaries and submits every 512 lines plus the final batch. Collection prepares checkpoint hashes immediately before each destination transaction, opening the source separately for each hash as before. `UsageStore.commitScan` receives that prepared checkpoint and atomically writes usage, weekly-cycle state, and the cursor; it does not read source bytes. Failed reads or transactions cannot advance a durable checkpoint.
+`RolloutScan` owns parser state, pending usage/weekly observations, and committed line/offset advancement. The scanner checks cancellation at the same boundaries and submits every 512 lines plus the final batch. Collection prepares checkpoint hashes with bounded source reads immediately before each destination transaction. `UsageStore.commitScan` receives that prepared checkpoint and atomically writes usage, weekly-cycle state, and the cursor; it does not read source bytes. Failed reads or transactions cannot advance a durable checkpoint.
 
-The public local scanner, write-lock scope, diagnostics, and progress callbacks remain unchanged. Thread/project catalogs and Fast trace collection retain their existing local read-only SQLite queries and batches; their already separate mapping and evidence parsers can be reused without introducing a metadata paging contract here. No device identity, connection configuration, or remote scheduling is part of these boundaries.
+Synchronous Foundation file reads and per-line parsing use autorelease pools inside the asynchronous scan, so temporary objects do not accumulate across files. Progress callbacks are throttled to 200 ms with a final notification. Local and selected-directory catalogs reuse one database connection and desktop-project snapshot per collection pass; each page still uses its own short read transaction. SSH catalog pages transfer the desktop snapshot only once per pass. SFTP reads request up to 128 KiB per packet and accept shorter server responses. Framed subprocess I/O drains available bytes immediately, then waits for pipe readiness off the cooperative executor with bounded cancellation checks, rather than sleeping after every packet.
 
 Task mappings read the newest Codex state database and desktop project catalog. Explicit projectless IDs resolve to `Chat`; explicit project assignments precede historical projectless output-directory hints. Otherwise match saved project roots, preferring the most specific unambiguous root. Do not infer projects from arbitrary cwd basenames. Preserve remote Windows/UNC paths as remote paths rather than resolving them on the local filesystem.
 
@@ -291,6 +334,8 @@ swift test
 swift test --filter UsagePricingTests
 ```
 
+Set `TOKENTICK_TEST_NODE` to a local Node executable with `node:sqlite` to enable metadata query contract tests; otherwise those tests are skipped. With Docker running, `script/test_remote_ssh.sh` exercises SSH collection, incremental reads, compressed logs, project changes, and connection-test isolation using temporary keys and a loopback-only container. Its synthetic runtime layout does not establish compatibility with every real Codex installation or login shell.
+
 For an app build without launching or stopping processes, use the same `xcodebuild` command with `-scheme TokenTick`. The run script also supports `--debug`, `--logs`, `--telemetry`, and `--preview-limits`. Build products are in `.build/DerivedData` and logs in `.build/logs`.
 
 Use isolated databases for validation:
@@ -300,7 +345,7 @@ Use isolated databases for validation:
   --database .build/audit/usage.sqlite --scope local
 ```
 
-For the app, pass `TOKENTICK_DATABASE` in its launch environment and use `TOKENTICK_AUTOSYNC=0` to disable startup autosync during inspection. Debug builds additionally support `TOKENTICK_APPEARANCE=light|dark` for process-local appearance checks; Release does not. Do not assume a shell export is inherited by an app launched through LaunchServices.
+Debug app entry defaults to `Application Support/TokenTick-Debug/usage.sqlite` before model initialization when `TOKENTICK_DATABASE` is absent, including Finder and UI-automation launches. For explicitly isolated app validation, pass `TOKENTICK_DATABASE` in its launch environment and use `TOKENTICK_AUTOSYNC=0` to disable startup autosync during inspection. Debug builds additionally support `TOKENTICK_APPEARANCE=light|dark` for process-local appearance checks; Release does not. Do not assume a shell export is inherited by an app launched through LaunchServices.
 
 ### Schema policy
 

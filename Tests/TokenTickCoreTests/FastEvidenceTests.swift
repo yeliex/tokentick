@@ -7,11 +7,11 @@ struct FastEvidenceTests {
     static let thread = "00000000-0000-0000-0000-000000000001"
     static let turn = "00000000-0000-0000-0000-000000000002"
 
-    @Test func traceBackfillsExistingUsageAndIncrementalReplayKeepsFacts() throws {
+    @Test func traceBackfillsExistingUsageAndIncrementalReplayKeepsFacts() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
-        try store.pool.write { db in
+        try await store.pool.write { db in
             for (key, fast) in [("missing", nil as Bool?), ("ordinary", false)] {
                 try db.execute(sql: """
                     INSERT INTO usage(source_line,rollout_id,thread_id,turn_id,model,usage_date,tier,input_tokens,output_tokens,
@@ -24,27 +24,27 @@ struct FastEvidenceTests {
         let before = try store.usageRecords().rows
         #expect(before.allSatisfy { $0.amountNanoUSD == 10_500_000 })
         let trace = try DatabaseQueue(path: root.appendingPathComponent("logs_2.sqlite").path)
-        try trace.write { try $0.execute(sql: "CREATE TABLE logs(id INTEGER PRIMARY KEY,ts INTEGER,thread_id TEXT,feedback_log_body TEXT)") }
+        try await trace.write { try $0.execute(sql: "CREATE TABLE logs(id INTEGER PRIMARY KEY,ts INTEGER,thread_id TEXT,feedback_log_body TEXT)") }
         let body = "session_loop{thread_id=\(Self.thread)}:turn{turn.id=\(Self.turn)}: websocket request: "
             + #"{"type":"response.create","service_tier":"priority","input":"private-user-body"}"#
-        try trace.write { try $0.execute(sql: "INSERT INTO logs VALUES (1,100,?,?)", arguments: [Self.thread, body]) }
-        try CodexFastEvidence.collect(codexHome: root, store: store)
+        try await trace.write { try $0.execute(sql: "INSERT INTO logs VALUES (1,100,?,?)", arguments: [Self.thread, body]) }
+        _ = try await LocalUsageScanner(store: store).scan(codexHome: root)
         let after = try store.usageRecords().rows
         #expect(after.first(where: { $0.isFast == nil })?.amountNanoUSD == 21_000_000)
         #expect(after.first(where: { $0.isFast == false })?.amountNanoUSD == 10_500_000)
         #expect(after.first(where: { $0.isFast == nil })?.pricingIsFast == true)
         #expect(after.map(\.totalTokens) == before.map(\.totalTokens))
         let revision = try store.status().factsRevision
-        try CodexFastEvidence.collect(codexHome: root, store: store)
+        _ = try await LocalUsageScanner(store: store).scan(codexHome: root)
         #expect(try store.status().factsRevision == revision)
-        let values = try store.pool.read { try String.fetchAll($0, sql: "SELECT value FROM app_metadata UNION ALL SELECT pricing_source FROM usage") }
+        let values = try await store.pool.read { try String.fetchAll($0, sql: "SELECT value FROM app_metadata UNION ALL SELECT pricing_source FROM usage") }
         #expect(!values.contains(where: { $0.contains("private-user-body") }))
         // Detect anchor changes when a truncated file reuses row IDs at the same path.
-        try trace.write { db in
+        try await trace.write { db in
             try db.execute(sql: "DELETE FROM logs; INSERT INTO logs VALUES (1,101,?,?)", arguments: [Self.thread, body.replacingOccurrences(of: Self.turn, with: "00000000-0000-0000-0000-000000000003")])
         }
-        try CodexFastEvidence.collect(codexHome: root, store: store)
-        #expect(try store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM app_metadata WHERE key LIKE 'fast_trace:%'") } == 2)
+        _ = try await LocalUsageScanner(store: store).scan(codexHome: root)
+        #expect(try await store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM app_metadata WHERE key LIKE 'fast_trace:%'") } == 2)
     }
 
     @Test func onlyOwnedTurnAndTopLevelModeProvideEvidence() {

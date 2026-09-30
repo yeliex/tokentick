@@ -4,7 +4,7 @@ import Testing
 @testable import TokenTickCore
 
 struct PriceStoreTests {
-    @Test func structuredPricesRoundTripWithoutSourceJSON() throws {
+    @Test func structuredPricesRoundTripWithoutSourceJSON() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
@@ -13,7 +13,7 @@ struct PriceStoreTests {
             + ModelsDevPrices.decode(Data(unsupported.utf8), date: "2026-09-09")
         _ = try store.savePrices(prices, date: "2026-09-09")
         let reopened = try UsageStore(databaseURL: store.databaseURL)
-        try reopened.pool.read { db in
+        try await reopened.pool.read { db in
             #expect(try db.columns(in: "prices").allSatisfy { !$0.name.contains("json") })
             for price in prices {
                 let stored = try UsageStore.modelPrice(db: db, model: price.model, date: price.date, tier: price.tier, useDefaults: false)
@@ -24,7 +24,7 @@ struct PriceStoreTests {
         #expect(try reopened.savePrices(unchanged, date: "2026-09-10").insertedSnapshots == 0)
     }
 
-    @Test func dailySnapshotsOnlyRecordPriceChangesAndKeepHistory() throws {
+    @Test func dailySnapshotsOnlyRecordPriceChangesAndKeepHistory() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
@@ -37,14 +37,14 @@ struct PriceStoreTests {
         #expect(try save("2026-09-11", json: changed).insertedSnapshots == 2)
         #expect(try save("2026-09-11").alreadySynced)
         #expect(try store.tableCounts()["prices"] == 4)
-        try store.pool.read { db throws -> Void in
+        try await store.pool.read { db throws -> Void in
             #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-08")?.rates.input == 10)
             #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-10")?.rates.input == 10)
             #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-12")?.rates.input == 12)
         }
     }
 
-    @Test func tiersHaveIndependentHistoryAndChangingLongPriceUpdatesDerivedFast() throws {
+    @Test func tiersHaveIndependentHistoryAndChangingLongPriceUpdatesDerivedFast() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
@@ -54,7 +54,7 @@ struct PriceStoreTests {
         #expect(try store.savePrices(next, date: "2026-09-10").insertedSnapshots == 1)
         let changed = UsagePricingTests.document.replacingOccurrences(of: #""input":20,"output":75"#, with: #""input":30,"output":75"#)
         #expect(try store.savePrices(ModelsDevPrices.decode(Data(changed.utf8), date: "2026-09-11"), date: "2026-09-11").insertedSnapshots == 2)
-        try store.pool.read { db throws -> Void in
+        try await store.pool.read { db throws -> Void in
             let old = try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-01-01", tier: "fast")
             #expect(old?.date == "2026-09-10" && old?.long.input == 40)
             let new = try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-11", tier: "fast")
@@ -64,13 +64,13 @@ struct PriceStoreTests {
 
 
 
-    @Test func firstSnapshotPricesEarlierRequestsWithoutChangingFacts() throws {
+    @Test func firstSnapshotPricesEarlierRequestsWithoutChangingFacts() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
         let prices = try ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: "2026-09-09")
         _ = try store.savePrices(prices, date: "2026-09-09")
-        try store.pool.write { db in
+        try await store.pool.write { db in
             for date in ["2026-09-08", "2026-09-09"] {
                 try db.execute(sql: """
                     INSERT INTO usage(source_line,rollout_id, usage_date, model, tier, input_tokens, output_tokens,
@@ -86,7 +86,7 @@ struct PriceStoreTests {
         #expect(first.fullyPriced == 2)
         #expect(first.unpriced == 0)
         #expect(try store.repriceUsage().changed == 0)
-        try store.pool.read { db throws -> Void in
+        try await store.pool.read { db throws -> Void in
             let rows = try Row.fetchAll(db, sql: "SELECT * FROM usage ORDER BY usage_date")
             #expect(rows[0]["amount"] as Int64? == 10_100_000)
             #expect(rows[1]["amount"] as Int64? == 10_100_000)
@@ -97,11 +97,11 @@ struct PriceStoreTests {
         }
     }
 
-    @Test func invalidUsageClearsStaleAmountWithoutChangingTokens() throws {
+    @Test func invalidUsageClearsStaleAmountWithoutChangingTokens() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
-        try store.pool.write { db in
+        try await store.pool.write { db in
             try db.execute(sql: """
                 INSERT INTO usage(source_line,rollout_id, usage_date, input_tokens, output_tokens, cache_read_tokens,
                     cache_write_tokens, total_tokens, amount, source, pricing_source)
@@ -109,14 +109,14 @@ struct PriceStoreTests {
                 """)
         }
         #expect(try store.repriceUsage().invalidUsage == 1)
-        try store.pool.read { db throws -> Void in
+        try await store.pool.read { db throws -> Void in
             let row = try #require(try Row.fetchOne(db, sql: "SELECT * FROM usage"))
             #expect(row["amount"] as Int64? == nil)
             #expect(row["total_tokens"] as Int64 == 110)
         }
     }
 
-    @Test func failedPriceDecodeDoesNotMarkDaySuccessful() throws {
+    @Test func failedPriceDecodeDoesNotMarkDaySuccessful() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
@@ -129,7 +129,7 @@ struct PriceStoreTests {
         #expect(try store.tableCounts()["prices"] == 2)
     }
 
-    @Test(arguments: ["default", "priority", "fast"]) func newlyScannedRequestUsesExistingPriceAndQueriesKeepPartialAmounts(tier: String) throws {
+    @Test(arguments: ["default", "priority", "fast"]) func newlyScannedRequestUsesExistingPriceAndQueriesKeepPartialAmounts(tier: String) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
@@ -142,11 +142,11 @@ struct PriceStoreTests {
             + "{\"type\":\"turn_context\",\"payload\":{\"turn_id\":\"t\",\"model\":\"gpt-6-astra\",\"service_tier\":\"\(tier)\"}}\n"
             + "{\"timestamp\":\"2026-09-09T00:00:01Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":\(counters),\"last_token_usage\":\(counters)}}}\n"
         try Data(text.utf8).write(to: sessions.appendingPathComponent("rollout-2026-09-09T00-00-00-\(id).jsonl"))
-        #expect(try LocalUsageScanner(store: store).scan(codexHome: root).insertedRequests == 1)
+        #expect(try await LocalUsageScanner(store: store).scan(codexHome: root).insertedRequests == 1)
         let factor: Int64 = tier == "default" ? 1 : 2
         #expect(try store.usageSummaries().first?.knownAmountNanoUSD == 10_100_000 * factor)
         #expect(try store.repriceUsage().changed == 0)
-        try store.pool.write { db in
+        try await store.pool.write { db in
             try db.execute(sql: "UPDATE usage SET cache_write_tokens = NULL, tier = NULL")
         }
         #expect(try store.repriceUsage().partiallyPriced == 1)

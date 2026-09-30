@@ -1,18 +1,18 @@
 import Foundation
 
 /// Codex desktop project assignments may precede project_id updates in its SQLite catalog.
-struct DesktopProjectCatalog: Decodable {
+struct DesktopProjectCatalog: Codable, Sendable {
     let projects: [String: Project]
     let assignments: [String: Assignment]
     let rootHints: [String: String]
     let projectless: Set<String>
     let projectlessDirectories: [String: String]
 
-    struct Project: Decodable {
+    struct Project: Codable, Sendable {
         let name: String?
         let rootPaths: [String]
     }
-    struct Assignment: Decodable {
+    struct Assignment: Codable, Sendable {
         let projectKind: String
         let projectId: String
     }
@@ -53,23 +53,30 @@ struct DesktopProjectCatalog: Decodable {
         }
         if projectlessDirectories[threadID] != nil { return "Chat" }
         guard let hint = rootHints[threadID] ?? cwd else { return nil }
-        // Remote Windows paths must not be resolved as relative paths on this Mac.
-        guard hint.hasPrefix("/") else { return nil }
-        let path = URL(fileURLWithPath: hint).standardizedFileURL.path
+        guard let path = Self.comparisonPath(hint) else { return nil }
         var depth = -1
         var names = Set<String>()
         for project in projects.values {
             for root in project.rootPaths {
-                guard root.hasPrefix("/") else { continue }
-                let root = URL(fileURLWithPath: root).standardizedFileURL.path
-                guard path == root || path.hasPrefix(root.hasSuffix("/") ? root : root + "/") else { continue }
+                guard let normalizedRoot = Self.comparisonPath(root) else { continue }
+                guard path == normalizedRoot || path.hasPrefix(normalizedRoot.hasSuffix("/") ? normalizedRoot : normalizedRoot + "/") else { continue }
                 guard let name = Self.nonemptyName(project.name) ?? Self.folderName(root) else { continue }
-                if root.count > depth { depth = root.count; names = [name] }
-                else if root.count == depth { names.insert(name) }
+                if normalizedRoot.count > depth { depth = normalizedRoot.count; names = [name] }
+                else if normalizedRoot.count == depth { names.insert(name) }
             }
         }
         if names.count > 1 { return nil }
         return names.first
+    }
+
+    private static func comparisonPath(_ path: String) -> String? {
+        // Compare Windows evidence lexically; never resolve it against this Mac's working directory.
+        if path.range(of: #"^[A-Za-z]:[\\/]"#, options: .regularExpression) != nil || path.hasPrefix("\\\\") {
+            let normalized = path.replacingOccurrences(of: "\\", with: "/")
+            return "windows:" + URL(fileURLWithPath: "/" + normalized).standardizedFileURL.path.lowercased()
+        }
+        guard path.hasPrefix("/") else { return nil }
+        return "posix:" + URL(fileURLWithPath: path).standardizedFileURL.path
     }
 
     static func nonemptyName(_ name: String?) -> String? {

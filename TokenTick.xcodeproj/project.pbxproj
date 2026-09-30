@@ -5,6 +5,11 @@
 	"objectVersion" = "56";
 	"archiveVersion" = "1";
 	"objects" = {
+        "CE2700000000000000000001" = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TokenTick/UI/RemoteDevicesModel.swift"; sourceTree = "<group>"; };
+        "CE2700000000000000000002" = { isa = PBXBuildFile; fileRef = "CE2700000000000000000001"; };
+        "CE2700000000000000000011" = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TokenTick/UI/RemoteDevicesSettingsView.swift"; sourceTree = "<group>"; };
+        "CE2700000000000000000012" = { isa = PBXBuildFile; fileRef = "CE2700000000000000000011"; };
+
         "CE2200000000000000000011" = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TokenTick/UI/ResetCelebrationController.swift"; sourceTree = "<group>"; };
         "CE2200000000000000000012" = { isa = PBXBuildFile; fileRef = "CE2200000000000000000011"; };
         "CE2200000000000000000001" = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TokenTick/UI/ResetReminderController.swift"; sourceTree = "<group>"; };
@@ -238,6 +243,8 @@
 				"8C201586ED70116E47042557",
 				"CE2200000000000000000002",
 				"CE2200000000000000000012",
+                "CE2700000000000000000012",
+                "CE2700000000000000000002",
 				"70B1D599F03C479E45144952",
 				"12F57F06E90963792A0B7A4F",
 				"2D82C6F909FB45BBA6FF9C4A",
@@ -515,6 +522,8 @@
 				"8A3F357787FB01C35ACE25F6",
 				"CE2200000000000000000001",
 				"CE2200000000000000000011",
+                "CE2700000000000000000011",
+                "CE2700000000000000000001",
 				"E63A6DE30A98D855FA167F2C",
 				"958778895F030AAA42825BFF",
 				"739E83C01C9D47EAAF16F6A2",

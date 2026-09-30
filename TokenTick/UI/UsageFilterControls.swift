@@ -14,7 +14,7 @@ extension UsageSort {
 
 extension UsageFilters {
     var summary: String {
-        [(String(localized: "Task"), thread), (String(localized: "Project"), project), (String(localized: "Model"), model), (String(localized: "Day"), day)].enumerated().compactMap { index, entry in
+        [(String(localized: "Task"), thread), (String(localized: "Project"), project), (String(localized: "Model"), model), (String(localized: "Day"), day), (String(localized: "Device"), device)].enumerated().compactMap { index, entry in
             let (name, filter) = entry
             return switch filter {
             case .all: nil
@@ -47,7 +47,7 @@ struct UsageDateFilter: View {
             Button(String(localized: "Custom…")) { openCalendar() }
         } label: {
             Text(period.title)
-        }.frame(width: 90).accessibilityLabel(String(localized: "Date range"))
+        }.fixedSize().accessibilityLabel(String(localized: "Date range"))
         .popover(isPresented: $showingCalendar, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 20) {
                 Text(String(localized: "Choose date range")).font(.headline)

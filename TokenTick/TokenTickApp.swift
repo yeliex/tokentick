@@ -26,6 +26,23 @@ enum AppTheme: String {
 }
 
 @main
+enum TokenTickEntry {
+    static func main() {
+        if DeviceWorker.runIfRequested() { return }
+        #if DEBUG
+        // Finder and UI automation can launch without the build script's environment.
+        // Set the data root before any model initializes caches or opens a database.
+        if ProcessInfo.processInfo.environment["TOKENTICK_DATABASE"] == nil {
+            let database = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("TokenTick-Debug", isDirectory: true)
+                .appendingPathComponent("usage.sqlite")
+            setenv("TOKENTICK_DATABASE", database.path, 1)
+        }
+        #endif
+        TokenTickApp.main()
+    }
+}
+
 struct TokenTickApp: App {
     @NSApplicationDelegateAdaptor(TokenTickAppDelegate.self) private var delegate
     @State private var model = ApplicationModel()

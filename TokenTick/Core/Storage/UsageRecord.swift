@@ -8,6 +8,7 @@ public enum UsageRecordScope: Sendable, Equatable {
 
 public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
     public let id: Int64
+    public let device: String
     public let accountID: String?
     public let threadID: String?
     public let title: String?
@@ -51,7 +52,7 @@ public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
     public var pricingIsFast: Bool { (pricingTier ?? tier) == "fast" }
 
     private enum CodingKeys: String, CodingKey {
-        case id, accountID, threadID, title, projectName, turnID, responseID, sourceOrdinal, hour, minute
+        case id, device, accountID, threadID, title, projectName, turnID, responseID, sourceOrdinal, hour, minute
         case occurredAt, usageDate, statisticalDate, model
         case tier, isLongContext, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens
         case reasoningTokens, totalTokens, inputPrice, outputPrice, cacheReadPrice, cacheWritePrice
@@ -61,6 +62,7 @@ public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(id, forKey: .id)
+        try values.encode(device, forKey: .device)
         try values.encode(accountID, forKey: .accountID)
         try values.encode(threadID, forKey: .threadID)
         try values.encode(title, forKey: .title)
@@ -114,7 +116,7 @@ public struct UsageRecordPage: Encodable, Sendable {
 
 extension UsageRecord {
     init(row: Row) {
-        self.init(id: row["id"], accountID: row["account_id"], threadID: row["thread_id"],
+        self.init(id: row["id"], device: row["device"], accountID: row["account_id"], threadID: row["thread_id"],
             title: row["title"], projectName: row["project_name"], turnID: row["turn_id"],
             responseID: row["response_id"], sourceOrdinal: row["source_ordinal"], hour: row["hour"], minute: row["minute"],
             occurredAt: row["occurred_at"],

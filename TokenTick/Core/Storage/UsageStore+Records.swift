@@ -39,8 +39,8 @@ extension UsageStore {
                 SELECT u.*, t.title, t.project_name, f.file_name, f.current_path,
                     NULLIF(\(StatisticsSQL.dayExpression), 'unknown') AS statistical_date,
                     tokentick_known_amount(u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount) AS known_amount
-                FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id
-                LEFT JOIN scan_files f ON f.rollout_id = u.rollout_id
+                FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id AND t.device = u.device
+                LEFT JOIN scan_files f ON f.rollout_id = u.rollout_id AND f.device = u.device
                 WHERE \(filters.joined(separator: " AND "))
                 ORDER BY \(order) LIMIT :limit OFFSET :offset
                 """, arguments: arguments)
