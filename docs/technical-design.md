@@ -242,6 +242,8 @@ Window-owned detail state preserves filters, grouping, pagination, and selected 
 
 The menu-bar label uses cached template images, not a nested periodic `TimelineView`; repeated label invalidation can cause host layout churn. The menu chart maps tokens and costs independently for rendering, but tooltips retain original units. Missing amounts break the cost line. Menu averages divide by actual elapsed days; overview averages use the covered chart buckets, including empty buckets.
 
+Menu usage queries capture the current time when they start, including on reopening and after usage revisions, so a retained view's previous timer tick cannot exclude newly collected events. The minute timer also refreshes rolling ranges while the menu stays open.
+
 Use English internal identifiers and localize display titles separately. App strings live in `TokenTick/Resources/Localizable.xcstrings`; Core strings live in `TokenTick/Core/Resources` and load through `Bundle.module`. English is the fallback, Simplified Chinese follows macOS preferences, and cumulative history is labeled Lifetime. Chinese translations and multilingual test fixtures are intentional data.
 
 See [Codex disk-space analysis](requirements.md#codex-disk-space-analysis) for the product behavior and the [README](../README.md) for a screenshot.

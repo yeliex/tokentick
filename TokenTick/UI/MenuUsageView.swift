@@ -41,14 +41,16 @@ struct MenuUsageView: View {
         .task(id: request) {
             guard let store = app.store else { return }
             let current = request
+            // A retained menu can reopen or receive new usage before its next timer tick.
+            let queriedAt = Date()
             do {
                 let worker = Task.detached(priority: .utility) {
                     var totals: [OverviewPeriod: UsageSummary] = [:]
                     for period in [OverviewPeriod.day, .week, .quarter] {
-                        let query = period.query(now: current.now, timezone: current.timezone)
+                        let query = period.query(now: queriedAt, timezone: current.timezone)
                         totals[period] = try store.usageReport(query).rows.first
                     }
-                    let month = try store.overviewReport(period: .month, now: current.now, timezone: current.timezone)
+                    let month = try store.overviewReport(period: .month, now: queriedAt, timezone: current.timezone)
                     totals[.month] = month.total
                     return (totals, month)
                 }
