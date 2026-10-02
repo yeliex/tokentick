@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import GRDB
 import Testing
@@ -231,6 +232,38 @@ struct CodexAPITests {
         #expect(try store.tableCounts()["usage"] == 4 && store.tableCounts()["api_daily_usage"] == nil)
         #expect(try UsageStore(databaseURL: store.databaseURL).apiDailyUsage().isEmpty)
         #expect(try store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM app_metadata WHERE key LIKE 'api_daily:%'") } == 0)
+    }
+
+    @Test func unresponsiveAppServerCleanupAfterSuspensionIsBoundedAndIdempotent() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appendingPathComponent("codex-fixture")
+        let pidFile = root.appendingPathComponent("pid")
+        let script = """
+        #!/bin/sh
+        trap '' TERM
+        echo $$ > "$PID_FILE"
+        IFS= read -r line
+        printf '%s\\n' '{"id":1,"result":{}}'
+        IFS= read -r line
+        exec /bin/sleep 30
+        """
+        try script.write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        let session = try CodexAPISession(executable: executable, arguments: [], environment: ["PID_FILE": pidFile.path])
+        defer { session.close() }
+        let pid = try #require(Int32(String(contentsOf: pidFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)))
+        try await Task.sleep(for: .milliseconds(20))
+        let started = ContinuousClock.now
+        session.close()
+        session.close()
+        #expect(started.duration(to: .now) < .seconds(2))
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while kill(pid, 0) == 0 && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(kill(pid, 0) == -1 && errno == ESRCH)
     }
 
     @Test func stalledAppServerHasBoundedTimeout() throws {

@@ -125,6 +125,7 @@ final class CodexAPISession {
     private var buffer = Data()
     private var nextID = 0
     private let timeout: TimeInterval
+    private var closed = false
     private(set) var lastResponseJSON: String?
     private var lastRequestMethod: String?
     private var durationMilliseconds: Int?
@@ -165,6 +166,8 @@ final class CodexAPISession {
     deinit { close() }
 
     func close() {
+        guard !closed else { return }
+        closed = true
         try? input.fileHandleForWriting.close()
         try? output.fileHandleForReading.close()
         if process.isRunning {
@@ -173,7 +176,8 @@ final class CodexAPISession {
             let deadline = ProcessInfo.processInfo.systemUptime + 0.2
             while process.isRunning && ProcessInfo.processInfo.systemUptime < deadline { usleep(10_000) }
             if process.isRunning { kill(process.processIdentifier, SIGKILL) }
-            process.waitUntilExit()
+            // Foundation reaps the child asynchronously. waitUntilExit can stall when an
+            // async caller resumes on a different thread from the one that launched it.
         }
     }
 
