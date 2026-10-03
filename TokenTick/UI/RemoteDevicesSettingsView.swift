@@ -5,8 +5,7 @@ import TokenTickCore
 struct RemoteDevicesSettingsView: View {
     @Environment(ApplicationModel.self) private var app
     let model: RemoteDevicesModel
-    @State private var editing: RemoteDevice?
-    @State private var editorPresented = false
+    @State private var editor: DeviceEditor?
     @State private var removing: RemoteDevice?
     @State private var deleteUsage = false
     @State private var actionError: String?
@@ -18,7 +17,7 @@ struct RemoteDevicesSettingsView: View {
                     Text(String(localized: "Remote Devices")).font(.title2.weight(.semibold))
                     Spacer()
                     Button(String(localized: "Add Device"), systemImage: "plus") {
-                        editing = nil; editorPresented = true
+                        editor = DeviceEditor(existing: nil)
                     }
                 }
                 if let error = model.error ?? actionError { Text(error).foregroundStyle(.red).textSelection(.enabled) }
@@ -31,7 +30,9 @@ struct RemoteDevicesSettingsView: View {
                 }
             }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
         }
-        .sheet(isPresented: $editorPresented) { RemoteDeviceEditor(model: model, existing: editing) }
+        .sheet(item: $editor) { editor in
+            RemoteDeviceEditor(model: model, existing: editor.existing)
+        }
         .sheet(item: $removing) { device in
             VStack(alignment: .leading, spacing: 18) {
                 Text(String(localized: "Remove Device")).font(.title2.weight(.semibold))
@@ -109,7 +110,7 @@ struct RemoteDevicesSettingsView: View {
                             catch { actionError = error.localizedDescription }
                         }
                     }
-                    Button(String(localized: "Edit…")) { editing = device; editorPresented = true }
+                    Button(String(localized: "Edit…")) { editor = DeviceEditor(existing: device) }
                     Divider()
                     Button(String(localized: "Remove…"), role: .destructive) { deleteUsage = false; removing = device }
                 } label: { Image(systemName: "ellipsis") }
@@ -135,6 +136,11 @@ struct RemoteDevicesSettingsView: View {
         if scan.pendingFiles > 0 || scan.pendingMetadata { return String(localized: "Importing history…") }
         return scan.discoveredFiles == 0 ? String(localized: "No logs found") : String(localized: "Up to date")
     }
+}
+
+private struct DeviceEditor: Identifiable {
+    let id = UUID()
+    let existing: RemoteDevice?
 }
 
 private struct RemoteDeviceEditor: View {

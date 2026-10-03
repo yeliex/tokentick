@@ -17,13 +17,17 @@ actor SSHDeviceSource: DeviceFileSource, DeviceAccountSource, DeviceTraceSource 
             throw DeviceConfigurationError.invalidConfiguration
         }
         self.home = home ?? ""
+        let hasPassword = try device.address.map { try ParsedDeviceConnection(address: $0).password != nil } ?? false
         var arguments: [String] = sshConfiguration.map { ["-F", $0.path] } ?? []
         if let user { arguments += ["-l", user] }
         if let port { arguments += ["-p", String(port)] }
+        if hasPassword {
+            arguments += ["-o", "PreferredAuthentications=password,keyboard-interactive,gssapi-with-mic,hostbased,publickey"]
+        }
         arguments += ["--", host.hasPrefix("[") && host.hasSuffix("]") ? String(host.dropFirst().dropLast()) : host]
         self.arguments = arguments
         var environment = try await LoginShellEnvironment.shared.values()
-        if let address = device.address, try ParsedDeviceConnection(address: address).password != nil {
+        if hasPassword {
             environment["SSH_ASKPASS"] = executable.path
             environment["SSH_ASKPASS_REQUIRE"] = "force"
             environment["TOKENTICK_DEVICE_ASKPASS"] = "1"
