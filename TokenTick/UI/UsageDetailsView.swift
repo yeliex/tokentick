@@ -41,6 +41,10 @@ struct UsageDetailsView: View {
     @Bindable var state: UsageDetailsState
     private struct Request: Hashable { let query: UsageQuery; let refresh: Int; let retry: Int }
     private var timezone: TimeZone { TimeZone(identifier: app.status?.timezone ?? "UTC") ?? .gmt }
+    private var deviceIDs: [String] {
+        Array(Set((state.options?.devices ?? []) + ["local"]
+            + app.devices.configuration.devices.map(\.id))).sorted()
+    }
     private var query: UsageQuery {
         let style = Date.ISO8601FormatStyle(timeZone: timezone).year().month().day().dateSeparator(.dash)
         let dates = state.period == .custom ? (state.customFrom.formatted(style), state.customThrough.formatted(style)) : state.period.dates(timezone: timezone)
@@ -62,12 +66,10 @@ struct UsageDetailsView: View {
                                             periods: [.today, .week, .month, .quarter, .year, .all], timezone: timezone)
                         TextField(String(localized: "Search task title or ID"), text: $state.filters.search)
                             .textFieldStyle(.roundedBorder).frame(width: 180)
-                        if !(app.devices.configuration.devices.isEmpty && app.devices.configuration.removedNames.isEmpty) {
+                        if deviceIDs.count > 1 {
                             Picker(String(localized: "Device"), selection: $state.filters.device) {
                                 Text(String(localized: "All devices")).tag(UsageValueFilter.all)
-                                ForEach(Array(Set((state.options?.devices ?? []) + ["local"]
-                                    + app.devices.configuration.devices.map(\.id)
-                                    + Array(app.devices.configuration.removedNames.keys))).sorted(), id: \.self) { id in
+                                ForEach(deviceIDs, id: \.self) { id in
                                     Text(app.devices.name(id)).tag(UsageValueFilter.value(id))
                                 }
                             }.labelsHidden().fixedSize()
@@ -157,8 +159,7 @@ struct UsageDetailsView: View {
                 let options = try await Task.detached { try store.usageFilterOptions(scope) }.value
                 guard !Task.isCancelled else { return }
                 if state.options != options { state.options = options }
-                if case .value(let id) = state.filters.device, id != "local",
-                   app.devices.configuration.name(for: id) == nil, !options.devices.contains(id) {
+                if case .value(let id) = state.filters.device, !deviceIDs.contains(id) {
                     state.filters.device = .all
                 }
                 if case .value(let project) = state.filters.project, !options.projects.contains(project) { state.filters.project = .all }

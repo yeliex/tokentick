@@ -180,6 +180,23 @@ struct OverviewReportTests {
         #expect(options.accounts == ["account-a", "account-b"])
     }
 
+    @Test func deviceChoicesRequireUsageButIgnoreDateAndAccountScope() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        try store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO threads(device,thread_id,title) VALUES ('empty-device','a','Old task');
+                INSERT INTO usage(device,source_line,rollout_id,thread_id,account_id,usage_date,total_tokens,source,pricing_source)
+                    VALUES ('history-device',1,'b','b','old-account','2026-09-14',10,'local','{}');
+                """)
+        }
+        let query = UsageQuery(timezone: "UTC", fromDate: "2026-10-01", throughDate: "2026-10-08", account: .account("other-account"))
+        #expect(try store.usageFilterOptions(query).devices == ["history-device"])
+        try store.pool.write { db in try db.execute(sql: "DELETE FROM usage") }
+        #expect(try store.usageFilterOptions(query).devices.isEmpty)
+    }
+
     @Test func groupCountIncludesAllPagesAndTracksFilters() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

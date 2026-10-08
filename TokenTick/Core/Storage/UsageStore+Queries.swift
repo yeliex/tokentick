@@ -141,7 +141,8 @@ extension UsageStore {
             case .unknown: predicate += " AND u.account_id IS NULL"
             case .account(let id): predicate += " AND u.account_id = :account"; arguments += ["account": id]
             }
-            let devices = try String.fetchAll(db, sql: "SELECT DISTINCT u.device FROM usage u WHERE \(predicate) ORDER BY u.device", arguments: arguments)
+            // Retained devices remain selectable even outside the current date or account scope.
+            let devices = try String.fetchAll(db, sql: "SELECT DISTINCT device FROM usage ORDER BY device")
             let models = try String.fetchAll(db, sql: "SELECT DISTINCT u.model FROM usage u WHERE \(predicate) AND u.model IS NOT NULL ORDER BY u.model", arguments: arguments)
             let projects = try String.fetchAll(db, sql: "SELECT DISTINCT t.project_name FROM usage u JOIN threads t ON t.thread_id = u.thread_id AND t.device = u.device WHERE \(predicate) AND t.project_name IS NOT NULL ORDER BY t.project_name", arguments: arguments)
             let accounts = try String.fetchAll(db, sql: """
