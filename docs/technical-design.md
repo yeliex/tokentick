@@ -322,14 +322,12 @@ Native crash symbolication requires uploading matching release dSYMs to the Sent
 Use Xcode with a macOS 26 or newer SDK. App and CLI are Xcode targets, not SwiftPM executable products.
 
 ```sh
-# Build, stop any existing TokenTick process, launch, and verify process startup.
+# Build, stop only this checkout's Debug process, launch, and verify startup.
 ./script/build_and_run.sh --verify
 
 # Build the CLI without launching the app.
 xcodebuild -project TokenTick.xcodeproj -scheme tokentick \
-  -configuration Debug -destination 'platform=macOS' \
-  -derivedDataPath .build/DerivedData build
-.build/DerivedData/Build/Products/Debug/tokentick --help
+  -configuration Debug -destination 'platform=macOS' build
 
 # Test shared logic, or select a relevant suite.
 swift test
@@ -338,16 +336,11 @@ swift test --filter UsagePricingTests
 
 Set `TOKENTICK_TEST_NODE` to a local Node executable with `node:sqlite` to enable metadata query contract tests; otherwise those tests are skipped. With Docker running, `script/test_remote_ssh.sh` exercises SSH collection, incremental reads, compressed logs, project changes, and connection-test isolation using temporary keys and a loopback-only container. Its synthetic runtime layout does not establish compatibility with every real Codex installation or login shell.
 
-For an app build without launching or stopping processes, use the same `xcodebuild` command with `-scheme TokenTick`. The run script also supports `--debug`, `--logs`, `--telemetry`, and `--preview-limits`. Build products are in `.build/DerivedData` and logs in `.build/logs`.
+For an app build without launching or stopping processes, use the same `xcodebuild` command with `-scheme TokenTick` and `PRODUCT_BUNDLE_IDENTIFIER=com.yeliex.tokentick.debug` to isolate Debug preferences. The run script also supports `--debug`, `--logs`, `--telemetry`, and `--preview-limits`. Local Debug builds use Xcode's default DerivedData location and build logs; `BUILT_PRODUCTS_DIR` in `xcodebuild -showBuildSettings` locates the app and CLI. SwiftPM and release packaging retain their existing `.build` paths.
 
-Use isolated databases for validation:
+For CLI validation, use `--database` with a database in a temporary directory outside the repository.
 
-```sh
-.build/DerivedData/Build/Products/Debug/tokentick sync \
-  --database .build/audit/usage.sqlite --scope local
-```
-
-Debug app entry defaults to `Application Support/TokenTick-Debug/usage.sqlite` before model initialization when `TOKENTICK_DATABASE` is absent, including Finder and UI-automation launches. For explicitly isolated app validation, pass `TOKENTICK_DATABASE` in its launch environment and use `TOKENTICK_AUTOSYNC=0` to disable startup autosync during inspection. Debug builds additionally support `TOKENTICK_APPEARANCE=light|dark` for process-local appearance checks; Release does not. Do not assume a shell export is inherited by an app launched through LaunchServices.
+Debug app entry defaults to `~/Library/Application Support/TokenTick-Debug/usage.sqlite` before model initialization when `TOKENTICK_DATABASE` is absent, including script, Finder, and UI-automation launches. For explicitly isolated app validation, pass `TOKENTICK_DATABASE` in its launch environment and use `TOKENTICK_AUTOSYNC=0` to disable startup autosync during inspection. Debug builds additionally support `TOKENTICK_APPEARANCE=light|dark` for process-local appearance checks; Release does not. Do not assume a shell export is inherited by an app launched through LaunchServices.
 
 ### Schema policy
 
@@ -359,7 +352,7 @@ Use isolated databases for rebuild verification. Source logs remain read-only.
 
 Choose tests based on changed behavior: scanner/identity tests for ingestion, pricing tests for money, current-session/forecast tests for limits, and query/statistics tests for aggregation. Compile both targets when shared contracts or executable text changes. Exercise relevant native UI flows after UI changes, including English/Chinese display when identifiers change.
 
-For documentation or script changes, check relative links, shell syntax, and distribution README extraction. Keep measured evidence and full logs under ignored `.build` paths when needed; public docs describe durable contracts, not past test counts or a transcript of implementation steps.
+For documentation or script changes, check relative links, shell syntax, and distribution README extraction. Keep one-off validation scripts, measured evidence, diagnostic logs, and audit databases in the conversation directory or a temporary directory outside the repository. Public docs describe durable contracts, not past test counts or a transcript of implementation steps.
 
 ## Packaging and release
 

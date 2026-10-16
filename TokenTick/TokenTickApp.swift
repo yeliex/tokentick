@@ -30,8 +30,7 @@ enum TokenTickEntry {
     static func main() {
         if DeviceWorker.runIfRequested() { return }
         #if DEBUG
-        // Finder and UI automation can launch without the build script's environment.
-        // Set the data root before any model initializes caches or opens a database.
+        // Isolate Debug data before any model initializes caches or opens a database.
         if ProcessInfo.processInfo.environment["TOKENTICK_DATABASE"] == nil {
             let database = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("TokenTick-Debug", isDirectory: true)

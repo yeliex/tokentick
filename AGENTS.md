@@ -16,7 +16,9 @@ TokenTick targets **macOS 26+ and Apple Silicon only**, using Swift 6, native Sw
 
 Read the source and contracts needed for the change once, then work from them. Prefer existing capabilities. Extract helpers only when they express a clear responsibility or constraint; avoid speculative abstractions and redundant state. A refactor preserves business behavior and UI unless the request explicitly changes them.
 
-Use `rtk` for inspection, searches, diffs, logs, and verification when available; use `rtk proxy` for commands that need unfiltered output. Keep large logs bounded in the conversation and retain complete output under `.build` when useful.
+Use `rtk` for inspection, searches, diffs, logs, and verification when available; use `rtk proxy` for commands that need unfiltered output. Keep large logs bounded in the conversation.
+
+Local Debug builds use Xcode's default DerivedData location; SwiftPM and release packaging retain their existing `.build` conventions. Keep agent plans, reports, one-off scripts, diagnostic logs, and audit databases in the conversation directory or a temporary directory outside the repository. Do not add them to product documentation or commits. The Debug app entry owns runtime-data isolation under `~/Library/Application Support/TokenTick-Debug`; do not duplicate that setup in build scripts.
 
 Collection, Pricing, Synchronization, Storage, and UI have separate responsibilities. Keep destination SQL in Storage and shared business rules in Core. Preserve existing transaction, batching, cancellation, and cross-process locking boundaries when moving code.
 
