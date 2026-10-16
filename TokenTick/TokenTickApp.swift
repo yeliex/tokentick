@@ -171,9 +171,12 @@ final class TokenTickAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let theme = AppTheme(rawValue: UserDefaults.standard.string(forKey: "appTheme") ?? "system") ?? .system
         theme.apply()
-        // Show the main window at launch; keep the menu-bar app running after the last ordinary window closes.
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        // Login launches can have no ordinary window; keep those launches in the menu bar.
+        let hasWindow = NSApp.windows.contains {
+            ($0.isVisible || $0.isMiniaturized) && $0.canBecomeMain && $0.styleMask.contains(.titled)
+        }
+        NSApp.setActivationPolicy(hasWindow ? .regular : .accessory)
+        if hasWindow { NSApp.activate(ignoringOtherApps: true) }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
