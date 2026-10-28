@@ -125,7 +125,11 @@ Show tokens, costs, and event counts above a paginated table. Selecting a day or
 
 Show ended cycles in a list with the selected cycle's details alongside it. Date presets are 30 days, 90 days, 1 year, and Lifetime, plus custom dates. Show account selection only when multiple known accounts exist, while global results retain unknown-account usage.
 
-The detail card combines percentage, progress, local tokens, estimated costs, and event counts. Its heading shows the first-observation time and reported reset deadline including time. Keep these extra times out of the list. The current window belongs in Overview.
+The detail card combines percentage, progress, local tokens, estimated costs, and event counts. Its heading shows the first-observation time and reported reset deadline including time. Keep these extra times out of the list.
+
+Pin the current main seven-day cycle above history and select it on first entry when available. Reuse the app's current-account limit snapshot for its percentage and expected reset, without a separate API request. Date filters and pagination affect history only; account filters also control whether the current cycle is visible. Preserve a selected historical cycle during background refresh. Show the current cycle even without history, and retain an expired snapshot as waiting for reset confirmation until the shared snapshot changes. Suppress a matching historical row while that current snapshot is displayed.
+
+Query current-cycle local usage from collected facts using the same resolved first-observation boundary, account, and turn attribution as history. If no accepted matching cycle exists, keep local totals unknown while still showing the current limits. Do not infer a start by subtracting seven days or persist an active cycle in the history table.
 
 ### Menu bar and windows
 

@@ -235,6 +235,8 @@ Minimal last-window summaries reside in parser checkpoints and commit with usage
 
 Cycle usage is grouped by the earliest known start of each turn, falling back to occurrence time, within the cycle's half-open interval and matching account scope. This is an attribution rule, not per-response splitting at a reset boundary.
 
+Plan usage also displays the shared current main seven-day snapshot above history. `currentWeeklyLimitUsage` reads the same resolved cycles from compact in-memory evidence, matches the current account and reset deadline within 60 seconds, and queries local facts with history's turn attribution and cost rules. It writes no current-cycle row. Missing accepted boundaries leave local totals unknown. Percentage and expected reset remain driven directly by `ApplicationModel.currentLimits`; local aggregates refresh after synchronization. Account/reset identity and task cancellation prevent late aggregate results from appearing under a different current cycle.
+
 ### Live account and forecasts
 
 `CurrentLimitSession` uses a generation to reject results started before a login-environment change, even if the user switches back to the same account. Live snapshots remain in memory; a sanitized display snapshot is also atomically saved in `api.json` by `LocalDisplayCache`. Startup restores it only when the Codex root and auth-file metadata still match. Restoration preserves observation time and neither enables log ownership inference nor seeds forecasts. API transport failures retain the displayed snapshot; confirmed missing identity clears it and removes the cache. Preserve same-session stale cards while silently refreshing on main-window activation after 15 minutes; do not reuse stale predictions.

@@ -65,13 +65,14 @@ struct WeeklyCycleCalculator: Sendable {
         else { windows.append(window) }
     }
 
-    func saveCompleted(db: Database, now: Double) throws -> Int {
-        struct Cycle {
-            var window: Window
-            var start: Double
-            var end: Double
-            var early = false
-        }
+    struct Cycle {
+        var window: Window
+        var start: Double
+        var end: Double
+        var early = false
+    }
+
+    func resolvedCycles() -> [Cycle] {
         var cycles: [Cycle] = []
         var readings: [Window] = []
         for window in windows {
@@ -147,6 +148,11 @@ struct WeeklyCycleCalculator: Sendable {
             }
             cycles.append(Cycle(window: reading, start: reading.last, end: Double(reading.reset)))
         }
+        return cycles
+    }
+
+    func saveCompleted(db: Database, now: Double) throws -> Int {
+        let cycles = resolvedCycles()
         var changed = 0
         var kept: Set<String> = []
         for cycle in cycles where cycle.window.positive && cycle.end <= now {

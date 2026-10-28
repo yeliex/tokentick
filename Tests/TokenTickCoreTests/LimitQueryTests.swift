@@ -234,4 +234,85 @@ struct LimitQueryTests {
         try store.saveCompletedWeeklyCycles()
         #expect(try store.weeklyLimitHistory().rows.isEmpty)
     }
+
+    @Test func currentCycleTotalsAgreeWithHistoryWithoutPersistingActiveCycle() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        try store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO usage(source_line,rollout_id,account_id,source,occurred_at,turn_key,turn_started_at,total_tokens,amount,input_amount) VALUES
+                    (1,'a','a','local',210,'turn:x',200,10,100,100),
+                    (2,'a','a','local',1200,'turn:x',200,20,NULL,50),
+                    (3,'a','a','local',500,'turn:old',100,40,400,400),
+                    (4,'a','a','local',1000,NULL,NULL,50,500,500),
+                    (5,'b','b','local',300,NULL,NULL,99,900,900),
+                    (6,'unknown',NULL,'local',300,NULL,NULL,99,900,900),
+                    (7,'a','a','local',999,NULL,NULL,5,NULL,NULL);
+                """)
+        }
+        try store.observeWeeklyLimits([snapshot(200,reset:1000,percent:70,start:100)])
+        let current = try #require(try store.currentWeeklyLimitUsage(accountID: "a", resetsAt: 1000))
+        #expect(current.startedAtInferred == 200)
+        #expect(current.totalTokens == 35 && current.requestCount == 3)
+        #expect(current.amountNanoUSD == nil && current.knownAmountNanoUSD == 150)
+        #expect(try store.weeklyLimitHistory().rows.isEmpty)
+        #expect(try store.currentWeeklyLimitUsage(accountID: "b", resetsAt: 1000) == nil)
+        try store.saveCompletedWeeklyCycles(now: Date(timeIntervalSince1970: 1000))
+        let ended = try #require(try store.weeklyLimitHistory().rows.first)
+        #expect(ended.totalTokens == current.totalTokens && ended.requestCount == current.requestCount)
+        #expect(ended.amountNanoUSD == current.amountNanoUSD && ended.knownAmountNanoUSD == current.knownAmountNanoUSD)
+    }
+
+    @Test func currentCycleRequiresAcceptedBoundaryAndRecognizesConfirmedEarlyReset() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        #expect(try store.currentWeeklyLimitUsage(accountID: "a", resetsAt: 1000) == nil)
+        try store.observeWeeklyLimits([snapshot(200,reset:1000,percent:80),snapshot(300,reset:2000,percent:2)])
+        #expect(try store.currentWeeklyLimitUsage(accountID: "a", resetsAt: 2000) == nil)
+        try store.observeWeeklyLimits([snapshot(400,reset:2000,percent:4)])
+        let current = try #require(try store.currentWeeklyLimitUsage(accountID: "a", resetsAt: 2001))
+        #expect(current.startedAtInferred == 300 && current.scheduledResetAt == 2001)
+        #expect(current.totalTokens == 0 && current.requestCount == 0)
+        #expect(try store.currentWeeklyLimitUsage(accountID: "a", resetsAt: 1000) == nil)
+        #expect(try store.currentWeeklyLimitUsage(accountID: "a", resetsAt: 2061) == nil)
+        #expect(try store.weeklyLimitHistory().rows.isEmpty)
+    }
+
+    @Test func currentCycleUsesRestoredEvidenceAndLeavesUnknownPricesUnknown() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        var evidence = WeeklyCycleCalculator()
+        evidence.consume(snapshot(200,reset:1000,percent:20))
+        var state = RolloutParserState(); state.weeklyWindows = evidence.windows
+        let json = String(decoding: try JSONEncoder().encode(state), as: UTF8.self)
+        try store.pool.write { db in
+            try db.execute(sql: "INSERT INTO scan_files(rollout_id,thread_id,file_name,parser_state_json) VALUES ('a','a','a.jsonl',?)", arguments: [json])
+            try db.execute(sql: "INSERT INTO usage(source_line,rollout_id,account_id,source,occurred_at,total_tokens) VALUES (1,'a','a','local',300,7)")
+        }
+        let reopened = try UsageStore(databaseURL: store.databaseURL)
+        try reopened.restoreWeeklyWindows()
+        let current = try #require(try reopened.currentWeeklyLimitUsage(accountID: "a", resetsAt: 1000))
+        #expect(current.startedAtInferred == 200 && current.totalTokens == 7)
+        #expect(current.amountNanoUSD == nil && current.knownAmountNanoUSD == nil)
+        #expect(try reopened.weeklyLimitHistory().rows.isEmpty)
+    }
+
+    @Test func cancelledCurrentCycleQueryDoesNotWriteHistory() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        try store.observeWeeklyLimits([snapshot(200,reset:1000,percent:20)])
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try store.currentWeeklyLimitUsage(accountID: "a", resetsAt: 1000)
+        }
+        do {
+            _ = try await task.value
+            Issue.record("Expected cancellation")
+        } catch is CancellationError {}
+        #expect(try store.weeklyLimitHistory().rows.isEmpty)
+    }
 }
