@@ -208,6 +208,30 @@ enum StoreSchema {
                 INSERT INTO app_metadata(key,value) VALUES ('weekly_cycles_rebuild','pending');
                 """)
         }
+        migrator.registerMigration("usage-billing-mode.1") { db in
+            try db.execute(sql: """
+                ALTER TABLE usage ADD COLUMN billing_mode TEXT NOT NULL DEFAULT 'api' CHECK(billing_mode IN ('plan','api'));
+                DELETE FROM app_metadata WHERE key LIKE 'device_full_manifest:%';
+                """)
+        }
+        migrator.registerMigration("api-cost-comparison.1") { db in
+            try db.execute(sql: """
+                ALTER TABLE usage ADD COLUMN api_input_amount INTEGER;
+                ALTER TABLE usage ADD COLUMN api_output_amount INTEGER;
+                ALTER TABLE usage ADD COLUMN api_cache_read_amount INTEGER;
+                ALTER TABLE usage ADD COLUMN api_cache_write_amount INTEGER;
+                ALTER TABLE usage ADD COLUMN api_amount INTEGER;
+                ALTER TABLE statistics ADD COLUMN api_known_amount INTEGER;
+                ALTER TABLE statistics ADD COLUMN api_unpriced_records INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE weekly_limit_cycles ADD COLUMN api_known_amount INTEGER;
+                INSERT OR REPLACE INTO app_metadata(key,value) VALUES ('pricing_rebuild_pending','true');
+                INSERT OR REPLACE INTO app_metadata(key,value) VALUES ('statistics_dirty','true');
+                DELETE FROM app_metadata WHERE key LIKE 'statistics_cache_revision:%' OR key='weekly_cycles_revision';
+                """)
+        }
+        migrator.registerMigration("api-context-tier.1") { db in
+            try db.execute(sql: "ALTER TABLE usage ADD COLUMN api_is_long_context INTEGER CHECK(api_is_long_context IN (0,1))")
+        }
         return migrator
     }
 }

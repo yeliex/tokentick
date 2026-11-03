@@ -51,6 +51,7 @@ struct OverviewChartsView: View {
                 HStack {
                     if let selected {
                         Text("\(UsageFormatting.timestamp(selected.date.timeIntervalSince1970, timezone: calendar.timeZone)) · \(UsageFormatting.tokens(selected.summary.totalTokens)) Tokens · \(UsageFormatting.money(selected.summary.knownAmountNanoUSD))")
+                        APIAmountNote(estimate: selected.summary.knownAmountNanoUSD, api: selected.summary.apiKnownAmountNanoUSD)
                     } else { Text("Tokens / $").foregroundStyle(.secondary) }
                 }.font(.caption).monospacedDigit().frame(height: 18)
                 Chart {
@@ -160,17 +161,22 @@ struct OverviewChartsView: View {
 struct ModelUsageView: View {
     let models: [UsageSummary]
     let modes: [OverviewUsageShare]
+    let apiModes: [OverviewUsageShare]
     let efforts: [OverviewUsageShare]
-    @State private var money = false
+    private enum Metric { case tokens, cost, api }
+    @State private var metric = Metric.tokens
     @State private var hovered: SliceID?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private struct SliceID: Equatable { let ring: Int; let name: String }
     private let radii: [CGFloat] = [101, 73, 45]
     private var modelShares: [OverviewUsageShare] {
         (models.filter { $0.group != nil } + models.filter { $0.group == nil })
-            .map { OverviewUsageShare(name: $0.group ?? "unknown", tokens: $0.totalTokens, amount: $0.knownAmountNanoUSD) }
+            .map { OverviewUsageShare(name: $0.group ?? "unknown", tokens: $0.totalTokens, amount: $0.knownAmountNanoUSD, apiAmount: $0.apiKnownAmountNanoUSD) }
     }
-    private var modeShares: [OverviewUsageShare] { modes.filter { $0.name != "unknown" } + modes.filter { $0.name == "unknown" } }
+    private var modeShares: [OverviewUsageShare] {
+        let groups = metric == .api ? apiModes : modes
+        return groups.filter { $0.name != "unknown" } + groups.filter { $0.name == "unknown" }
+    }
     private var effortShares: [OverviewUsageShare] { efforts.filter { $0.name != "unknown" } + efforts.filter { $0.name == "unknown" } }
     private let colors: [Color] = [
         Color(red: 0.43, green: 0.60, blue: 0.66), Color(red: 0.55, green: 0.53, blue: 0.74),
@@ -178,7 +184,11 @@ struct ModelUsageView: View {
         Color(red: 0.75, green: 0.49, blue: 0.52), Color(red: 0.43, green: 0.53, blue: 0.73),
         Color(red: 0.72, green: 0.57, blue: 0.72), Color(red: 0.58, green: 0.65, blue: 0.69)
     ]
-    private func value(_ item: OverviewUsageShare) -> Double { Double(money ? item.amount ?? 0 : item.tokens) }
+    private var hasAPIComparison: Bool {
+        (modelShares + modes + efforts).contains { UsageFormatting.differingAPIAmount($0.amount, $0.apiAmount) != nil }
+    }
+    private func amount(_ item: OverviewUsageShare) -> Int64? { metric == .api ? item.apiAmount : item.amount }
+    private func value(_ item: OverviewUsageShare) -> Double { Double(metric == .tokens ? item.tokens : amount(item) ?? 0) }
     private func color(_ item: OverviewUsageShare, index: Int, ring: Int) -> Color {
         item.name == "unknown" ? .secondary.opacity(0.45) : colors[(index + ring * 2) % colors.count]
     }
@@ -190,6 +200,8 @@ struct ModelUsageView: View {
         case "fast": String(localized: "Fast")
         case "standard": String(localized: "Standard")
         case "fast_long_context": String(localized: "Fast + long context")
+        case "ultrafast": String(localized: "Ultrafast")
+        case "ultrafast_long_context": String(localized: "Ultrafast + long context")
         case "long_context": String(localized: "Long context")
         default: name
         }
@@ -212,8 +224,11 @@ struct ModelUsageView: View {
             HStack {
                 Text(String(localized: "Model usage")).font(.headline)
                 Spacer()
-                Picker(String(localized: "Metric"), selection: $money) { Text("Tokens").tag(false); Text(String(localized: "Cost")).tag(true) }
-                    .pickerStyle(.segmented).labelsHidden().frame(width: 150)
+                Picker(String(localized: "Metric"), selection: $metric) {
+                    Text("Tokens").tag(Metric.tokens)
+                    Text(String(localized: "Cost")).tag(Metric.cost)
+                    if hasAPIComparison { Text(String(localized: "API pricing")).tag(Metric.api) }
+                }.pickerStyle(.segmented).labelsHidden().frame(width: hasAPIComparison ? 235 : 150)
             }
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .top, spacing: 24) {
@@ -226,7 +241,8 @@ struct ModelUsageView: View {
                 }
             }
         }.usageSurface()
-            .onChange(of: money) { hovered = nil }
+            .onChange(of: metric) { hovered = nil }
+            .onChange(of: hasAPIComparison) { if !hasAPIComparison && metric == .api { metric = .cost } }
     }
     private var shareColumns: some View {
         HStack(alignment: .top, spacing: 16) {
@@ -281,7 +297,7 @@ struct ModelUsageView: View {
                         .scaleEffect(selected ? 1.025 : 1)
                         .opacity(hovered == nil || selected ? 1 : 0.45)
                         .accessibilityLabel(shareTitle(item.name, ring: index))
-                        .accessibilityValue(money ? UsageFormatting.money(item.amount) : UsageFormatting.exactTokens(item.tokens))
+                        .accessibilityValue(metric == .tokens ? UsageFormatting.exactTokens(item.tokens) : UsageFormatting.money(amount(item)))
                 }
             }
         }.frame(width: radii[index] * 2, height: radii[index] * 2)
@@ -303,7 +319,7 @@ struct ModelUsageView: View {
                                     .foregroundStyle(.secondary)
                             }
                             HStack(spacing: 5) {
-                                Text(UsageFormatting.money(item.amount))
+                                Text(UsageFormatting.money(amount(item)))
                                 Text("·")
                                 Text(UsageFormatting.tokens(item.tokens) + " Tokens").help(UsageFormatting.exactTokens(item.tokens))
                             }.foregroundStyle(.secondary).lineLimit(1).padding(.leading, 12)

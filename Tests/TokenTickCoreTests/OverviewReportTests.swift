@@ -111,8 +111,8 @@ struct OverviewReportTests {
         try store.pool.write { db in
             for (index, mode) in [(0, 0), (1, 0), (0, 1), (1, 1)].enumerated() {
                 try db.execute(sql: """
-                    INSERT INTO usage(source_line,rollout_id,occurred_at,total_tokens,input_tokens,input_amount,is_long_context,tier,reasoning_effort,source,pricing_source)
-                    VALUES (1,?,?,100,100,10,?,?,'high','local',?)
+                    INSERT INTO usage(source_line,rollout_id,occurred_at,total_tokens,input_tokens,input_amount,api_input_amount,is_long_context,tier,reasoning_effort,source,pricing_source)
+                    VALUES (1,?,?,100,100,10,15,?,?,'high','local',?)
                     """, arguments: [String(index), now.timeIntervalSince1970 - 1, mode.1, mode.0 == 1 ? "fast" : "standard",
                         "{\"pricingMode\":{\"isFast\":\(mode.0)},\"reasoningEffort\":\"high\"}"])
             }
@@ -126,6 +126,10 @@ struct OverviewReportTests {
         #expect(report.modes.reduce(0) { $0 + $1.tokens } == report.total?.totalTokens)
         #expect(report.efforts.reduce(0) { $0 + $1.tokens } == 450)
         #expect(report.modes.reduce(0) { $0 + ($1.amount ?? 0) } == report.total?.knownAmountNanoUSD)
+        #expect(report.total?.apiKnownAmountNanoUSD == 60)
+        #expect(report.modes.reduce(0) { $0 + ($1.apiAmount ?? 0) } == report.total?.apiKnownAmountNanoUSD)
+        #expect(report.efforts.first { $0.name == "high" }?.apiAmount == 60)
+        #expect(report.efforts.first { $0.name == "unknown" }?.apiAmount == nil)
         #expect(report.efforts.first { $0.name == "high" }?.tokens == 400)
         #expect(report.efforts.first { $0.name == "unknown" }?.amount == nil)
     }

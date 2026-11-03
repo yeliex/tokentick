@@ -168,7 +168,7 @@ When plain and compressed siblings coexist in one directory, prefer the plain re
 
 ### Model, tier, and project evidence
 
-Bind `thread_settings_applied` settings at the next task/turn start. A persistent setting change cannot rewrite an active or historical turn. Keep explicit-null and missing-field semantics distinct. Ambiguous compaction model evidence stays unknown until the context establishes it.
+Bind `thread_settings_applied` settings at the next task/turn start. A persistent setting change cannot rewrite an active or historical turn. Keep explicit-null and missing-field semantics distinct. When pre-context usage has no model, use the following model-bearing context in the same turn and rollout to price it, including after an incremental scan resumes.
 
 If tier evidence is missing, read matching top-level `response.create.service_tier` or actual TurnInput/UserInput evidence from Codex `logs_*.sqlite`. Match task and turn, not nearby timestamps or nested body fields. A settings submission ID is not a turn ID. Incremental trace cursors track database/WAL changes; SHM-only changes must not trigger a self-sustaining scan loop. Late evidence reprices affected usage.
 
@@ -207,6 +207,8 @@ complete_amount = sum(the four rounded components), only when all are known
 ```
 
 Use `Decimal` and checked `Int64` operations. Reasoning is already included in output. Long-context rates apply to the entire request when its input is strictly greater than the threshold, not only the excess or a turn's cumulative input. Invalid totals or cache counts cannot be priced as normal usage. Zero components cost zero; unknown/nonzero unpriced components remain null while calculable components remain available.
+
+Store the resolved billing mode on each usage row (`billing_mode` is `plan` or `api`). Repricing reads this field directly. Both calculations use the dated service-tier price. Only the plan estimate disables long-context rates. A known `token_count.rate_limits.plan_type` marks the current turn in the scan checkpoint and updates earlier usage in the same transaction, including for zero-token events. Auth traces can identify ChatGPT when the rollout omits a plan. Conflicting traces fall back to API unless the rollout confirms a plan. Unknown requests default to API independently of the account's current subscription.
 
 New prices, bundled data, or pricing rules mark history for repricing. `sync-prices` alone only fetches prices; `reprice` or shared synchronization updates costs and caches.
 
@@ -262,6 +264,8 @@ Zero rate does not predict exhaustion; 100% is exhausted. Invalid/reset-expired 
 CLI date bounds are inclusive local calendar dates converted to half-open UTC intervals. Overview Today is `[local midnight, now)`; 7/30/90-day and one-year ranges are `[now − days × 86400, now)`, with 365 days per year. Calendar midnight respects DST. Records without precise timestamps are excluded from exact rolling ranges but retained in Lifetime.
 
 Use the same range for summaries, charts, groups, and drill-down. Overview reads its sections in one database snapshot. Trend grouping is daily, Monday-based weekly for one year, or monthly for Lifetime. Recent tasks are selected by latest consumption inside the selected range, then aggregated within that same range.
+
+The usage-mode ring groups requests by the context tier from the selected price calculation. A subscription Fast request over the API threshold belongs to Fast in the allowance estimate and to Fast + long context in the API comparison.
 
 Apply intersections, literal search, stable sorting, and pagination in SQL. Count groups after aggregation with the same snapshot/filters as the page. Never sum a limited page to produce a global total. Filter choices depend on date/timezone/account scope but ignore selected project/model/search to avoid locking users out of alternatives.
 

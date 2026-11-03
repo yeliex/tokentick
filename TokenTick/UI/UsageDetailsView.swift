@@ -93,7 +93,10 @@ struct UsageDetailsView: View {
                     }.scrollIndicators(.hidden).controlSize(.small).frame(height: 40)
                     HStack(spacing: 20) {
                         summaryMetric("Tokens", UsageFormatting.tokens(currentTotal?.totalTokens))
-                        summaryMetric(String(localized: "Estimated cost"), UsageFormatting.money(currentTotal?.knownAmountNanoUSD))
+                        summaryMetric(String(localized: "Subscription estimate"), UsageFormatting.money(currentTotal?.knownAmountNanoUSD))
+                        if let api = currentTotal?.differingAPIAmount {
+                            summaryMetric(String(localized: "API value"), UsageFormatting.money(api))
+                        }
                         summaryMetric(String(localized: "Requests"), currentTotal.map { $0.records.formatted() } ?? "—")
                         Spacer(minLength: 8)
                         Text(rangeLabel).font(.caption).foregroundStyle(.secondary)

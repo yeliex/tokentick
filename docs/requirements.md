@@ -10,6 +10,8 @@ The current app has three main pages: Overview, Usage details, and Plan usage, p
 
 The scope excludes other model providers, Intel support, a cross-platform CLI, a cloud synchronization service, and an independent background daemon. Amounts are estimates based on public model prices, not subscription charges.
 
+Show an API amount only when it differs from the primary estimate for the same usage. Keep the original cost layout, add the comparison as secondary text, and keep trend lines on the primary estimate. The model usage chart offers API pricing when the shares differ. Usage details can show both columns. A known ChatGPT plan in the same device, thread and turn or matching ChatGPT authentication selects the included-plan estimate. Both estimates use the same dated service-tier prices for input, output and cache usage. The subscription estimate excludes only the long-context surcharge. API and unknown usage use the API estimate for both amounts. API value always applies the request's API service tier, context tier and cache prices. The observed allowance percentage continues to come from Codex.
+
 ## Remote devices
 
 The app supports multiple user-configured SSH connections and selected Codex folders. They share local parsing, pricing, historical-cycle recovery, and deduplication. Remote configuration and collection are app-only. Collection progress shows completed and total files. Current-account limits and daily API reference data use the built-in local login; other accounts' server usage is future work. Storage analysis remains local-only.

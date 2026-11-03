@@ -7,6 +7,45 @@ struct FastEvidenceTests {
     static let thread = "00000000-0000-0000-0000-000000000001"
     static let turn = "00000000-0000-0000-0000-000000000002"
 
+    @Test func chatGPTAuthenticationRemovesLongContextRatesForTheMatchingTurn() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        let trace = try DatabaseQueue(path: root.appendingPathComponent("logs_2.sqlite").path)
+        let prefix = "run_sampling_request{turn_id=\(Self.turn)}: endpoint=\"/responses\" auth_header_attached=true "
+        try await trace.write { db in
+            try db.execute(sql: "CREATE TABLE logs(id INTEGER PRIMARY KEY,ts INTEGER,thread_id TEXT,target TEXT,feedback_log_body TEXT)")
+            try db.execute(sql: "INSERT INTO logs VALUES (1,100,?,'feedback_tags',?)",
+                arguments: [Self.thread, prefix + "auth_mode=\"Chatgpt\" auth_error=\"\" private-diagnostic"])
+        }
+        try await store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO usage(source_line,rollout_id,thread_id,turn_id,turn_key,total_tokens,input_tokens,output_tokens,cache_read_tokens,
+                    cache_write_tokens,model,tier,usage_date,source)
+                    VALUES (1,'a',?,?,?,300000,300000,0,0,0,'gpt-6-astra','fast','2026-09-10','local'),
+                           (1,'b',?,'other','turn:other',300000,300000,0,0,0,'gpt-6-astra','fast','2026-09-10','local')
+                """, arguments: [Self.thread, Self.turn, "turn:" + Self.turn, Self.thread])
+        }
+        _ = try store.repriceUsage()
+        let page = try DeviceTracePage.read(root: root, file: "logs_2.sqlite", previous: nil)
+        #expect(page.entries.first?.body == "")
+        _ = try await LocalUsageScanner(store: store).scan(codexHome: root)
+        let records = try store.usageRecords().rows
+        let chatGPT = records.first { $0.turnID == Self.turn }
+        #expect(chatGPT?.billingMode == "plan")
+        #expect(chatGPT?.isLongContext == false && chatGPT?.inputPrice == "20")
+        #expect(chatGPT?.amountNanoUSD == 6_000_000_000)
+        #expect(chatGPT?.apiAmountNanoUSD == 12_000_000_000)
+        #expect(records.first { $0.turnID == "other" }?.inputPrice == "40")
+        try await trace.write { db in
+            try db.execute(sql: "INSERT INTO logs VALUES (2,101,?,'feedback_tags',?)",
+                arguments: [Self.thread, prefix + "auth_mode=\"ApiKey\" auth_error=\"\""])
+        }
+        _ = try await LocalUsageScanner(store: store).scan(codexHome: root)
+        let mixed = try store.usageRecords().rows.first { $0.turnID == Self.turn }
+        #expect(mixed?.billingMode == "api" && mixed?.inputPrice == "40")
+    }
+
     @Test func traceBackfillsExistingUsageAndIncrementalReplayKeepsFacts() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

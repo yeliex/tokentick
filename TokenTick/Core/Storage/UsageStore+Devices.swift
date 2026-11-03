@@ -93,6 +93,8 @@ extension UsageStore {
             try pool.write { db in
                 try db.execute(sql: "DELETE FROM scan_files WHERE device=?", arguments: [device])
                 let prefix = "fast_trace_cursor:\(device):"
+                let authPrefix = "turn_auth:\(device):"
+                try db.execute(sql: "DELETE FROM app_metadata WHERE substr(key,1,?)=?", arguments: [authPrefix.count, authPrefix])
                 try db.execute(sql: "DELETE FROM app_metadata WHERE substr(key,1,?)=?", arguments: [prefix.count, prefix])
                 let catalogPrefix = "device_catalog_cursor:\(device):"
                 try db.execute(sql: "DELETE FROM app_metadata WHERE substr(key,1,?)=?", arguments: [catalogPrefix.count, catalogPrefix])

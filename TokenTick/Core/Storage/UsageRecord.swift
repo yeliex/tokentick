@@ -10,6 +10,7 @@ public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
     public let id: Int64
     public let device: String
     public let accountID: String?
+    public let billingMode: String
     public let threadID: String?
     public let title: String?
     public let projectName: String?
@@ -41,6 +42,8 @@ public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
     public let cacheWriteAmountNanoUSD: Int64?
     public let amountNanoUSD: Int64?
     public let knownAmountNanoUSD: Int64?
+    public let apiKnownAmountNanoUSD: Int64?
+    public let apiAmountNanoUSD: Int64?
     public let source: String
     public let rolloutID: String?
     public let sourceLine: Int?
@@ -52,18 +55,20 @@ public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
     public var pricingIsFast: Bool { (pricingTier ?? tier) == "fast" }
 
     private enum CodingKeys: String, CodingKey {
-        case id, device, accountID, threadID, title, projectName, turnID, responseID, sourceOrdinal, hour, minute
+        case id, device, accountID, billingMode, threadID, title, projectName, turnID, responseID, sourceOrdinal, hour, minute
         case occurredAt, usageDate, statisticalDate, model
         case tier, isLongContext, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens
         case reasoningTokens, totalTokens, inputPrice, outputPrice, cacheReadPrice, cacheWritePrice
         case inputAmountNanoUSD, outputAmountNanoUSD, cacheReadAmountNanoUSD, cacheWriteAmountNanoUSD, amountNanoUSD, knownAmountNanoUSD
         case source, rolloutID, sourceLine, fileName, lastKnownPath, reasoningEffort, pricingTier, pricingSource
+        case apiKnownAmountNanoUSD, apiAmountNanoUSD
     }
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(id, forKey: .id)
         try values.encode(device, forKey: .device)
         try values.encode(accountID, forKey: .accountID)
+        try values.encode(billingMode, forKey: .billingMode)
         try values.encode(threadID, forKey: .threadID)
         try values.encode(title, forKey: .title)
         try values.encode(projectName, forKey: .projectName)
@@ -94,6 +99,8 @@ public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
         try values.encode(cacheWriteAmountNanoUSD, forKey: .cacheWriteAmountNanoUSD)
         try values.encode(amountNanoUSD, forKey: .amountNanoUSD)
         try values.encode(knownAmountNanoUSD, forKey: .knownAmountNanoUSD)
+        try values.encode(apiKnownAmountNanoUSD, forKey: .apiKnownAmountNanoUSD)
+        try values.encode(apiAmountNanoUSD, forKey: .apiAmountNanoUSD)
         try values.encode(source, forKey: .source)
         try values.encode(rolloutID, forKey: .rolloutID)
         try values.encode(sourceLine, forKey: .sourceLine)
@@ -116,7 +123,7 @@ public struct UsageRecordPage: Encodable, Sendable {
 
 extension UsageRecord {
     init(row: Row) {
-        self.init(id: row["id"], device: row["device"], accountID: row["account_id"], threadID: row["thread_id"],
+        self.init(id: row["id"], device: row["device"], accountID: row["account_id"], billingMode: row["billing_mode"], threadID: row["thread_id"],
             title: row["title"], projectName: row["project_name"], turnID: row["turn_id"],
             responseID: row["response_id"], sourceOrdinal: row["source_ordinal"], hour: row["hour"], minute: row["minute"],
             occurredAt: row["occurred_at"],
@@ -128,7 +135,8 @@ extension UsageRecord {
             cacheReadPrice: row["cache_read_price"], cacheWritePrice: row["cache_write_price"],
             inputAmountNanoUSD: row["input_amount"], outputAmountNanoUSD: row["output_amount"],
             cacheReadAmountNanoUSD: row["cache_read_amount"], cacheWriteAmountNanoUSD: row["cache_write_amount"],
-            amountNanoUSD: row["amount"], knownAmountNanoUSD: row["known_amount"], source: row["source"],
+            amountNanoUSD: row["amount"], knownAmountNanoUSD: row["known_amount"],
+            apiKnownAmountNanoUSD: row["api_known_amount"], apiAmountNanoUSD: row["api_amount"], source: row["source"],
             rolloutID: row["rollout_id"], sourceLine: row["source_line"], fileName: row["file_name"],
             lastKnownPath: row["current_path"], reasoningEffort: row["reasoning_effort"], pricingTier: row["pricing_tier"], pricingSource: row["pricing_source"])
     }

@@ -27,10 +27,19 @@ struct MenuUsageView: View {
                     ForEach(periods) { period in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(period == .day ? String(localized: "Today") : String(localized: "Last \(period.title)")).font(.caption).foregroundStyle(.secondary)
-                            Text(UsageFormatting.money(totals[period]?.knownAmountNanoUSD)).font(.system(size: 18, weight: .semibold))
-                            Text("\(UsageFormatting.tokens(totals[period]?.totalTokens)) Tokens")
-                                .font(.caption).foregroundStyle(.secondary)
-                                .help(UsageFormatting.exactTokens(totals[period]?.totalTokens))
+                            let total = totals[period]
+                            Text(UsageFormatting.money(total?.knownAmountNanoUSD)).font(.system(size: 18, weight: .semibold))
+                            let tokens = UsageFormatting.tokens(total?.totalTokens) + " Tokens"
+                            Group {
+                                if let api = total?.differingAPIAmount {
+                                    ViewThatFits(in: .horizontal) {
+                                        Text(verbatim: "\(tokens) • \(UsageFormatting.money(api)) API").fixedSize()
+                                        Text(verbatim: "\(tokens) • \(UsageFormatting.compactMoney(api)) API")
+                                            .lineLimit(1).minimumScaleFactor(0.8)
+                                    }
+                                } else { Text(verbatim: tokens) }
+                            }.font(.caption).foregroundStyle(.secondary)
+                                .help(UsageFormatting.exactTokens(total?.totalTokens))
                         }.monospacedDigit().frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -177,6 +186,7 @@ struct MenuUsageView: View {
                             .foregroundStyle(UsageChartColors.tokens)
                         Text(UsageFormatting.money(selected.summary.knownAmountNanoUSD))
                             .foregroundStyle(UsageChartColors.money)
+                        APIAmountNote(estimate: selected.summary.knownAmountNanoUSD, api: selected.summary.apiKnownAmountNanoUSD, font: .caption2)
                     }
                     .font(.caption2).monospacedDigit()
                     .padding(7)

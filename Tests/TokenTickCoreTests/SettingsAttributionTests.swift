@@ -22,7 +22,7 @@ struct SettingsAttributionTests {
         #expect(rows.reduce(Int64(0)) { $0 + ($1["total_tokens"] as Int64) } == 240)
     }
 
-    @Test func futureSettingsDoNotChangeCurrentTurnAndModelSwitchBeforeContextStaysAmbiguous() async throws {
+    @Test func followingContextPricesEarlierUsageOnlyWithinItsTurn() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
         try fixture.write(fixture.header + fixture.settings(tier: "default") + fixture.started("a") + fixture.context("a")
@@ -30,13 +30,17 @@ struct SettingsAttributionTests {
         _ = try await fixture.scan()
         try fixture.append(fixture.record(1, turn: "a")
                           + fixture.started("b") + fixture.record(2, turn: "b")
-                          + fixture.context("b", model: "gpt-5.6-sol") + fixture.record(3, turn: "b")
+                          + fixture.event("compacted", "{}"))
+        _ = try await fixture.scan()
+        #expect(try fixture.rows()[1]["model"] as String? == nil)
+        try fixture.append(fixture.context("b", model: "gpt-5.6-sol") + fixture.record(3, turn: "b")
                           + fixture.record(4, turn: "unrelated"))
         let reopened = try UsageStore(databaseURL: fixture.store.databaseURL)
         _ = try await LocalUsageScanner(store: reopened).scan(codexHome: fixture.root)
         let rows = try fixture.rows()
         #expect(rows[0]["model"] as String? == "gpt-6-astra" && rows[0]["tier"] as String? == "standard")
-        #expect(rows[1]["model"] as String? == nil && rows[1]["tier"] as String? == "fast")
+        #expect(rows[1]["model"] as String? == "gpt-5.6-sol" && rows[1]["tier"] as String? == "fast")
+        #expect(rows[1]["amount"] as Int64? != nil && rows[1]["api_amount"] as Int64? != nil)
         #expect(rows[2]["model"] as String? == "gpt-5.6-sol" && rows[2]["tier"] as String? == "fast")
         #expect(rows[3]["model"] as String? == nil && rows[3]["tier"] as String? == nil)
     }

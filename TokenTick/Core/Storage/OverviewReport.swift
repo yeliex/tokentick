@@ -40,8 +40,9 @@ public struct OverviewUsageShare: Sendable, Equatable, Identifiable {
     public let name: String
     public let tokens: Int64
     public let amount: Int64?
-    public init(name: String, tokens: Int64, amount: Int64?) {
-        self.name = name; self.tokens = tokens; self.amount = amount
+    public let apiAmount: Int64?
+    public init(name: String, tokens: Int64, amount: Int64?, apiAmount: Int64?) {
+        self.name = name; self.tokens = tokens; self.amount = amount; self.apiAmount = apiAmount
     }
 }
 
@@ -50,6 +51,7 @@ public struct OverviewReport: Sendable {
     public let total: UsageSummary?
     public let models: [UsageSummary]
     public let modes: [OverviewUsageShare]
+    public let apiModes: [OverviewUsageShare]
     public let efforts: [OverviewUsageShare]
     public let trend: [OverviewTrendPoint]
     public let conversations: [OverviewConversation]
@@ -58,7 +60,7 @@ public struct OverviewReport: Sendable {
 
     /// A changing rolling endpoint does not necessarily change displayed content.
     public func hasSameContent(as other: Self) -> Bool {
-        total == other.total && models == other.models && modes == other.modes && efforts == other.efforts && trend == other.trend
+        total == other.total && models == other.models && modes == other.modes && apiModes == other.apiModes && efforts == other.efforts && trend == other.trend
             && conversations == other.conversations && unknownDateTokens == other.unknownDateTokens
             && hourly == other.hourly && query.timezone == other.query.timezone && query.filters.device == other.query.filters.device
     }
@@ -100,26 +102,31 @@ extension UsageStore {
                 predicate += " AND u.account_id = :overview_account"
                 arguments += ["overview_account": id]
             }
-            let modeExpression = """
-                CASE WHEN u.is_long_context IS NULL THEN 'unknown'
+            func modeExpression(contextColumn: String) -> String {
+                """
+                CASE WHEN \(contextColumn) IS NULL THEN 'unknown'
+                    WHEN u.tier = 'ultrafast' THEN CASE WHEN \(contextColumn) = 1 THEN 'ultrafast_long_context' ELSE 'ultrafast' END
                     WHEN u.tier = 'fast' OR (u.tier IS NULL AND EXISTS (
                         SELECT 1 FROM app_metadata WHERE key = 'fast_trace:' || u.thread_id || ':' || u.turn_id
                     ))
-                        THEN CASE WHEN u.is_long_context = 1 THEN 'fast_long_context' ELSE 'fast' END
-                    WHEN u.is_long_context = 1 THEN 'long_context' ELSE 'standard' END
+                        THEN CASE WHEN \(contextColumn) = 1 THEN 'fast_long_context' ELSE 'fast' END
+                    WHEN \(contextColumn) = 1 THEN 'long_context' ELSE 'standard' END
                 """
+            }
             let effortExpression = "COALESCE(NULLIF(u.reasoning_effort, ''), 'unknown')"
             func shares(_ expression: String) throws -> [OverviewUsageShare] {
                 try Task.checkCancellation()
                 return try Row.fetchAll(db, sql: """
                     SELECT \(expression) AS name, SUM(u.total_tokens) AS tokens,
-                        SUM(tokentick_known_amount(u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount)) AS amount
+                        SUM(tokentick_known_amount(u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount)) AS amount,
+                        SUM(tokentick_known_amount(u.api_input_amount, u.api_output_amount, u.api_cache_read_amount, u.api_cache_write_amount, u.api_amount)) AS api_amount
                     FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id AND t.device = u.device
                     WHERE (u.source = 'local' OR u.thread_id IS NOT NULL) AND (\(predicate))
                     GROUP BY name ORDER BY tokens DESC, name ASC
-                    """, arguments: arguments).map { OverviewUsageShare(name: $0["name"], tokens: $0["tokens"], amount: $0["amount"]) }
+                    """, arguments: arguments).map { OverviewUsageShare(name: $0["name"], tokens: $0["tokens"], amount: $0["amount"], apiAmount: $0["api_amount"]) }
             }
-            let modes = try shares(modeExpression)
+            let modes = try shares(modeExpression(contextColumn: "u.is_long_context"))
+            let apiModes = try shares(modeExpression(contextColumn: "u.api_is_long_context"))
             let efforts = try shares(effortExpression)
             let recent = try Row.fetchAll(db, sql: """
                 SELECT u.thread_id, t.title, t.project_name, MAX(u.occurred_at) AS last_active
@@ -133,7 +140,7 @@ extension UsageStore {
                 return summary.first.map { OverviewConversation(thread: ThreadInfo(id: id, title: row["title"],
                     projectName: row["project_name"], lastActiveAt: row["last_active"]), summary: $0) }
             }.compactMap { $0 }
-            return OverviewReport(query: query, total: total.rows.first, models: models, modes: modes, efforts: efforts, trend: trend,
+            return OverviewReport(query: query, total: total.rows.first, models: models, modes: modes, apiModes: apiModes, efforts: efforts, trend: trend,
                 conversations: conversations, unknownDateTokens: total.unknownDateTokens, hourly: false)
         }
     }

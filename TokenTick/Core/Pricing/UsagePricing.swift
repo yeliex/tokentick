@@ -11,7 +11,7 @@ struct UsagePricing {
         let amount: Int64?
     }
 
-    static func calculate(tokens: TokenUsage, price: ModelPrice?) throws -> Result {
+    static func calculate(tokens: TokenUsage, price: ModelPrice?, applyLongContextRates: Bool = true) throws -> Result {
         let reportedTotal = tokens.inputTokens.addingReportingOverflow(tokens.outputTokens)
         guard tokens.inputTokens >= 0, tokens.outputTokens >= 0, !reportedTotal.overflow,
               reportedTotal.partialValue == tokens.totalTokens else { throw PriceError.invalidUsage }
@@ -24,7 +24,7 @@ struct UsagePricing {
             guard cacheRead <= tokens.inputTokens - cacheWrite else { throw PriceError.invalidUsage }
             ordinaryInput = tokens.inputTokens - cacheRead - cacheWrite
         } else { ordinaryInput = nil }
-        let isLong: Bool? = if let price {
+        let isLong: Bool? = if !applyLongContextRates, price != nil { false } else if let price {
             switch price.contextRule {
             case .uniform: false
             case .requestInputGreaterThan: price.longContextThreshold.map { tokens.inputTokens > $0 }

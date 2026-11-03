@@ -4,6 +4,17 @@ import Testing
 @testable import TokenTickCore
 
 struct UsagePricingTests {
+    @Test func subscriptionAndAPIUseTheSamePublishedFastAndCacheRates() throws {
+        let tokens = TokenUsage(inputTokens: 100, outputTokens: 5, cachedInputTokens: 10, cacheWriteInputTokens: 20,
+                                reasoningOutputTokens: 0, totalTokens: 105)
+        let json = Self.document.replacingOccurrences(of: #""input":20,"output":100"#, with: #""input":23,"output":95"#)
+        let price = try fixturePrice(json: json, tier: "fast")
+        let api = try UsagePricing.calculate(tokens: tokens, price: price)
+        let subscription = try UsagePricing.calculate(tokens: tokens, price: price, applyLongContextRates: false)
+        #expect(subscription.rates.input == 23 && subscription.rates.cacheWrite == 25)
+        #expect(subscription.amount == api.amount && api.amount == 2_605_000)
+    }
+
     @Test func fourModesChargeDisjointInputAndOutputComponents() throws {
         let price = try fixturePrice()
         let short = TokenUsage(inputTokens: 1_000, outputTokens: 100, cachedInputTokens: 600, cacheWriteInputTokens: 200,

@@ -61,7 +61,10 @@ struct UsageSummaryInspector: View {
                 UsageDetailField(String(localized: "Cache read"), value: UsageFormatting.money(row.summary.cacheReadAmountNanoUSD))
                 UsageDetailField(String(localized: "Cache write"), value: UsageFormatting.money(row.summary.cacheWriteAmountNanoUSD))
                 UsageDetailField(String(localized: "Output"), value: UsageFormatting.money(row.summary.outputAmountNanoUSD))
-                UsageDetailField(String(localized: "Known cost"), value: UsageFormatting.money(row.summary.knownAmountNanoUSD))
+                UsageDetailField(String(localized: "Subscription estimate"), value: UsageFormatting.money(row.summary.knownAmountNanoUSD))
+                if let api = row.summary.differingAPIAmount {
+                    UsageDetailField(String(localized: "API value"), value: UsageFormatting.money(api))
+                }
             }
         }.formStyle(.grouped).scrollContentBackground(.hidden).textSelection(.enabled)
             .task(id: Request(query: query, refresh: app.usageRefreshID)) {

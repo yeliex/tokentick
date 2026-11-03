@@ -365,13 +365,13 @@
         }
       }
     },
-    "Applied rates · $ / million tokens": {
+    "Estimated rates · $ / million tokens": {
       "extractionState": "manual",
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "实际费率 · $ / 百万 tokens"
+            "value": "估算使用的费率 · $ / 百万 tokens"
           }
         }
       }
@@ -603,17 +603,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "金额"
-          }
-        }
-      }
-    },
-    "Cost / Tokens": {
-      "extractionState": "manual",
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "金额 / Tokens"
           }
         }
       }
@@ -882,17 +871,6 @@
         }
       }
     },
-    "Estimated cost": {
-      "extractionState": "manual",
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "预估费用"
-          }
-        }
-      }
-    },
     "Estimated exhausted. Refresh to check.": {
       "extractionState": "manual",
       "localizations": {
@@ -915,35 +893,90 @@
         }
       }
     },
-    "Estimated using public API prices": {
+    "Subscription estimate": {
       "extractionState": "manual",
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "按公开 API 价格估算"
+            "value": "订阅额度估算"
           }
         }
       }
     },
-    "Estimated using public model API prices, not your subscription bill.": {
+    "Estimated cost": {
       "extractionState": "manual",
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "按模型公开 API 价格估算，不代表订阅账单。"
+            "value": "预估费用"
           }
         }
       }
     },
-    "Exact cost": {
+    "Cost / Tokens": {
       "extractionState": "manual",
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "精确金额"
+            "value": "金额 / Tokens"
+          }
+        }
+      }
+    },
+    "Usage mode": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用模式"
+          }
+        }
+      }
+    },
+    "API pricing": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API 计费"
+          }
+        }
+      }
+    },
+    "%@ API": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ API"
+          }
+        }
+      }
+    },
+    "API value": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API 等值费用"
+          }
+        }
+      }
+    },
+    "Estimated cost breakdown": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "估算金额明细"
           }
         }
       }
@@ -992,6 +1025,14 @@
         }
       }
     },
+    "Ultrafast": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "极速" } } }
+    },
+    "Ultrafast + long context": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "极速 + 长上下文" } } }
+    },
     "Fast + long context": {
       "extractionState": "manual",
       "localizations": {
@@ -1032,17 +1073,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "以下为固定示例数据，复用实际额度组件，不影响当前账号。预测文字悬浮可查看提前耗尽时间。"
-          }
-        }
-      }
-    },
-    "Full cost": {
-      "extractionState": "manual",
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "完整金额"
           }
         }
       }
@@ -1674,17 +1704,6 @@
         }
       }
     },
-    "No (standard by default)": {
-      "extractionState": "manual",
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "否（默认普通）"
-          }
-        }
-      }
-    },
     "No current limits. Refresh or check your Codex sign-in status.": {
       "extractionState": "manual",
       "localizations": {
@@ -2000,17 +2019,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "计价日期"
-          }
-        }
-      }
-    },
-    "Pricing mode": {
-      "extractionState": "manual",
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "计价模式"
           }
         }
       }
@@ -2873,13 +2881,13 @@
         }
       }
     },
-    "Usage mode": {
+    "Estimated pricing tier": {
       "extractionState": "manual",
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "使用模式"
+            "value": "估算计价档位"
           }
         }
       }

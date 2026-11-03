@@ -39,6 +39,7 @@ public struct WeeklyLimitWindow: Codable, Sendable, Identifiable, Equatable {
     public let totalTokens: Int64?
     public let amountNanoUSD: Int64?
     public let knownAmountNanoUSD: Int64?
+    public let apiKnownAmountNanoUSD: Int64?
     public let requestCount: Int?
     public var observedAccountIDs: [String] { accountID.map { [$0] } ?? [] }
 }

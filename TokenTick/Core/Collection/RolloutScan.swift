@@ -5,6 +5,8 @@ struct RolloutScan {
     private var parser: RolloutParser
     private var usages: [CollectedUsage] = []
     private var limits: [CurrentLimitSnapshot] = []
+    private var turnsWithPlans = Set<String>()
+    private var modelBackfills: [RolloutParser.ModelBackfill] = []
     private(set) var line: Int
     private(set) var offset: UInt64
     private(set) var pendingLines = 0
@@ -21,8 +23,15 @@ struct RolloutScan {
     mutating func consume(_ data: Data, endingAt offset: UInt64, report: inout ScanReport) throws {
         let previousState = parser.state
         do {
-            if let usage = try parser.consume(data, line: line + 1) { usages.append(usage) }
+            if let usage = try parser.consume(data, line: line + 1) {
+                usages.append(usage)
+                if usage.hasPlan, let turn = usage.turnID { turnsWithPlans.insert(turn) }
+            }
+            if let backfill = parser.modelBackfill { modelBackfills.append(backfill) }
             if let current = parser.currentLimits {
+                if current.historyExclusion == nil, current.knownPlanType != nil, let turn = current.turnID {
+                    turnsWithPlans.insert(turn)
+                }
                 if current.windows.contains(where: { $0.durationMinutes == 10_080 }) { limits.append(current) }
                 if current.historyExclusion == nil,
                    report.currentLimits.map({ current.observedAt > $0.observedAt }) ?? true { report.currentLimits = current }
@@ -40,10 +49,12 @@ struct RolloutScan {
     mutating func commit(store: UsageStore, identity: RolloutIdentity, url: URL,
                          checkpoint: FileSnapshot, report: inout ScanReport, device: String = "local",
                          sourceRevision: Int = 0, priority: DevicePriority = DevicePriority()) throws {
-        try store.commitScan(usages, device: device, sourceRevision: sourceRevision, priority: priority, limits: limits, identity: identity, url: url, line: line, offset: offset,
+        try store.commitScan(usages, device: device, sourceRevision: sourceRevision, priority: priority, limits: limits, turnsWithPlans: turnsWithPlans, modelBackfills: modelBackfills, identity: identity, url: url, line: line, offset: offset,
                              file: checkpoint, state: &parser.state, report: &report)
         usages.removeAll(keepingCapacity: true)
         limits.removeAll(keepingCapacity: true)
+        turnsWithPlans.removeAll(keepingCapacity: true)
+        modelBackfills.removeAll(keepingCapacity: true)
         pendingLines = 0
     }
 }

@@ -19,7 +19,8 @@ extension UsageStore {
                 )
                 SELECT COUNT(*) AS requests,COALESCE(SUM(u.total_tokens),0) AS tokens,
                     CASE WHEN COUNT(*)=COUNT(u.amount) THEN SUM(u.amount) END AS amount,
-                    SUM(tokentick_known_amount(u.input_amount,u.output_amount,u.cache_read_amount,u.cache_write_amount,u.amount)) AS known
+                    SUM(tokentick_known_amount(u.input_amount,u.output_amount,u.cache_read_amount,u.cache_write_amount,u.amount)) AS known,
+                    SUM(tokentick_known_amount(u.api_input_amount,u.api_output_amount,u.api_cache_read_amount,u.api_cache_write_amount,u.api_amount)) AS api_known_amount
                 FROM usage u LEFT JOIN turns t ON t.turn_key=u.turn_key
                 WHERE u.source='local' AND u.account_id=?
                     AND COALESCE(t.started,u.occurred_at)>=? AND COALESCE(t.started,u.occurred_at)<?
@@ -29,7 +30,8 @@ extension UsageStore {
                 startedAtInferred: Int64(cycle.start), scheduledResetAt: resetsAt,
                 lastObservedAt: cycle.window.last, lastUsedPercent: cycle.window.percent,
                 resetKind: "natural", endsAt: Double(resetsAt), totalTokens: row["tokens"],
-                amountNanoUSD: row["amount"], knownAmountNanoUSD: row["known"], requestCount: row["requests"])
+                amountNanoUSD: row["amount"], knownAmountNanoUSD: row["known"],
+                apiKnownAmountNanoUSD: row["api_known_amount"], requestCount: row["requests"])
         }
     }
 
@@ -61,7 +63,8 @@ extension UsageStore {
                     startedAtInferred: Int64(start), scheduledResetAt: row["scheduled_reset_at"],
                     lastObservedAt: row["last_observed_at"], lastUsedPercent: row["last_used_percent"],
                     resetKind: row["reset_kind"], endsAt: end, totalTokens: row["total_tokens"],
-                    amountNanoUSD: row["amount"], knownAmountNanoUSD: row["known_amount"], requestCount: row["request_count"])
+                    amountNanoUSD: row["amount"], knownAmountNanoUSD: row["known_amount"],
+                    apiKnownAmountNanoUSD: row["api_known_amount"], requestCount: row["request_count"])
             }
             return WeeklyLimitHistory(timezone: identifier, rows: windows, hasMore: rows.count > query.limit)
         }

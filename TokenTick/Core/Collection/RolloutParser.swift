@@ -16,10 +16,17 @@ struct RolloutParser {
     let identity: RolloutIdentity
     private let decoder = JSONDecoder()
     var currentLimits: CurrentLimitSnapshot?
+    struct ModelBackfill {
+        let turnID: String
+        let model: String
+        let lines: Range<Int>
+    }
+    var modelBackfill: ModelBackfill?
     var inheritedEvents = 0
 
     mutating func consume(_ data: Data, line: Int) throws -> CollectedUsage? {
         currentLimits = nil
+        modelBackfill = nil
         if data.allSatisfy({ $0 == 32 || $0 == 13 || $0 == 9 }) { return nil }
         let event = try decoder.decode(RolloutEvent.self, from: data)
         switch event.payload {
@@ -34,9 +41,15 @@ struct RolloutParser {
             return nil
         case .turn(let turn):
             let sameTurn = turn.turn_id != nil && turn.turn_id == state.turnID
+            if sameTurn, let start = state.unresolvedTurnStartLine, let turnID = turn.turn_id,
+               let model = turn.model, let session = state.session, try !isInherited(event, session: session) {
+                modelBackfill = ModelBackfill(turnID: turnID, model: model, lines: start..<line)
+            }
+            if !sameTurn || turn.model != nil { state.unresolvedTurnStartLine = nil }
             state.contextModel = turn.model
             state.reasoningEffort = turn.effort
             if !sameTurn {
+                state.planTurnID = nil
                 state.serviceTier = nil
                 state.turnStartedAt = event.timestamp
             }
@@ -56,14 +69,16 @@ struct RolloutParser {
             return nil
         case .started(let started):
             guard let session = state.session, try !isInherited(event, session: session) else { return nil }
+            if state.planTurnID != started.turn_id { state.planTurnID = nil }
             state.turnID = started.turn_id
             state.reasoningEffort = nil
             state.turnStartedAt = event.timestamp
             state.serviceTier = state.settings?.serviceTier
             let model = state.settings?.model
-            // Pre-turn compaction may use the previous model; keep ambiguity until the current turn context arrives.
+            // 轮首压缩先保留未知模型，等同轮的上下文到达后补价。
             let ambiguous = model != nil && (state.contextModel.map { $0 != model } ?? (session.forked_from_id != nil))
             state.model = ambiguous ? nil : model
+            state.unresolvedTurnStartLine = state.model == nil ? line : nil
             return nil
         case .other: return nil
         case .count(let count):
@@ -77,6 +92,9 @@ struct RolloutParser {
                 else if session.forked_from_id != nil, let created = session.timestamp.flatMap(DateParsing.parseTimestamp), timestamp <= created {
                     currentLimits?.historyExclusion = "fork_replay"
                 }
+            }
+            if currentLimits?.historyExclusion == nil, currentLimits?.knownPlanType != nil {
+                state.planTurnID = state.turnID
             }
             guard let info = count.info else { return nil }
             guard let session = state.session else { throw ParseError.missingSession }
@@ -160,7 +178,8 @@ struct RolloutParser {
                            thread: String, turn: String?, line: Int,
                            evidence: UsageEvidence) throws -> CollectedUsage {
         guard let timestamp = DateParsing.parseTimestamp(evidence.timestamp) else { throw ParseError.missingTimestamp }
-        return CollectedUsage(accountID: state.accountID, responseID: responseID, legacyCumulative: legacy, threadID: thread.lowercased(),
+        let hasPlan = (turn != nil && state.planTurnID == turn) || (currentLimits?.historyExclusion == nil && currentLimits?.knownPlanType != nil)
+        return CollectedUsage(accountID: state.accountID, hasPlan: hasPlan, responseID: responseID, legacyCumulative: legacy, threadID: thread.lowercased(),
                               turnID: turn, timestamp: timestamp,
                               model: turn == state.turnID ? state.model : nil, tokens: usage,
                               rolloutID: identity.rolloutID.uuidString.lowercased(), line: line, evidence: evidence)

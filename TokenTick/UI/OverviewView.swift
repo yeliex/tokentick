@@ -59,9 +59,11 @@ struct OverviewView: View {
                         }.frame(maxWidth: .infinity, alignment: .leading)
                         VStack(alignment: .leading, spacing: 10) {
                             Text(String(localized: "Estimated cost")).font(.callout).foregroundStyle(.secondary)
-                                .help(String(localized: "Estimated using public model API prices, not your subscription bill."))
-                            Text(UsageFormatting.money(total.knownAmountNanoUSD)).font(.system(size: 34, weight: .semibold)).monospacedDigit().textSelection(.enabled)
+                            Text(UsageFormatting.money(total.knownAmountNanoUSD)).font(.system(size: 34, weight: .semibold))
+                                .monospacedDigit().textSelection(.enabled)
                                 .help(total.unpricedRecords > 0 ? String(localized: "\(UsageFormatting.tokens(total.unpricedTokens)) tokens are not fully priced. Cost includes only known amounts.") : String(localized: "All usage is priced."))
+                            APIAmountNote(estimate: total.knownAmountNanoUSD, api: total.apiKnownAmountNanoUSD)
+                                .textSelection(.enabled)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
                     Divider()
@@ -81,7 +83,7 @@ struct OverviewView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
-                    ModelUsageView(models: report.models, modes: report.modes, efforts: report.efforts)
+                    ModelUsageView(models: report.models, modes: report.modes, apiModes: report.apiModes, efforts: report.efforts)
                     CodexStorageSummaryView()
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
@@ -98,7 +100,7 @@ struct OverviewView: View {
                                 focused.grouping = .thread
                                 openConversation(focused)
                             } label: {
-                                HStack(spacing: 16) {
+                                HStack(alignment: .firstTextBaseline, spacing: 16) {
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text(conversation.thread.title ?? conversation.id).lineLimit(1).help(conversation.thread.title ?? conversation.id)
                                         Text(UsageFormatting.project(conversation.thread.projectName))
@@ -106,7 +108,10 @@ struct OverviewView: View {
                                             .help(UsageFormatting.project(conversation.thread.projectName))
                                     }
                                     Spacer()
-                                    Text(UsageFormatting.money(conversation.summary.knownAmountNanoUSD)).frame(width: 105, alignment: .trailing)
+                                    VStack(alignment: .trailing, spacing: 3) {
+                                        Text(UsageFormatting.money(conversation.summary.knownAmountNanoUSD))
+                                        APIAmountNote(estimate: conversation.summary.knownAmountNanoUSD, api: conversation.summary.apiKnownAmountNanoUSD)
+                                    }.frame(minWidth: 105, alignment: .trailing)
                                     TokenText(value: conversation.summary.totalTokens).frame(width: 100, alignment: .trailing)
                                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
                                 }.monospacedDigit().contentShape(Rectangle()).padding(.vertical, 5)

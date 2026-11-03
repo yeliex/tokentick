@@ -123,6 +123,7 @@ public struct DeviceSyncService: Sendable {
         let previousRevision = try await store.pool.read { try UsageStore.statisticsRevision($0) }
         var completedCycles = 0
         var metadataRefreshed = false
+        var authenticationChanged = false
         let configuration = device.id == "local" ? DeviceConfiguration() : try configurations.load()
         let priority = DevicePriority(devices: configuration.devices)
         try FileWriteLock(url: store.databaseURL.appendingPathExtension("write.lock")).withLock {
@@ -138,7 +139,7 @@ public struct DeviceSyncService: Sendable {
         if let traces = source as? any DeviceTraceSource {
             do {
                 for file in try await traces.traceFiles() {
-                    let key = "fast_trace_cursor:\(device.id):\(device.sourceRevision):\(file)"
+                    let key = "fast_trace_cursor:\(device.id):v2:\(device.sourceRevision):\(file)"
                     var cursor = try store.fastEvidenceCursor(key: key)
                     var pages = 0
                     while true {
@@ -148,9 +149,10 @@ public struct DeviceSyncService: Sendable {
                             CodexFastEvidence.parse(body: $0.body, threadID: $0.threadID, fileName: file,
                                 rowID: $0.id, timestamp: $0.timestamp)
                         }
-                        try FileWriteLock(url: store.databaseURL.appendingPathExtension("write.lock")).withLock {
-                            try store.commitFastEvidence(evidence, cursor: page.cursor, key: key)
+                        let changed = try FileWriteLock(url: store.databaseURL.appendingPathExtension("write.lock")).withLock {
+                            try store.commitTraceEvidence(evidence, page: page, device: device.id, key: key)
                         }
+                        if changed { authenticationChanged = true }
                         pages += 1
                         guard page.hasMore else { break }
                         guard page.cursor != cursor else { throw DeviceSourceFailure.invalidResponse }
@@ -183,6 +185,6 @@ public struct DeviceSyncService: Sendable {
         }
         let revision = try await store.pool.read { try UsageStore.statisticsRevision($0) }
         return DeviceSyncResult(deviceID: device.id, root: root, scan: report, finishedAt: Date(), accountEmail: account?.email, metadataRefreshed: metadataRefreshed,
-            dataChanged: revision != previousRevision || completedCycles > 0 || report.scannedFiles > 0)
+            dataChanged: authenticationChanged || revision != previousRevision || completedCycles > 0 || report.scannedFiles > 0)
     }
 }

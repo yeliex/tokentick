@@ -4,6 +4,52 @@ import Testing
 @testable import TokenTickCore
 
 struct TurnUsageTests {
+    @Test func planBeforeUsageSurvivesRestartAndConflictingAuthentication() async throws {
+        let f = try Fixture(); defer { f.clean() }
+        let turn = UUID().uuidString.lowercased()
+        let signal = f.count(1, input: 0, output: 0)
+            .replacingOccurrences(of: "\"info\":", with: "\"rate_limits\":{\"plan_type\":\"pro\"},\"info\":")
+        let file = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: f.turn(turn) + signal)
+        _ = try await f.scan()
+        let trace = try DatabaseQueue(path: f.root.appendingPathComponent("logs_99.sqlite").path)
+        let body = "run_sampling_request{turn_id=\(turn)}: endpoint=\"/responses\" auth_header_attached=true auth_mode=\"ApiKey\" auth_error=\"\""
+        try await trace.write { db in
+            try db.execute(sql: "CREATE TABLE logs(id INTEGER PRIMARY KEY,ts INTEGER,thread_id TEXT,target TEXT,feedback_log_body TEXT)")
+            try db.execute(sql: "INSERT INTO logs VALUES (1,100,?,'feedback_tags',?)", arguments: [f.parent, body])
+        }
+        _ = try await f.scan()
+        try f.append(f.count(2), to: file)
+        let reopened = try UsageStore(databaseURL: f.store.databaseURL)
+        _ = try await LocalUsageScanner(store: reopened).scan(codexHome: f.root)
+        #expect(try reopened.usageRecords().rows.map(\.billingMode) == ["plan"])
+        try await trace.write { db in
+            try db.execute(sql: "INSERT INTO logs VALUES (2,101,?,'feedback_tags',?)", arguments: [f.parent, body])
+        }
+        _ = try await f.scan()
+        #expect(try reopened.usageRecords().rows.map(\.billingMode) == ["plan"])
+    }
+
+    @Test func zeroTokenPlanRepricesItsTurnOnly() async throws {
+        let f = try Fixture(); defer { f.clean() }
+        let turn = f.turn("shared", model: "gpt-6-astra")
+        let record = f.record(1, input: 300_000, output: 20, cumulative: 300_020)
+        let file = try f.write(thread: f.parent, created: "2026-09-01T00:00:00Z", body: turn + record)
+        _ = try await f.scan()
+        #expect(try f.rows("SELECT * FROM usage").first?["is_long_context"] as Bool? == true)
+        let count = f.count(1, input: 0, output: 0, cumulative: 0)
+            .replacingOccurrences(of: "\"info\":", with: "\"rate_limits\":{\"plan_type\":\"pro\"},\"info\":")
+        let next = f.count(2, input: 300_000, output: 20, cumulative: 600_040)
+        try f.append(count + next + f.turn("another", model: "gpt-6-astra")
+            + f.count(3, input: 300_000, output: 20, cumulative: 900_060), to: file)
+        #expect(try await f.scan().issueCount == 0)
+        let rows = try f.rows("SELECT * FROM usage ORDER BY id")
+        #expect(rows.count == 3)
+        #expect(rows.map { $0["billing_mode"] as String } == ["plan", "plan", "api"])
+        #expect(try f.rows("SELECT key FROM app_metadata WHERE key GLOB 'turn_plan:*'").isEmpty)
+        #expect(rows.map { $0["is_long_context"] as Bool? } == [false, false, true])
+        #expect(rows.map { $0["input_price"] as String? } == ["10", "10", "20"])
+    }
+
     @Test func reasoningEffortBackfillsWithoutDuplicatingRequestsAndDoesNotLeakAcrossTurns() async throws {
         let f = try Fixture(); defer { f.clean() }
         let body = f.turn("one") + f.count(1)

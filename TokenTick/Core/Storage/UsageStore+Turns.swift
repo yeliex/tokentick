@@ -52,6 +52,15 @@ extension UsageStore {
                 if let value: String = row["tier"], let tier, value != tier { throw ConflictingEvent() }
             }
             let existing = ordered.first { ($0["response_id"] as String?) != nil } ?? ordered.first
+            var billingMode = "api"
+            if usage.hasPlan || ordered.contains(where: { $0["billing_mode"] as String == "plan" }) {
+                billingMode = "plan"
+            } else if let turn = usage.turnID, try Bool.fetchOne(db, sql: """
+                SELECT EXISTS(SELECT 1 FROM app_metadata WHERE key=? AND value IN ('chatgpt','plan'))
+                    OR EXISTS(SELECT 1 FROM usage WHERE turn_key=? AND thread_id=? AND device=? AND billing_mode='plan')
+                """, arguments: ["turn_auth:\(device):\(usage.threadID):\(turn)", key, usage.threadID, device]) == true {
+                billingMode = "plan"
+            }
             let parts = calendar.dateComponents([.hour,.minute], from: usage.timestamp)
             let legacy = usage.legacyCumulative
             let id: Int64
@@ -65,11 +74,12 @@ extension UsageStore {
                 let preferIncoming = preferSource || (usage.evidence.record != nil
                     && (existing["response_id"] as String?) == nil
                     && (existing["device"] as String) == device)
-                let columns = ["account_id","response_id","model","tier","reasoning_effort","legacy_total","legacy_input","legacy_output",
+                let columns = ["account_id","response_id","model","tier","billing_mode","reasoning_effort","legacy_total","legacy_input","legacy_output",
                     "legacy_cache_read","legacy_cache_write","legacy_reasoning","turn_started_at"]
                 let values: [(any DatabaseValueConvertible)?] = [
                     session?.creator_account_id.flatMap { $0.isEmpty ? nil : $0 } ?? (existing["account_id"] as String?) ?? usage.accountID,
                     usage.responseID ?? existing["response_id"], usage.model ?? existing["model"], tier ?? existing["tier"],
+                    billingMode,
                     usage.evidence.reasoningEffort ?? existing["reasoning_effort"],
                     legacy?.totalTokens ?? existing["legacy_total"], legacy == nil ? (existing["legacy_input"] as Int64?) : legacy?.inputTokens,
                     legacy == nil ? (existing["legacy_output"] as Int64?) : legacy?.outputTokens, legacy == nil ? (existing["legacy_cache_read"] as Int64?) : legacy?.cachedInputTokens,
@@ -88,14 +98,14 @@ extension UsageStore {
                 if changed { upgraded += 1 } else { duplicates += 1; continue }
             } else {
                 try db.execute(sql: """
-                    INSERT INTO usage(account_id,device,turn_key,thread_id,turn_id,response_id,occurred_at,usage_date,hour,minute,model,tier,reasoning_effort,
+                    INSERT INTO usage(account_id,device,turn_key,thread_id,turn_id,response_id,occurred_at,usage_date,hour,minute,model,tier,billing_mode,reasoning_effort,
                         input_tokens,output_tokens,cache_read_tokens,cache_write_tokens,reasoning_tokens,total_tokens,
                         source,rollout_id,source_line,source_ordinal,turn_started_at,source_created_at,
                         legacy_total,legacy_input,legacy_output,legacy_cache_read,legacy_cache_write,legacy_reasoning)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'local',?,?,?,?,?,?,?,?,?,?,?)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'local',?,?,?,?,?,?,?,?,?,?,?)
                     """, arguments: [usage.accountID,device,key,usage.threadID,usage.turnID,usage.responseID,time,
                         usage.timestamp.formatted(.iso8601.year().month().day().dateSeparator(.dash)),parts.hour,parts.minute,
-                        usage.model,tier,usage.evidence.reasoningEffort,usage.tokens.inputTokens,usage.tokens.outputTokens,
+                        usage.model,tier,billingMode,usage.evidence.reasoningEffort,usage.tokens.inputTokens,usage.tokens.outputTokens,
                         usage.tokens.cachedInputTokens,usage.tokens.cacheWriteInputTokens,usage.tokens.reasoningOutputTokens,usage.tokens.totalTokens,
                         usage.rolloutID,usage.line,usage.evidence.ordinal.flatMap(Int64.init(exactly:)),start,created,
                         legacy?.totalTokens,legacy?.inputTokens,legacy?.outputTokens,legacy?.cachedInputTokens,

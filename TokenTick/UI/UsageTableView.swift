@@ -28,9 +28,13 @@ struct UsageTableView: View {
                 }.width(min: 180, ideal: 340)
                 TableColumn("Tokens") { row in TokenText(value: row.summary.totalTokens).monospacedDigit() }
                     .width(min: 105, ideal: 125)
-                TableColumn(String(localized: "Estimated cost")) { row in Text(UsageFormatting.money(row.summary.knownAmountNanoUSD)).monospacedDigit()
-                    .help(row.summary.unpricedTokens > 0 ? String(localized: "Some usage is unpriced") : String(localized: "Estimated using public API prices")) }
+                TableColumn(String(localized: "Subscription estimate")) { row in Text(UsageFormatting.money(row.summary.knownAmountNanoUSD)).monospacedDigit() }
                     .width(min: 90, ideal: 110)
+                if rows.contains(where: { $0.summary.differingAPIAmount != nil }) {
+                    TableColumn(String(localized: "API value")) { row in
+                        if let api = row.summary.differingAPIAmount { Text(UsageFormatting.money(api)).monospacedDigit() }
+                    }.width(min: 90, ideal: 110)
+                }
                 TableColumn(String(localized: "Requests")) { row in Text(row.summary.records.formatted()).monospacedDigit() }
                     .width(min: 75, ideal: 90)
 

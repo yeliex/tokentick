@@ -43,8 +43,13 @@ struct UsageRecordsView: View {
                         TableColumn(String(localized: "Details")) { row in
                             Button(String(localized: "Details")) { selectedRecord = row }.buttonStyle(.borderless)
                         }.width(50)
-                        TableColumn(String(localized: "Cost")) { row in Text(UsageFormatting.money(row.knownAmountNanoUSD)).monospacedDigit() }
-                            .width(min: 70, ideal: 90)
+                        TableColumn(String(localized: "Subscription estimate")) { row in Text(UsageFormatting.money(row.knownAmountNanoUSD)).monospacedDigit() }
+                            .width(min: 90, ideal: 110)
+                        if records.contains(where: { $0.differingAPIAmount != nil }) {
+                            TableColumn(String(localized: "API value")) { row in
+                                if let api = row.differingAPIAmount { Text(UsageFormatting.money(api)).monospacedDigit() }
+                            }.width(min: 70, ideal: 90)
+                        }
                     }
                     .tableStyle(.inset(alternatesRowBackgrounds: false)).scrollContentBackground(.hidden)
                     .overlay {
@@ -130,8 +135,7 @@ private struct UsageRecordDetail: View {
             }
             Section(String(localized: "Model and pricing mode")) {
                 UsageDetailField(String(localized: "Model"), value: record.model ?? String(localized: "Other"))
-                UsageDetailField("Fast", value: record.isFast.map { $0 ? String(localized: "Yes") : String(localized: "No") } ?? (record.pricingIsFast ? String(localized: "Yes (additional logs)") : String(localized: "No (standard by default)")))
-                UsageDetailField(String(localized: "Long-context pricing"), value: record.isLongContext.map { $0 ? String(localized: "Yes") : String(localized: "No") } ?? String(localized: "Unknown"))
+                UsageDetailField("Fast", value: record.isFast.map { $0 ? String(localized: "Yes") : String(localized: "No") } ?? (record.pricingIsFast ? String(localized: "Yes (additional logs)") : String(localized: "Unknown")))
             }
             Section("Tokens") {
                 UsageDetailField(String(localized: "Total"), value: UsageFormatting.tokens(record.totalTokens)).help(UsageFormatting.exactTokens(record.totalTokens))
@@ -141,19 +145,27 @@ private struct UsageRecordDetail: View {
                 UsageDetailField(String(localized: "Output"), value: UsageFormatting.tokens(record.outputTokens)).help(UsageFormatting.exactTokens(record.outputTokens))
                 UsageDetailField(String(localized: "Reasoning"), value: UsageFormatting.tokens(record.reasoningTokens)).help(UsageFormatting.exactTokens(record.reasoningTokens))
             }
-            Section(String(localized: "Applied rates · $ / million tokens")) {
+            Section(String(localized: "Estimated rates · $ / million tokens")) {
+                if record.isLongContext == true {
+                    UsageDetailField(String(localized: "Long-context pricing"), value: String(localized: "Yes"))
+                }
                 UsageDetailField(String(localized: "Input"), value: record.inputPrice ?? String(localized: "Unknown"))
                 UsageDetailField(String(localized: "Cache read"), value: record.cacheReadPrice ?? String(localized: "Unknown"))
                 UsageDetailField(String(localized: "Cache write"), value: record.cacheWritePrice ?? String(localized: "Unknown"))
                 UsageDetailField(String(localized: "Output"), value: record.outputPrice ?? String(localized: "Unknown"))
             }
-            Section(String(localized: "Exact cost")) {
+            Section(String(localized: "Estimated cost breakdown")) {
+                UsageDetailField(String(localized: "Subscription estimate"), value: UsageFormatting.exactMoney(record.knownAmountNanoUSD))
+                if let api = record.differingAPIAmount {
+                    UsageDetailField(String(localized: "API value"), value: UsageFormatting.exactMoney(api))
+                }
                 UsageDetailField(String(localized: "Input"), value: UsageFormatting.exactMoney(record.inputAmountNanoUSD))
                 UsageDetailField(String(localized: "Cache read"), value: UsageFormatting.exactMoney(record.cacheReadAmountNanoUSD))
                 UsageDetailField(String(localized: "Cache write"), value: UsageFormatting.exactMoney(record.cacheWriteAmountNanoUSD))
                 UsageDetailField(String(localized: "Output"), value: UsageFormatting.exactMoney(record.outputAmountNanoUSD))
-                UsageDetailField(String(localized: "Known cost"), value: UsageFormatting.exactMoney(record.knownAmountNanoUSD))
-                UsageDetailField(String(localized: "Full cost"), value: UsageFormatting.exactMoney(record.amountNanoUSD))
+                if record.amountNanoUSD == nil || record.apiAmountNanoUSD == nil {
+                    Text(String(localized: "Some usage is unpriced")).foregroundStyle(.secondary)
+                }
             }
             Section(String(localized: "Source information")) {
                 UsageDetailField(String(localized: "Device"), value: app.devices.name(record.device))
@@ -171,7 +183,6 @@ private struct UsageRecordDetail: View {
                     }
                 }
                 UsageDetailField(String(localized: "Reasoning effort"), value: record.reasoningEffort ?? String(localized: "Unknown"))
-                UsageDetailField(String(localized: "Pricing mode"), value: record.pricingIsFast ? String(localized: "Fast") : String(localized: "Standard"))
             }
         }.formStyle(.grouped).scrollContentBackground(.hidden).textSelection(.enabled)
     }

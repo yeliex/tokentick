@@ -85,8 +85,10 @@ try {
             let start = 0n;
             const previous = request.cursor;
             if (previous && BigInt(previous.inode) === before.ino && BigInt(previous.device) === before.dev && BigInt(previous.lastID) <= maximum && previous.anchor === anchor(BigInt(previous.lastID))) start = BigInt(previous.lastID);
-            const thread = columns(db, 'logs').has('thread_id') ? 'thread_id' : 'NULL';
-            const rows = integers(`SELECT id,ts AS timestamp,${thread} AS threadID,feedback_log_body AS body FROM logs WHERE id>? AND id<=? AND length(CAST(feedback_log_body AS BLOB))<=4194304 AND (feedback_log_body LIKE '%websocket request:%' OR feedback_log_body LIKE '%Submission sub=Submission {%') ORDER BY id LIMIT 65`).iterate(start, maximum);
+            const fields = columns(db, 'logs');
+            const sql = tracePageSQL.replace('TRACE_THREAD', fields.has('thread_id') ? 'thread_id' : 'NULL')
+                .replace('TRACE_TARGET', fields.has('target') ? 'target' : 'NULL');
+            const rows = integers(sql).iterate(start, maximum);
             const entries = [];
             let bytes = 0, more = false;
             for (const row of rows) {

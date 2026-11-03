@@ -15,7 +15,7 @@ public struct RepriceReport: Codable, Sendable {
 
 private struct RepriceCheckpoint: Codable {
     // Increment when pricing or checkpoint formats change to prevent mixing results across versions.
-    static let currentVersion = 4
+    static let currentVersion = 9
     static let key = "reprice_checkpoint"
     let version: Int
     let fromDate: String?
@@ -42,7 +42,7 @@ private struct RepriceCheckpoint: Codable {
 extension UsageStore {
     func needsRepricing() throws -> Bool {
         try pool.read { db in
-            try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'pricing_algorithm'") != "4"
+            try String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'pricing_algorithm'") != String(RepriceCheckpoint.currentVersion)
                 || String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'pricing_rebuild_pending'") == "true"
                 || String.fetchOne(db, sql: "SELECT value FROM app_metadata WHERE key = 'pricing_defaults_hash'") != BundledModelPrices.fingerprint()
         }
@@ -71,7 +71,8 @@ extension UsageStore {
                     if rows.isEmpty {
                         try db.execute(sql: "DELETE FROM app_metadata WHERE key = ?", arguments: [RepriceCheckpoint.key])
                         if fromDate == nil {
-                            try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES ('pricing_algorithm', '4') ON CONFLICT(key) DO UPDATE SET value = '4'")
+                            try db.execute(sql: "INSERT INTO app_metadata(key, value) VALUES ('pricing_algorithm', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                                           arguments: [String(RepriceCheckpoint.currentVersion)])
                             try db.execute(sql: "DELETE FROM app_metadata WHERE key = 'pricing_rebuild_pending'")
                             try db.execute(sql: "INSERT INTO app_metadata(key,value) VALUES ('pricing_defaults_hash',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", arguments: [try BundledModelPrices.fingerprint()])
                         }
@@ -114,13 +115,20 @@ extension UsageStore {
         let context = try pricingContext(row, db: db)
         let price = context.price
         var result: UsagePricing.Result?
+        var api: UsagePricing.Result?
         if let input, let output {
             let tokens = TokenUsage(inputTokens: input, outputTokens: output, cachedInputTokens: row["cache_read_tokens"],
                     cacheWriteInputTokens: row["cache_write_tokens"], reasoningOutputTokens: row["reasoning_tokens"],
                     totalTokens: row["total_tokens"])
-            do { result = try UsagePricing.calculate(tokens: tokens, price: price) }
-            catch PriceError.invalidUsage { report.invalidUsage += 1 }
-            catch PriceError.amountOverflow { report.overflow += 1 }
+            do { api = try UsagePricing.calculate(tokens: tokens, price: price) }
+            catch PriceError.invalidUsage { report.invalidUsage = 1 }
+            catch PriceError.amountOverflow { report.overflow = 1 }
+            do {
+                if row["billing_mode"] as String == "plan", api?.isLongContext != false {
+                    result = try UsagePricing.calculate(tokens: tokens, price: price, applyLongContextRates: false)
+                } else { result = api }
+            } catch PriceError.invalidUsage { report.invalidUsage = 1 }
+            catch PriceError.amountOverflow { report.overflow = 1 }
         }
         if result?.amount == nil {
             let reason: String
@@ -139,14 +147,16 @@ extension UsageStore {
             .contains(where: { ($0 ?? 0) > 0 }) { report.partiallyPriced += 1 }
         else { report.unpriced += 1 }
         let columns = ["pricing_tier", "pricing_source", "price_date", "tier", "is_long_context", "input_price", "output_price", "cache_read_price", "cache_write_price",
-                       "input_amount", "output_amount", "cache_read_amount", "cache_write_amount", "amount"]
+                       "input_amount", "output_amount", "cache_read_amount", "cache_write_amount", "amount",
+                       "api_input_amount", "api_output_amount", "api_cache_read_amount", "api_cache_write_amount", "api_amount", "api_is_long_context"]
         let values: [(any DatabaseValueConvertible)?] = [
             context.selectedTier, context.source, price?.date, context.observedTier, result?.isLongContext,
             result?.rates.input.map { NSDecimalNumber(decimal: $0).stringValue },
             result?.rates.output.map { NSDecimalNumber(decimal: $0).stringValue },
             result?.rates.cacheRead.map { NSDecimalNumber(decimal: $0).stringValue },
             result?.rates.cacheWrite.map { NSDecimalNumber(decimal: $0).stringValue },
-            result?.inputAmount, result?.outputAmount, result?.cacheReadAmount, result?.cacheWriteAmount, result?.amount
+            result?.inputAmount, result?.outputAmount, result?.cacheReadAmount, result?.cacheWriteAmount, result?.amount,
+            api?.inputAmount, api?.outputAmount, api?.cacheReadAmount, api?.cacheWriteAmount, api?.amount, api?.isLongContext
         ]
         let assignments = columns.map { "\($0) = ?" }.joined(separator: ", ")
         let unchanged = columns.map { "\($0) IS ?" }.joined(separator: " AND ")

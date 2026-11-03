@@ -91,6 +91,8 @@ struct SSHMetadataQuery: Sendable {
         }
         var input = Data("const request = ".utf8)
         input.append(try JSONEncoder().encode(request))
+        input.append(Data(";\nconst tracePageSQL = ".utf8))
+        input.append(try JSONEncoder().encode(DeviceTracePage.pageSQL))
         input.append(Data(";\n".utf8))
         input.append(try Data(contentsOf: script))
         return input

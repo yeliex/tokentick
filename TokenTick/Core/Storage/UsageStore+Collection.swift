@@ -34,7 +34,7 @@ extension UsageStore {
         }
     }
 
-    func commitScan(_ usages: [CollectedUsage], device: String = "local", sourceRevision: Int = 0, priority: DevicePriority = DevicePriority(), limits: [CurrentLimitSnapshot] = [], identity: RolloutIdentity, url: URL, line: Int, offset: UInt64,
+    func commitScan(_ usages: [CollectedUsage], device: String = "local", sourceRevision: Int = 0, priority: DevicePriority = DevicePriority(), limits: [CurrentLimitSnapshot] = [], turnsWithPlans: Set<String> = [], modelBackfills: [RolloutParser.ModelBackfill] = [], identity: RolloutIdentity, url: URL, line: Int, offset: UInt64,
                     file: FileSnapshot, state: inout RolloutParserState, report: inout ScanReport) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -45,7 +45,23 @@ extension UsageStore {
             var checkpoint = WeeklyCycleCalculator()
             for window in state.weeklyWindows ?? [] { checkpoint.merge(window) }
             let counts = try pool.write { db in
-                let counts = try Self.collectTurns(usages, session: state.session, device: device, priority: priority, db: db)
+                let threadID = identity.threadID.uuidString.lowercased()
+                var counts = try Self.collectTurns(usages, session: state.session, device: device, priority: priority, db: db)
+                for turn in turnsWithPlans {
+                    // 已有认证日志时，保留套餐证据的优先级；普通轮次无需创建元数据行。
+                    try db.execute(sql: "UPDATE app_metadata SET value='plan' WHERE key=? AND value<>'plan'",
+                                   arguments: ["turn_auth:\(device):\(threadID):\(turn)"])
+                    try Self.applyBillingMode("plan", device: device, thread: threadID, turn: turn, db: db)
+                }
+                for backfill in modelBackfills {
+                    let rows = try Row.fetchAll(db, sql: """
+                        UPDATE usage SET model=? WHERE model IS NULL AND turn_key=? AND thread_id=? AND device=?
+                            AND rollout_id=? AND source_line>=? AND source_line<? RETURNING *
+                        """, arguments: [backfill.model, "turn:" + backfill.turnID, threadID, device,
+                            identity.rolloutID.uuidString.lowercased(), backfill.lines.lowerBound, backfill.lines.upperBound])
+                    for row in rows { _ = try Self.priceUsage(row, db: db) }
+                    counts.upgraded += rows.count
+                }
                 for snapshot in try Self.acceptedWeeklyLimits(limits, db: db) {
                     checkpoint.consume(snapshot)
                 }
@@ -54,7 +70,6 @@ extension UsageStore {
                 updated.windows.removeAll { $0.file == identity.fileName }
                 for window in checkpoint.windows { updated.merge(window) }
                 let stateJSON = String(decoding: try encoder.encode(savedState), as: UTF8.self)
-                let threadID = identity.threadID.uuidString.lowercased()
                 // Resolve names from current Codex task metadata rather than guessing projects from paths.
                 try db.execute(sql: "INSERT INTO threads(thread_id,device) VALUES (?,?) ON CONFLICT DO NOTHING", arguments: [threadID,device])
                 try db.execute(sql: """

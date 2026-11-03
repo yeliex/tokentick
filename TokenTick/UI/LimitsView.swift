@@ -301,14 +301,16 @@ private struct WeeklyCycleDetail: View {
                     ProgressView(value: min(100, max(0, percent)), total: 100).tint(.primary)
                 }
                 Divider().padding(.vertical, 4)
-                HStack(spacing: 20) {
+                HStack(alignment: .top, spacing: 20) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(String(localized: "Local tokens")).font(.caption).foregroundStyle(.secondary)
                         Text(UsageFormatting.tokens(window?.totalTokens)).font(.title3.weight(.semibold))
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(String(localized: "Estimated cost")).font(.caption).foregroundStyle(.secondary)
-                        Text(UsageFormatting.money(window?.knownAmountNanoUSD ?? window?.amountNanoUSD)).font(.title3.weight(.semibold))
+                        Text(String(localized: "Subscription estimate")).font(.caption).foregroundStyle(.secondary)
+                        let estimate = window?.knownAmountNanoUSD ?? window?.amountNanoUSD
+                        Text(UsageFormatting.money(estimate)).font(.title3.weight(.semibold))
+                        APIAmountNote(estimate: estimate, api: window?.apiKnownAmountNanoUSD)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                     VStack(alignment: .leading, spacing: 8) {
                         Text(String(localized: "Requests")).font(.caption).foregroundStyle(.secondary)

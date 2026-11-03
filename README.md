@@ -12,7 +12,8 @@ A native macOS app and CLI for tracking **Codex usage limits, token usage, estim
 - Check recent activity from the menu bar.
 - Export detailed usage as JSON with the CLI.
 - Background CPU usage below 1%, with peak memory usage just one-fifth that of comparable tools.
-- Account for Fast and long-context pricing, avoid double-counting cached input and reasoning output, and deduplicate inherited usage in forked tasks.
+- Compare the subscription allowance estimate and API value for the same requests. Both estimates use the same dated service-tier and cache prices. For subscription usage, only the long-context surcharge is excluded. API or unknown usage falls back to API pricing. API value always uses the model's API tier and request length.
+- Account for Fast pricing, avoid double-counting cached input and reasoning output, and deduplicate inherited usage in forked tasks.
 
 Requires **macOS 26+ and Apple Silicon**. Supports English and Simplified Chinese through macOS language settings. Costs are USD estimates based on public API prices, not subscription charges.
 

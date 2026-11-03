@@ -47,7 +47,8 @@ extension UsageStore {
             )
             SELECT c.id,COUNT(f.id) AS requests,COALESCE(SUM(f.total_tokens),0) AS tokens,
                 CASE WHEN COUNT(f.id)=COUNT(f.amount) THEN SUM(f.amount) END AS amount,
-                SUM(tokentick_known_amount(f.input_amount,f.output_amount,f.cache_read_amount,f.cache_write_amount,f.amount)) AS known
+                SUM(tokentick_known_amount(f.input_amount,f.output_amount,f.cache_read_amount,f.cache_write_amount,f.amount)) AS known,
+                SUM(tokentick_known_amount(f.api_input_amount,f.api_output_amount,f.api_cache_read_amount,f.api_cache_write_amount,f.api_amount)) AS api_known_amount
             FROM weekly_limit_cycles c LEFT JOIN facts f
                 ON f.account_id IS c.account_id AND f.cycle_time>=c.started_at AND f.cycle_time<c.ended_at
             GROUP BY c.id
@@ -55,8 +56,8 @@ extension UsageStore {
         for row in rows {
             try Task.checkCancellation()
             try db.execute(sql: """
-                UPDATE weekly_limit_cycles SET total_tokens=?,request_count=?,amount=?,known_amount=? WHERE id=?
-                """, arguments: [row["tokens"],row["requests"],row["amount"],row["known"],row["id"]])
+                UPDATE weekly_limit_cycles SET total_tokens=?,request_count=?,amount=?,known_amount=?,api_known_amount=? WHERE id=?
+                """, arguments: [row["tokens"],row["requests"],row["amount"],row["known"],row["api_known_amount"],row["id"]])
         }
         try db.execute(sql: """
             INSERT INTO app_metadata(key,value) VALUES ('weekly_cycles_revision',?)

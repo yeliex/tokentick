@@ -37,7 +37,7 @@ enum StatisticsSQL {
         total_tokens, input_tokens,
         output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, input_amount,
         output_amount, cache_read_amount, cache_write_amount, complete_amount, unpriced_tokens,
-        unattributed_tokens, record_count, known_amount, unpriced_records
+        unattributed_tokens, record_count, known_amount, unpriced_records, api_known_amount, api_unpriced_records
         """
 
     static var columns: String { "\(groupColumns), \(metricColumns)" }
@@ -58,7 +58,8 @@ enum StatisticsSQL {
                 u.device, u.account_id, u.thread_id, t.project_name, u.model, u.total_tokens,
                 u.input_tokens, u.output_tokens, u.cache_read_tokens, u.cache_write_tokens, u.reasoning_tokens,
                 u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount,
-                tokentick_known_amount(u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount) AS known_amount
+                tokentick_known_amount(u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount) AS known_amount,
+                u.api_amount, tokentick_known_amount(u.api_input_amount,u.api_output_amount,u.api_cache_read_amount,u.api_cache_write_amount,u.api_amount) AS api_known_amount
             FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id AND t.device = u.device
             WHERE (u.source = 'local' OR u.thread_id IS NOT NULL) AND (\(predicate))
         ), compact AS MATERIALIZED (
@@ -71,7 +72,8 @@ enum StatisticsSQL {
                 SUM(CASE WHEN amount IS NULL THEN total_tokens ELSE 0 END) AS unpriced_tokens,
                 SUM(CASE WHEN thread_id IS NULL THEN total_tokens ELSE 0 END) AS unattributed_tokens,
                 COUNT(*) AS record_count, SUM(known_amount) AS known_amount,
-                SUM(CASE WHEN amount IS NULL THEN 1 ELSE 0 END) AS unpriced_records
+                SUM(CASE WHEN amount IS NULL THEN 1 ELSE 0 END) AS unpriced_records,
+                SUM(api_known_amount) AS api_known_amount, SUM(api_amount IS NULL) AS api_unpriced_records
             FROM facts GROUP BY device, day, account_id, thread_id, project_name, model
         )
         SELECT device, CASE WHEN scope = 0 THEN 'all' WHEN account_id IS NULL THEN 'unknown' ELSE 'value:' || account_id END AS account_key,
@@ -82,7 +84,8 @@ enum StatisticsSQL {
                 WHEN 'model' THEN COALESCE('value:' || model, 'unknown') END AS dimension_value,
             SUM(total_tokens), SUM(input_tokens), SUM(output_tokens), SUM(cache_read_tokens), SUM(cache_write_tokens),
             SUM(reasoning_tokens), SUM(input_amount), SUM(output_amount), SUM(cache_read_amount), SUM(cache_write_amount),
-            SUM(complete_amount), SUM(unpriced_tokens), SUM(unattributed_tokens), SUM(record_count), SUM(known_amount), SUM(unpriced_records)
+            SUM(complete_amount), SUM(unpriced_tokens), SUM(unattributed_tokens), SUM(record_count), SUM(known_amount), SUM(unpriced_records),
+            SUM(api_known_amount), SUM(api_unpriced_records)
         FROM compact
         CROSS JOIN (\(scopes))
         CROSS JOIN (\(dimensions))

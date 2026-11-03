@@ -11,6 +11,8 @@ public struct UsageSummary: Codable, Sendable, Equatable {
     public let cacheWriteInputTokens: Int64?
     public let reasoningOutputTokens: Int64?
     public let knownAmountNanoUSD: Int64?
+    public let apiKnownAmountNanoUSD: Int64?
+    public let apiUnpricedRecords: Int
     public let inputAmountNanoUSD: Int64?
     public let outputAmountNanoUSD: Int64?
     public let cacheReadAmountNanoUSD: Int64?
@@ -25,6 +27,7 @@ public struct UsageSummary: Codable, Sendable, Equatable {
         case cacheWriteInputTokens, reasoningOutputTokens, knownAmountNanoUSD, unpricedTokens
         case inputAmountNanoUSD, outputAmountNanoUSD, cacheReadAmountNanoUSD, cacheWriteAmountNanoUSD
         case completeAmountNanoUSD, unpricedRecords, unattributedTokens
+        case apiKnownAmountNanoUSD, apiUnpricedRecords
     }
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
@@ -37,6 +40,8 @@ public struct UsageSummary: Codable, Sendable, Equatable {
         try values.encode(cacheWriteInputTokens, forKey: .cacheWriteInputTokens)
         try values.encode(reasoningOutputTokens, forKey: .reasoningOutputTokens)
         try values.encode(knownAmountNanoUSD, forKey: .knownAmountNanoUSD)
+        try values.encode(apiKnownAmountNanoUSD, forKey: .apiKnownAmountNanoUSD)
+        try values.encode(apiUnpricedRecords, forKey: .apiUnpricedRecords)
         try values.encode(inputAmountNanoUSD, forKey: .inputAmountNanoUSD)
         try values.encode(outputAmountNanoUSD, forKey: .outputAmountNanoUSD)
         try values.encode(cacheReadAmountNanoUSD, forKey: .cacheReadAmountNanoUSD)
@@ -54,6 +59,7 @@ extension UsageSummary {
             inputTokens: row["input_tokens"], outputTokens: row["output_tokens"],
             cachedInputTokens: row["cache_read_tokens"], cacheWriteInputTokens: row["cache_write_tokens"],
             reasoningOutputTokens: row["reasoning_tokens"], knownAmountNanoUSD: row["known_amount"],
+            apiKnownAmountNanoUSD: row["api_known_amount"], apiUnpricedRecords: row["api_unpriced_records"],
             inputAmountNanoUSD: row["input_amount"], outputAmountNanoUSD: row["output_amount"],
             cacheReadAmountNanoUSD: row["cache_read_amount"], cacheWriteAmountNanoUSD: row["cache_write_amount"],
             completeAmountNanoUSD: row["complete_amount"], unpricedTokens: row["unpriced_tokens"],

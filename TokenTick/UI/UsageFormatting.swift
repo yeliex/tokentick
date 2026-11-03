@@ -20,6 +20,14 @@ enum UsageFormatting {
     static func exactMoney(_ value: Int64?) -> String {
         value.map { "$" + NSDecimalNumber(decimal: Decimal($0) / Decimal(1_000_000_000)).stringValue } ?? String(localized: "Unknown")
     }
+    static func differingAPIAmount(_ estimate: Int64?, _ api: Int64?) -> Int64? {
+        guard let estimate, let api, estimate != api else { return nil }
+        return api
+    }
+    static func compactMoney(_ value: Int64) -> String {
+        let dollars = Decimal(value) / Decimal(1_000_000_000)
+        return "$" + dollars.formatted(.number.notation(.compactName).precision(.fractionLength(0...2)).locale(Locale(identifier: "en_US")))
+    }
     static func timestamp(_ value: Double?, timezone: TimeZone = .current) -> String {
         value.map { Date(timeIntervalSince1970: $0).formatted(Date.FormatStyle(date: .abbreviated, time: .standard, timeZone: timezone)) } ?? String(localized: "Not recorded yet")
     }
@@ -32,6 +40,27 @@ struct TokenText: View {
             .help(UsageFormatting.exactTokens(value))
             .accessibilityLabel(UsageFormatting.exactTokens(value))
     }
+}
+
+struct APIAmountNote: View {
+    let estimate: Int64?
+    let api: Int64?
+    var font: Font = .caption
+
+    var body: some View {
+        if let amount = UsageFormatting.differingAPIAmount(estimate, api) {
+            Text(String(localized: "\(UsageFormatting.money(amount)) API"))
+                .font(font).monospacedDigit().foregroundStyle(.secondary)
+        }
+    }
+}
+
+extension UsageSummary {
+    var differingAPIAmount: Int64? { UsageFormatting.differingAPIAmount(knownAmountNanoUSD, apiKnownAmountNanoUSD) }
+}
+
+extension UsageRecord {
+    var differingAPIAmount: Int64? { UsageFormatting.differingAPIAmount(knownAmountNanoUSD, apiKnownAmountNanoUSD) }
 }
 
 extension OverviewPeriod {

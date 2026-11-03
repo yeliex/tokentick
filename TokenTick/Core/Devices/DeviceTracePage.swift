@@ -2,17 +2,38 @@ import CryptoKit
 import Foundation
 import GRDB
 
-/// Raw trace rows are bounded, transient input to the existing Fast parser, never persisted.
+/// Authentication rows expose only the turn identifier and mode. Never transfer their headers or diagnostics.
 struct DeviceTracePage: Codable, Sendable {
     struct Entry: Codable, Sendable {
         let id: Int64
         let timestamp: Int64
         let threadID: String?
         let body: String
+        var authTurn: String? = nil
+        var authMode: String? = nil
     }
     let entries: [Entry]
     let cursor: CodexFastEvidence.Cursor
     let hasMore: Bool
+
+    // Shared with the SSH reader. Older trace schemas can supply NULL for either optional column.
+    static let pageSQL = """
+        WITH candidates AS (
+            SELECT id,ts AS timestamp,TRACE_THREAD AS threadID,feedback_log_body AS raw,
+                TRACE_TARGET='feedback_tags' AND instr(feedback_log_body,'run_sampling_request{turn_id=')>0
+                AND instr(feedback_log_body,'}: endpoint="/responses" auth_header_attached=true')>0
+                AND instr(feedback_log_body,' auth_error=""')>0 AS auth
+            FROM logs WHERE id>? AND id<=? AND length(CAST(feedback_log_body AS BLOB))<=4194304
+        )
+        SELECT id,timestamp,threadID,CASE WHEN auth THEN '' ELSE raw END AS body,
+            CASE WHEN auth THEN substr(raw,instr(raw,'run_sampling_request{turn_id=')+length('run_sampling_request{turn_id='),36) END AS authTurn,
+            CASE WHEN auth THEN CASE
+                WHEN instr(raw,' auth_mode="Chatgpt"')>0 THEN 'chatgpt'
+                WHEN instr(raw,' auth_mode="ApiKey"')>0 THEN 'api_key'
+                ELSE 'unknown' END END AS authMode
+        FROM candidates WHERE auth OR raw LIKE '%websocket request:%' OR raw LIKE '%Submission sub=Submission {%'
+        ORDER BY id LIMIT 65
+        """
 
     static func files(root: URL) throws -> [String] {
         guard try root.resourceValues(forKeys: [.volumeIsLocalKey]).volumeIsLocal == true else {
@@ -42,18 +63,16 @@ struct DeviceTracePage: Codable, Sendable {
             var start: Int64 = 0
             if let previous, previous.inode == snapshot.inode, previous.device == snapshot.device,
                previous.lastID <= maximum, try previous.anchor == anchor(previous.lastID) { start = previous.lastID }
-            let thread = try db.columns(in: "logs").contains { $0.name == "thread_id" } ? "thread_id" : "NULL AS thread_id"
-            let rows = try Row.fetchCursor(db, sql: """
-                SELECT id,ts,\(thread),feedback_log_body FROM logs
-                WHERE id>? AND id<=? AND length(CAST(feedback_log_body AS BLOB))<=4194304
-                  AND (feedback_log_body LIKE '%websocket request:%' OR feedback_log_body LIKE '%Submission sub=Submission {%')
-                ORDER BY id LIMIT 65
-                """, arguments: [start, maximum])
+            let columns = try db.columns(in: "logs").map(\.name)
+            let sql = pageSQL.replacingOccurrences(of: "TRACE_THREAD", with: columns.contains("thread_id") ? "thread_id" : "NULL")
+                .replacingOccurrences(of: "TRACE_TARGET", with: columns.contains("target") ? "target" : "NULL")
+            let rows = try Row.fetchCursor(db, sql: sql, arguments: [start, maximum])
             var entries: [Entry] = []
             var bytes = 0
             var more = false
             while let row = try rows.next() {
-                let entry = Entry(id: row["id"], timestamp: row["ts"], threadID: row["thread_id"], body: row["feedback_log_body"])
+                let entry = Entry(id: row["id"], timestamp: row["timestamp"], threadID: row["threadID"], body: row["body"],
+                                  authTurn: row["authTurn"], authMode: row["authMode"])
                 let size = try JSONEncoder().encode(entry).count
                 if !entries.isEmpty && (entries.count >= 64 || bytes + size > 8 * 1_024 * 1_024) { more = true; break }
                 entries.append(entry); bytes += size
