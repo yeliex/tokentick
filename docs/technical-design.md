@@ -295,6 +295,8 @@ The menu-bar label uses cached template images, not a nested periodic `TimelineV
 
 Menu usage queries capture the current time when they start, including on reopening and after usage revisions, so a retained view's previous timer tick cannot exclude newly collected events. The minute timer also refreshes rolling ranges while the menu stays open.
 
+The menu and Plan usage share the current weekly window selection and `currentWeeklyLimitUsage` query. The menu displays the inferred start and amounts from that result, including while Plan usage awaits a reset. Missing cycle evidence selects the rolling seven-day query.
+
 Use English internal identifiers and localize display titles separately. App strings live in `TokenTick/Resources/Localizable.xcstrings`; Core strings live in `TokenTick/Core/Resources` and load through `Bundle.module`. English is the fallback, Simplified Chinese follows macOS preferences, and cumulative history is labeled Lifetime. Chinese translations and multilingual test fixtures are intentional data.
 
 See [Codex disk-space analysis](requirements.md#codex-disk-space-analysis) for the product behavior and the [README](../README.md) for a screenshot.

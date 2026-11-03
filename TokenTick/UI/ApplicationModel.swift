@@ -31,6 +31,12 @@ final class ApplicationModel {
     var usageRefreshID = 0
     var automaticSyncIssue: String?
 
+    func currentWeeklyWindow(for scope: UsageAccountScope) -> CurrentLimitWindow? {
+        guard let snapshot = currentLimits, let account = snapshot.accountID,
+              scope == .all || scope == .account(account) else { return nil }
+        return snapshot.windows.first { $0.limitID == "codex" && $0.durationMinutes == 10_080 && $0.resetsAt != nil }
+    }
+
     var progressText: String {
         guard let progress else { return String(localized: "Preparing to sync…") }
         switch progress.stage {

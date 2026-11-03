@@ -38,9 +38,7 @@ struct LimitsView: View {
     private struct Request: Hashable { let query: LimitQuery; let refresh: Int; let retry: Int }
     private var request: Request { Request(query: query, refresh: app.refreshID, retry: state.retry) }
     private var currentWindow: CurrentLimitWindow? {
-        guard let snapshot = app.currentLimits, let account = snapshot.accountID,
-              state.account == .all || state.account == .account(account) else { return nil }
-        return snapshot.windows.first { $0.limitID == "codex" && $0.durationMinutes == 10_080 && $0.resetsAt != nil }
+        app.currentWeeklyWindow(for: state.account)
     }
     private var currentSelection: String? {
         currentWindow.flatMap { _ in app.currentLimits?.accountID.map { "current:" + $0 } }

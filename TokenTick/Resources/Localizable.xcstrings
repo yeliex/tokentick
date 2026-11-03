@@ -1,6 +1,18 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Cycle": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "本周期" } }
+      }
+    },
+    "since %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "自 %@" } }
+      }
+    },
     "Current cycle": {
       "extractionState": "manual",
       "localizations": {
