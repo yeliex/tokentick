@@ -137,7 +137,7 @@ Query current-cycle local usage from collected facts using the same resolved fir
 
 Use one main window and a separate Settings scene, with native keyboard, selection, and accessibility behavior. Closing the last visible or minimized ordinary window hides the Dock icon but leaves the menu-bar process running; reopening restores it. Do not add multiple main windows, tabs, or global shortcuts.
 
-The menu-bar label uses a template icon with the rounded main-limit percentage, preferring the weekly window. Missing or reset-expired limits fall back to the plain icon when the label updates. Tooltips and accessibility text include the period and full percentage.
+The menu-bar label uses a template icon with the rounded main-limit percentage, preferring the weekly window. Limits refresh in the background from app launch, even when no window or menu panel has opened. Missing or reset-expired limits fall back to the plain icon when the label updates. Tooltips and accessibility text include the period and full percentage.
 
 The compact menu panel shares current main-limit data and shows Today/7/30/90-day usage plus a 30-day token/cost chart. Clicking the subscription header, limits, usage totals, or chart opens the main Overview window. The reset time and adjacent refresh icon form one clickable button that requests API data without opening the window. Its loading indicator uses the same footprint as the refresh icon and follows shared API refresh state, including requests started from Overview or automatic synchronization; log-only collection does not activate it. Keep the chart's hover interaction, daily averages, and independent peaks. Its only page/action rows are Overview, Usage details, Plan usage, and Quit; ⌘, still opens Settings.
 

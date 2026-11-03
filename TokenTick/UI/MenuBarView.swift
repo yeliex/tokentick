@@ -51,7 +51,7 @@ struct MenuBarView: View {
         .background {
             MainWindowSettingsButton().frame(width: 0, height: 0).clipped().opacity(0).accessibilityHidden(true)
         }
-        .task { await app.start(); await app.refreshExpiredLimits() }
+        .task { await app.refreshExpiredLimits() }
     }
 
     private func showPage(_ page: AppPage) {

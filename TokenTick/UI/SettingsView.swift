@@ -59,7 +59,6 @@ struct SettingsView: View {
         .frame(width: 760, height: 640)
         .containerBackground(.thinMaterial, for: .window)
         .tint(.primary)
-        .task { await app.start() }
     }
 }
 

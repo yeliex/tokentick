@@ -124,7 +124,7 @@ struct ContentView: View {
         .containerBackground(.thinMaterial, for: .window)
         .tint(.primary)
         .frame(minWidth: 940, minHeight: 640)
-        .task { await app.start(); consumePageRequest() }
+        .onAppear { consumePageRequest() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in app.storage.cancel() }
         .onChange(of: app.requestedPage) { consumePageRequest() }
         .task(id: scenePhase) {

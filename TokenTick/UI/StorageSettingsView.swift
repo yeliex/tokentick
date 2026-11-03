@@ -63,7 +63,6 @@ struct StorageSettingsView: View {
             if let storageError { Text(storageError).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
         }
         .usageSurface()
-        .task { await app.start() }
         .task(id: app.refreshID) {
             guard let store = app.store else { return }
             do {

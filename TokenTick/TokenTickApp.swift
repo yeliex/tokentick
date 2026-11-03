@@ -44,7 +44,7 @@ enum TokenTickEntry {
 
 struct TokenTickApp: App {
     @NSApplicationDelegateAdaptor(TokenTickAppDelegate.self) private var delegate
-    @State private var model = ApplicationModel()
+    private var model: ApplicationModel { delegate.model }
     @AppStorage("limitsShowRemaining") private var showRemaining = true
     @StateObject private var updates = UpdateController(onFailure: { error, operation in
         AppTelemetry.capture(error, operation: operation)
@@ -159,6 +159,8 @@ struct MainWindowSettingsButton: View {
 
 @MainActor
 final class TokenTickAppDelegate: NSObject, NSApplicationDelegate {
+    let model = ApplicationModel()
+
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
         NotificationCenter.default.addObserver(self, selector: #selector(windowWillClose(_:)),
@@ -168,6 +170,7 @@ final class TokenTickAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Task { await model.start() }
         let theme = AppTheme(rawValue: UserDefaults.standard.string(forKey: "appTheme") ?? "system") ?? .system
         theme.apply()
         // Login launches can have no ordinary window; keep those launches in the menu bar.
