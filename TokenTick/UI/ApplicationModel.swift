@@ -3,6 +3,18 @@ import Observation
 import TokenTickCore
 import TokenTickTelemetry
 
+enum WeekRange: String {
+    case lastSevenDays, cycle, thisWeek
+
+    var title: String {
+        switch self {
+        case .lastSevenDays: String(localized: "7 days")
+        case .cycle: String(localized: "Cycle")
+        case .thisWeek: String(localized: "This week")
+        }
+    }
+}
+
 @MainActor @Observable
 final class ApplicationModel {
     private(set) var store: UsageStore?
@@ -12,6 +24,69 @@ final class ApplicationModel {
     let storage = CodexStorageModel()
     let devices = RemoteDevicesModel()
     var selectedAccount: UsageAccountScope = .all
+    private var preferredWeekRange = UserDefaults.standard.string(forKey: "usageWeekRange")
+        .flatMap(WeekRange.init(rawValue:)) ?? .lastSevenDays
+    private(set) var usageAsOf = Date()
+
+    func updateUsageTime() {
+        let now = Date()
+        if !Calendar.current.isDate(now, equalTo: usageAsOf, toGranularity: .minute) { usageAsOf = now }
+    }
+
+    func retryUsageQuery() {
+        usageAsOf = Date()
+        usageRefreshID += 1
+    }
+
+    private struct CycleKey: Equatable {
+        let account: String
+        let reset: Int64
+        let refresh: Int
+    }
+    @ObservationIgnored private var cycleStartCache: (key: CycleKey, start: Double?)?
+    private var currentCycleStart: Double? {
+        guard let account = currentLimits?.accountID, let reset = currentWeeklyWindow(for: selectedAccount)?.resetsAt,
+              let store else { return nil }
+        let key = CycleKey(account: account, reset: reset, refresh: refreshID)
+        if cycleStartCache?.key != key {
+            cycleStartCache = (key, store.currentWeeklyCycleStart(accountID: account, resetsAt: reset))
+        }
+        return cycleStartCache?.start
+    }
+    var weekRange: WeekRange {
+        preferredWeekRange == .cycle && currentCycleStart == nil ? .lastSevenDays : preferredWeekRange
+    }
+    func advanceWeekRange() {
+        switch weekRange {
+        case .lastSevenDays: preferredWeekRange = currentCycleStart == nil ? .thisWeek : .cycle
+        case .cycle: preferredWeekRange = .thisWeek
+        case .thisWeek: preferredWeekRange = .lastSevenDays
+        }
+        UserDefaults.standard.set(preferredWeekRange.rawValue, forKey: "usageWeekRange")
+    }
+
+    func overviewQuery(for period: OverviewPeriod) -> UsageQuery {
+        let timezone = status?.timezone ?? TimeZone.current.identifier
+        var query = period.query(now: usageAsOf, timezone: timezone)
+        query.account = selectedAccount
+        guard period == .week else { return query }
+        switch weekRange {
+        case .lastSevenDays: break
+        case .thisWeek:
+            var calendar = Calendar(identifier: .iso8601)
+            calendar.timeZone = TimeZone(identifier: timezone) ?? .current
+            query.filters.occurredFrom = calendar.dateInterval(of: .weekOfYear, for: usageAsOf)!.start.timeIntervalSince1970
+        case .cycle:
+            if let account = currentLimits?.accountID, let start = currentCycleStart,
+               let reset = currentWeeklyWindow(for: selectedAccount)?.resetsAt {
+                query.account = .account(account)
+                query.filters.occurredFrom = start
+                query.filters.occurredBefore = Double(reset)
+                query.filters.usesCycleTurnDates = true
+            }
+        }
+        return query
+    }
     let resetReminders = ResetReminderController()
     var requestedPage: AppPage?
     var isRefreshingAPI = false
@@ -233,7 +308,10 @@ final class ApplicationModel {
                 let status = try store.status()
                 return (status, try store.lastSynchronizationReport())
             }.value
-            if status?.factsRevision != result.0.factsRevision || status?.timezone != result.0.timezone { usageRefreshID += 1 }
+            if status?.factsRevision != result.0.factsRevision || status?.timezone != result.0.timezone {
+                usageRefreshID += 1
+                usageAsOf = Date()
+            }
             status = result.0
             lastSync = result.1
             refreshID += 1

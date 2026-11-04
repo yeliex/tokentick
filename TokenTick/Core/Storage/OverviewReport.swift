@@ -69,10 +69,14 @@ public struct OverviewReport: Sendable {
 extension UsageStore {
     /// Read overview sections in one snapshot so concurrent syncs cannot produce inconsistent totals and charts.
     public func overviewReport(period: OverviewPeriod, now: Date, timezone identifier: String, device: UsageValueFilter = .all, account: UsageAccountScope = .all) throws -> OverviewReport {
-        guard let timezone = TimeZone(identifier: identifier) else { throw UsageQueryError.invalidTimezone }
         var query = period.query(now: now, timezone: identifier)
         query.filters.device = device
         query.account = account
+        return try overviewReport(period: period, query: query)
+    }
+
+    public func overviewReport(period: OverviewPeriod, query: UsageQuery) throws -> OverviewReport {
+        guard let identifier = query.timezone, let timezone = TimeZone(identifier: identifier) else { throw UsageQueryError.invalidTimezone }
         try query.validate()
         return try pool.read { db in
             StatisticsSQL.prepare(db, timezone: timezone)
@@ -95,7 +99,7 @@ extension UsageStore {
             let filters = UsageFiltersSQL(query.filters)
             var predicate = filters.predicate
             var arguments = filters.arguments
-            switch account {
+            switch query.account {
             case .all: break
             case .unknown: predicate += " AND u.account_id IS NULL"
             case .account(let id):

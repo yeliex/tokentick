@@ -125,6 +125,7 @@ extension UsageStore {
             var filters = UsageFilters()
             filters.occurredFrom = query.filters.occurredFrom
             filters.occurredBefore = query.filters.occurredBefore
+            filters.usesCycleTurnDates = query.filters.usesCycleTurnDates
             let scope = UsageFiltersSQL(filters)
             var predicate = "(u.source = 'local' OR u.thread_id IS NOT NULL) AND (\(scope.predicate))"
             var arguments = scope.arguments

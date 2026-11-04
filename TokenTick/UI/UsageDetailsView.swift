@@ -201,6 +201,7 @@ struct UsageDetailsView: View {
         let from = scope.filters.occurredFrom, before = scope.filters.occurredBefore
         scope.filters = UsageFilters()
         scope.filters.occurredFrom = from; scope.filters.occurredBefore = before
+        scope.filters.usesCycleTurnDates = query.filters.usesCycleTurnDates
         scope.grouping = .total; scope.offset = 0; scope.sort = .automatic
         return scope
     }
@@ -210,6 +211,7 @@ struct UsageDetailsView: View {
         Binding(get: { state.period }, set: {
             state.period = $0
             state.filters.occurredFrom = nil; state.filters.occurredBefore = nil
+            state.filters.usesCycleTurnDates = false
 
         })
     }
@@ -229,7 +231,9 @@ struct UsageDetailsView: View {
         if case .value(let day) = request.filters.day {
             request.fromDate = day; request.throughDate = day
             request.filters.day = .all
-            request.filters.occurredFrom = nil; request.filters.occurredBefore = nil
+            if !request.filters.usesCycleTurnDates {
+                request.filters.occurredFrom = nil; request.filters.occurredBefore = nil
+            }
         }
         state.grouping = request.grouping == .thread ? .thread : request.grouping == .project ? .project : .day
         state.filters = request.filters; state.account = request.account; state.sort = request.sort; state.page = request.offset / 100

@@ -19,6 +19,7 @@ public struct UsageFilters: Sendable, Equatable, Hashable {
     /// Use half-open rolling intervals; do not invent timestamps for date-only historical records.
     public var occurredFrom: Double?
     public var occurredBefore: Double?
+    public var usesCycleTurnDates = false
     public init() {}
     public var isEmpty: Bool {
         device == .all && thread == .all && project == .all && model == .all && day == .all && search.isEmpty

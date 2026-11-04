@@ -2,12 +2,20 @@ import Foundation
 import GRDB
 
 extension UsageStore {
+    private func currentWeeklyCycle(accountID: String, resetsAt: Int64) -> WeeklyCycleCalculator.Cycle? {
+        let memory = weeklyMemory.withLock { $0 }
+        return memory.resolvedCycles().first {
+            $0.window.account == accountID && abs($0.window.reset - resetsAt) <= 60 && !$0.early
+        }
+    }
+
+    public func currentWeeklyCycleStart(accountID: String, resetsAt: Int64) -> Double? {
+        currentWeeklyCycle(accountID: accountID, resetsAt: resetsAt)?.start
+    }
+
     public func currentWeeklyLimitUsage(accountID: String, resetsAt: Int64) throws -> WeeklyLimitWindow? {
         try Task.checkCancellation()
-        let memory = weeklyMemory.withLock { $0 }
-        guard let cycle = memory.resolvedCycles().first(where: {
-            $0.window.account == accountID && abs($0.window.reset - resetsAt) <= 60 && !$0.early
-        }) else { return nil }
+        guard let cycle = currentWeeklyCycle(accountID: accountID, resetsAt: resetsAt) else { return nil }
         return try pool.read { db in
             try Task.checkCancellation()
             StatisticsSQL.prepare(db, timezone: .gmt)

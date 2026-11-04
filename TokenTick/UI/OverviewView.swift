@@ -12,11 +12,15 @@ struct OverviewView: View {
     @State private var report: OverviewReport?
     @State private var loading = false
     @State private var error: String?
-    @State private var refreshedAt = Date()
-    private struct Request: Hashable { let period: OverviewPeriod; let refresh: Int; let timezone: String; let now: Date; let account: UsageAccountScope }
+    private struct Request: Hashable { let period: OverviewPeriod; let refresh: Int; let query: UsageQuery }
     private var timezone: String { app.status?.timezone ?? TimeZone.current.identifier }
-    private var request: Request { Request(period: period, refresh: app.usageRefreshID, timezone: timezone, now: refreshedAt, account: app.selectedAccount) }
-    private var selectionChanged: Bool { loadedPeriod != period || report?.query.account != app.selectedAccount }
+    private var request: Request { Request(period: period, refresh: app.usageRefreshID, query: app.overviewQuery(for: period)) }
+    @State private var loadedWeekRange: WeekRange?
+    private var selectionChanged: Bool {
+        loadedPeriod != period || report?.query.account != request.query.account
+            || (period == .week && (loadedWeekRange != app.weekRange
+                || (app.weekRange == .cycle && report?.query != request.query)))
+    }
 
     var body: some View {
         ScrollView {
@@ -36,10 +40,28 @@ struct OverviewView: View {
                                 Text(String(localized: "Unknown account")).tag(UsageAccountScope.unknown)
                             }.labelsHidden().controlSize(.small).fixedSize()
                         }
-                        Picker(String(localized: "Period"), selection: Binding(get: { period }, set: { storedPeriod = $0.rawValue })) {
-                            ForEach(OverviewPeriod.allCases) { Text($0.title).tag($0) }
-                        }.pickerStyle(.segmented).labelsHidden().controlSize(.small)
-                            .fixedSize(horizontal: true, vertical: true)
+                        HStack(spacing: 1) {
+                            ForEach(OverviewPeriod.allCases) { item in
+                                Button {
+                                    if item == .week && period == .week { app.advanceWeekRange() }
+                                    else { storedPeriod = item.rawValue }
+                                } label: {
+                                    HStack(spacing: 3) {
+                                        Text(item == .week ? app.weekRange.title : item.title)
+                                        if item == .week && period == .week {
+                                            Image(systemName: "arrow.triangle.2.circlepath").imageScale(.small)
+                                        }
+                                    }
+                                    .padding(.horizontal, 7).padding(.vertical, 3)
+                                    .background { if period == item { RoundedRectangle(cornerRadius: 5).fill(.selection) } }
+                                    .foregroundStyle(period == item ? Color(nsColor: .selectedMenuItemTextColor) : .primary)
+                                    .contentShape(Rectangle())
+                                }
+                                .accessibilityAddTraits(period == item ? .isSelected : [])
+                                .help(item == .week && period == .week ? String(localized: "Switch usage period") : item.title)
+                            }
+                        }.buttonStyle(.plain).font(.callout).padding(2)
+                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 7)).fixedSize()
                     }
                     .alignmentGuide(VerticalAlignment.center) { $0[VerticalAlignment.center] + 1 }
                 }
@@ -47,7 +69,7 @@ struct OverviewView: View {
                     ProgressView(String(localized: "Summarizing usage")).frame(maxWidth: .infinity, minHeight: 260)
                 } else if let error {
                     ContentUnavailableView(String(localized: "Unable to load usage"), systemImage: "exclamationmark.triangle", description: Text(error))
-                    Button(String(localized: "Retry")) { refreshedAt = Date() }
+                    Button(String(localized: "Retry")) { app.retryUsageQuery() }
                 } else if let report, let total = report.total {
                     VStack(alignment: .leading, spacing: 22) {
                     HStack(alignment: .top, spacing: 18) {
@@ -135,15 +157,16 @@ struct OverviewView: View {
             loading = report == nil || selectionChanged; error = nil
             do {
                 let worker = Task.detached(priority: .userInitiated) {
-                    let report = try store.overviewReport(period: current.period, now: current.now, timezone: current.timezone, account: current.account)
+                    let report = try store.overviewReport(period: current.period, query: current.query)
                     return (report, try store.usageFilterOptions().accounts)
                 }
                 let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, current == request else { return }
                 accounts = result.1
                 if accounts.count <= 1, app.selectedAccount != .all { app.selectedAccount = .all }
-                if report?.hasSameContent(as: result.0) != true || loadedPeriod != current.period { report = result.0 }
+                if report?.hasSameContent(as: result.0) != true || selectionChanged { report = result.0 }
                 loadedPeriod = current.period
+                loadedWeekRange = app.weekRange
             } catch {
                 guard !Task.isCancelled else { return }
                 AppTelemetry.capture(error, operation: "overview.query")
@@ -152,13 +175,12 @@ struct OverviewView: View {
             loading = false
         }
         .task {
+            app.updateUsageTime()
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(60)) } catch { return }
-                refreshedAt = Date()
+                app.updateUsageTime()
             }
         }
-        .onChange(of: period) { refreshedAt = Date() }
-        .onChange(of: app.usageRefreshID) { refreshedAt = Date() }
     }
     private func tokenPart(_ title: String, _ value: Int64?) -> some View {
         VStack(alignment: .leading, spacing: 7) {

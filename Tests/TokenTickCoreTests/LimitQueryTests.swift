@@ -256,6 +256,16 @@ struct LimitQueryTests {
         #expect(current.startedAtInferred == 200)
         #expect(current.totalTokens == 35 && current.requestCount == 3)
         #expect(current.amountNanoUSD == nil && current.knownAmountNanoUSD == 150)
+        var query = UsageQuery(grouping: .total, timezone: "UTC", account: .account("a"))
+        query.filters.usesCycleTurnDates = true
+        query.filters.occurredFrom = try #require(store.currentWeeklyCycleStart(accountID: "a", resetsAt: 1000))
+        query.filters.occurredBefore = 1000
+        let overview = try store.overviewReport(period: .week, query: query)
+        #expect(overview.total == (try store.usageReport(query)).rows.first)
+        #expect(overview.total?.totalTokens == current.totalTokens)
+        #expect(overview.total?.knownAmountNanoUSD == current.knownAmountNanoUSD)
+        #expect(overview.trend.reduce(0) { $0 + $1.summary.totalTokens } == current.totalTokens)
+        #expect(try store.usageRecords(query).rows.count == current.requestCount)
         #expect(try store.weeklyLimitHistory().rows.isEmpty)
         #expect(try store.currentWeeklyLimitUsage(accountID: "b", resetsAt: 1000) == nil)
         try store.saveCompletedWeeklyCycles(now: Date(timeIntervalSince1970: 1000))

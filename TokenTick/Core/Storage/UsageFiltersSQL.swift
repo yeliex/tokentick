@@ -24,12 +24,17 @@ struct UsageFiltersSQL {
             parts.append("(tokentick_contains(t.title, :filter_search) OR tokentick_contains(u.thread_id, :filter_search))")
             values += ["filter_search": filters.search]
         }
+        // Cycle membership follows the first start of the turn, including later responses.
+        let timestamp = filters.usesCycleTurnDates
+            ? "COALESCE((SELECT MIN(v.turn_started_at) FROM usage v WHERE v.turn_key = u.turn_key), u.occurred_at)"
+            : "u.occurred_at"
+        if filters.usesCycleTurnDates { parts.append("u.source = 'local'") }
         if let from = filters.occurredFrom {
-            parts.append("u.occurred_at >= :occurred_from")
+            parts.append("\(timestamp) >= :occurred_from")
             values += ["occurred_from": from]
         }
         if let before = filters.occurredBefore {
-            parts.append("u.occurred_at < :occurred_before")
+            parts.append("\(timestamp) < :occurred_before")
             values += ["occurred_before": before]
         }
         predicate = parts.isEmpty ? "1" : parts.joined(separator: " AND ")
