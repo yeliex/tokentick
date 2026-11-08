@@ -6,7 +6,7 @@
 "Codex task database fields are incompatible with the verified format. The existing name cache was kept." = "Codex task database fields are incompatible with the verified format. The existing name cache was kept.";
 "Conflicting copies of this rollout were found. Existing usage was kept and updates to this rollout were stopped." = "Conflicting copies of this rollout were found. Existing usage was kept and updates to this rollout were stopped.";
 "Fast evidence: %@" = "Fast evidence: %@";
-"File notifications are unavailable. Logs will be checked through scheduled scans." = "File notifications are unavailable. Logs will be checked through scheduled scans.";
+"File notifications are unavailable. Automatic log collection has stopped." = "File notifications are unavailable. Automatic log collection has stopped.";
 "Filter dates must use a valid YYYY-MM-DD format." = "Filter dates must use a valid YYYY-MM-DD format.";
 "Log scan issues: %lld. Successfully collected data was kept." = "Log scan issues: %lld. Successfully collected data was kept.";
 "Logs: %@" = "Logs: %@";

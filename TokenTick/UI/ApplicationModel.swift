@@ -172,20 +172,21 @@ final class ApplicationModel {
         controller.start()
     }
 
-    func synchronize(_ scope: SynchronizationScope = .all) {
+    func synchronize(_ scope: SynchronizationScope = .all, localDirectories: [String]? = nil) {
         guard !isSyncing, !isDeletingDeviceData, let store else { return }
         if scope == .all { devices.refreshAll() }
         checkLoginEnvironment()
         let limitGeneration = limitSession.generation
         isSyncing = true
         isRefreshingAPI = scope == .all || scope == .api || scope == .remote
-        automatic?.started(scope)
+        automatic?.started(scope, directories: localDirectories)
         error = nil
         let home = LocalUsageScanner.defaultCodexHome
         syncTask = Task { [self] in
-            defer { isRefreshingAPI = false; isSyncing = false; progress = nil; syncTask = nil; automatic?.finished() }
+            var localScanSucceeded = false
+            defer { isRefreshingAPI = false; isSyncing = false; progress = nil; syncTask = nil; automatic?.finished(localScanSucceeded: localScanSucceeded) }
             do {
-                lastSync = try await UsageSynchronizer(store: store).synchronize(scope: scope, codexHome: home, onProgress: { [weak self] progress in
+                lastSync = try await UsageSynchronizer(store: store).synchronize(scope: scope, codexHome: home, localDirectories: localDirectories, onProgress: { [weak self] progress in
                     Task { @MainActor in self?.progress = progress }
                 }, onCurrentLimits: { [weak self] snapshot in
                     guard let self else { return }
@@ -198,6 +199,7 @@ final class ApplicationModel {
                 }, onDiagnostic: { diagnostic in
                     AppTelemetry.capture(diagnostic)
                 })
+                localScanSucceeded = lastSync?.scan?.issueCount == 0
                 checkLoginEnvironment()
                 if limitSession.acceptLog(lastSync?.scan?.currentLimits, generation: limitGeneration,
                                           now: Date().timeIntervalSince1970),
@@ -243,7 +245,7 @@ final class ApplicationModel {
         defer {
             isDeletingDeviceData = false
             devices.resumeCollection()
-            automatic?.finished()
+            automatic?.finished(localScanSucceeded: false)
         }
         // Deletion invalidates other sources' cursors. Wait for every in-flight commit first.
         let local = syncTask
@@ -252,6 +254,7 @@ final class ApplicationModel {
         await local?.value
         try Task.checkCancellation()
         try await devices.remove(device, deleteUsage: true)
+        automatic?.sourceDataInvalidated()
     }
 
     private func receiveCurrentLimits(_ snapshot: CurrentLimitSnapshot?, generation: Int) async {

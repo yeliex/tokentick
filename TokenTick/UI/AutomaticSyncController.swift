@@ -12,7 +12,8 @@ final class AutomaticSyncController {
     private var observers: [NSObjectProtocol] = []
     private var home: URL?
     private var suspended = false
-    private var watcherFailed = false
+    private var pending = CodexLogChanges(directories: nil)
+    private var collecting: CodexLogChanges?
 
     init(app: ApplicationModel) { self.app = app }
 
@@ -20,6 +21,9 @@ final class AutomaticSyncController {
         stop()
         self.home = LocalUsageScanner.defaultCodexHome
         schedule = AutomaticSyncSchedule()
+        schedule.applicationActive(NSApp.isActive)
+        pending = CodexLogChanges(directories: nil)
+        collecting = nil
         suspended = false
         watch()
         let center = NSWorkspace.shared.notificationCenter
@@ -31,36 +35,62 @@ final class AutomaticSyncController {
                 Task { @MainActor in self?.recover() }
             }
         ]
+        for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
+            observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.schedule.applicationActive(NSApp.isActive)
+                    self.arm()
+                }
+            })
+        }
         arm()
     }
 
     func stop() {
         timer?.cancel(); timer = nil; watcher = nil; home = nil
-        for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
+        for observer in observers {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+            NotificationCenter.default.removeObserver(observer)
+        }
         observers = []
     }
 
-    func started(_ scope: SynchronizationScope) { schedule.started(scope); arm() }
-    func finished() { refreshHome(); if watcher == nil { watch() }; arm() }
+    func started(_ scope: SynchronizationScope, directories: [String]?) {
+        if scope == .all || scope == .local {
+            collecting = CodexLogChanges(directories: directories.map { Set($0) })
+            pending = CodexLogChanges()
+        }
+        schedule.started(scope)
+        arm()
+    }
+    func finished(localScanSucceeded: Bool) {
+        if !localScanSucceeded, let collecting { pending.merge(collecting) }
+        collecting = nil
+        refreshHome()
+        arm()
+    }
     func acceptedLog(observedAt: Double) {
         schedule.acceptedLog(observedAt: Date(timeIntervalSince1970: observedAt))
         arm()
     }
     func cancelled() { schedule.cancelled(); arm() }
+    func sourceDataInvalidated() { changed(CodexLogChanges(directories: nil)) }
 
     private func watch() {
         watcher = nil
         guard let home else { return }
         do {
-            watcher = try CodexLogWatcher(codexHome: home) { [weak self] in
-                Task { @MainActor in self?.changed() }
+            watcher = try CodexLogWatcher(codexHome: home) { [weak self] changes in
+                Task { @MainActor in
+                    guard let self, self.home == home else { return }
+                    self.changed(changes)
+                }
             }
-            watcherFailed = false
             app?.automaticSyncIssue = nil
             schedule.watcherAvailable(true)
         } catch {
-            if !watcherFailed { AppTelemetry.capture(error, operation: "sync.watcher", warning: true) }
-            watcherFailed = true
+            AppTelemetry.capture(error, operation: "sync.watcher", warning: true)
             app?.automaticSyncIssue = error.localizedDescription
             schedule.watcherAvailable(false)
         }
@@ -70,13 +100,15 @@ final class AutomaticSyncController {
         let current = LocalUsageScanner.defaultCodexHome
         guard current != home else { return }
         home = current
-        watch()
         schedule = AutomaticSyncSchedule()
-        schedule.watcherAvailable(watcher != nil)
+        schedule.applicationActive(NSApp.isActive)
+        pending = CodexLogChanges(directories: nil)
+        watch()
     }
 
-    private func changed() {
+    private func changed(_ changes: CodexLogChanges) {
         guard home != nil else { return }
+        pending.merge(changes)
         schedule.logsChanged()
         arm()
     }
@@ -90,22 +122,22 @@ final class AutomaticSyncController {
         suspended = false
         app?.devices.recovered()
         refreshHome()
-        watch()
-        schedule.recovered()
+        // Keep the existing stream so queued sleep-time changes retain their paths.
         arm()
     }
 
     private func arm() {
         timer?.cancel(); timer = nil
         guard home != nil, !suspended, let app, !app.isSyncing, !app.isDeletingDeviceData else { return }
-        // Check process environment and watcher state only; do not scan directories at this frequency.
+        // Check the configured root only; failed watchers are not retried.
         let delay = min(30, max(0.01, schedule.nextCheck.timeIntervalSinceNow))
         timer = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
             guard let self, let app = self.app, !app.isSyncing, !app.isDeletingDeviceData, !self.suspended else { return }
             self.refreshHome()
-            if self.watcher == nil { self.watch() }
-            if let scope = self.schedule.takeDueScope() { app.synchronize(scope) }
+            if let scope = self.schedule.takeDueScope() {
+                app.synchronize(scope, localDirectories: self.pending.directories.map { $0.sorted() })
+            }
             else { self.arm() }
         }
     }

@@ -1,10 +1,57 @@
 import Foundation
+import CoreServices
 import GRDB
 import Synchronization
 import Testing
 @testable import TokenTickCore
 
 struct AutomaticSyncTests {
+    @Test func eventsSelectChangedDirectoriesAndKeepMetadataSeparate() throws {
+        let root = "/fixture"
+        let file = FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsFile | kFSEventStreamEventFlagItemModified)
+        let directory = FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsDir | kFSEventStreamEventFlagItemCreated)
+        var changes = try #require(CodexLogChanges.events(root: root,
+            paths: ["/fixture/sessions/2025/01/01/old.jsonl", "/fixture/sessions/2026/11/08", "/fixture/archived_sessions/task.jsonl"],
+            flags: [file, directory, file]))
+        #expect(changes.directories == ["sessions/2025/01/01", "sessions/2026/11/08", "archived_sessions"])
+        let metadata = try #require(CodexLogChanges.events(root: root, paths: ["/fixture/state_5.sqlite-wal"], flags: [file]))
+        #expect(metadata.directories == [])
+        changes.merge(metadata)
+        #expect(changes.directories?.count == 3)
+        #expect(CodexLogChanges.events(root: root, paths: ["/fixture/state_5.sqlite-shm", "/fixture/sessions-other/file"], flags: [file, file]) == nil)
+        #expect(CodexLogChanges.events(root: "/private/var/fixture", paths: ["/private/var/fixture/sessions/2026/11/08/log.jsonl"],
+            flags: [file])?.directories == ["sessions/2026/11/08"])
+        for flag in [kFSEventStreamEventFlagMustScanSubDirs, kFSEventStreamEventFlagRootChanged,
+                     kFSEventStreamEventFlagUserDropped, kFSEventStreamEventFlagKernelDropped] {
+            let lost = try #require(CodexLogChanges.events(root: root, paths: ["/fixture/sessions"], flags: [FSEventStreamEventFlags(flag)]))
+            #expect(lost.directories == nil)
+            var pending = changes
+            pending.merge(lost)
+            pending.merge(metadata)
+            #expect(pending.directories == nil)
+        }
+    }
+
+    @Test func backgroundScansWaitFiveMinutesAndActivationRecalculatesDelay() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var schedule = AutomaticSyncSchedule(now: start)
+        schedule.applicationActive(false)
+        #expect(schedule.takeDueScope(now: start) == .all)
+        schedule.logsChanged(now: start.addingTimeInterval(1))
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(299)) == nil)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(300)) == .all)
+        schedule.logsChanged(now: start.addingTimeInterval(301))
+        schedule.applicationActive(true)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(359)) == nil)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(360)) == .local)
+        schedule.cancelled(now: start.addingTimeInterval(400))
+        schedule.applicationActive(false)
+        schedule.applicationActive(true)
+        schedule.logsChanged(now: start.addingTimeInterval(401))
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(459)) == nil)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(460)) == .local)
+    }
+
     @Test func freshLogsDeferRemoteUntilQuietOrThirtyMinuteDeadline() {
         let start = Date(timeIntervalSince1970: 1000)
         var schedule = AutomaticSyncSchedule(now: start)
@@ -20,24 +67,24 @@ struct AutomaticSyncTests {
             schedule.acceptedLog(observedAt: now, now: now)
             #expect(schedule.takeDueScope(now: now) == nil)
         }
-        #expect(schedule.takeDueScope(now: start.addingTimeInterval(1800)) == .all)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(1800)) == .remote)
     }
 
-    @Test func startupBurstsPeriodicChecksAndRecoveryStayThrottled() {
+    @Test func startupAndBurstsStayThrottledWithoutPeriodicLogScans() {
         let start = Date(timeIntervalSince1970: 1_000)
         var schedule = AutomaticSyncSchedule(now: start)
         #expect(schedule.takeDueScope(now: start) == .all)
-        for second in 1...9 { schedule.logsChanged(now: start.addingTimeInterval(Double(second))) }
-        #expect(schedule.takeDueScope(now: start.addingTimeInterval(9)) == nil)
-        #expect(schedule.takeDueScope(now: start.addingTimeInterval(10)) == .local)
+        for second in 1...59 { schedule.logsChanged(now: start.addingTimeInterval(Double(second))) }
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(59)) == nil)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(60)) == .local)
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(69)) == nil)
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(70)) == nil)
-        schedule.recovered(now: start.addingTimeInterval(90))
-        #expect(schedule.takeDueScope(now: start.addingTimeInterval(90)) == .local)
+        schedule.logsChanged(now: start.addingTimeInterval(90))
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(90)) == nil)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(120)) == .local)
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(300)) == .remote)
-        // Coalesce missed sleep intervals into one recovery check rather than replaying every timer.
-        schedule.recovered(now: start.addingTimeInterval(10_000))
-        #expect(schedule.takeDueScope(now: start.addingTimeInterval(10_000)) == .all)
+        // A long idle or sleeping interval does not schedule another log scan.
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(10_000)) == .remote)
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(10_000)) == nil)
     }
 
@@ -47,31 +94,31 @@ struct AutomaticSyncTests {
         schedule.started(.all, now: start)
         schedule.logsChanged(now: start.addingTimeInterval(15))
         schedule.logsChanged(now: start.addingTimeInterval(50))
-        #expect(schedule.nextCheck == start.addingTimeInterval(17))
-        #expect(schedule.takeDueScope(now: start.addingTimeInterval(55)) == .local)
-        schedule.cancelled(now: start.addingTimeInterval(56))
-        schedule.logsChanged(now: start.addingTimeInterval(57))
-        #expect(schedule.takeDueScope(now: start.addingTimeInterval(115)) == nil)
-        #expect(schedule.takeDueScope(now: start.addingTimeInterval(116)) == .local)
+        #expect(schedule.nextCheck == start.addingTimeInterval(60))
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(59)) == nil)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(60)) == .local)
+        schedule.cancelled(now: start.addingTimeInterval(61))
+        schedule.logsChanged(now: start.addingTimeInterval(62))
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(120)) == nil)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(121)) == .local)
         schedule.started(.api, now: start.addingTimeInterval(200))
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(300)) == nil)
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(500)) == .remote)
     }
 
-    @Test func watcherFailureEnablesShortFallbackAndRecoveryRestoresLongInterval() {
+    @Test func watcherFailureStopsAutomaticLogsWithoutStoppingAPI() {
         let start = Date(timeIntervalSince1970: 1_000)
         var schedule = AutomaticSyncSchedule(now: start)
-        schedule.watcherAvailable(false, now: start)
-        schedule.started(.all, now: start)
+        schedule.watcherAvailable(false)
+        #expect(schedule.takeDueScope(now: start) == .remote)
+        schedule.logsChanged(now: start.addingTimeInterval(1))
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(59)) == nil)
-        #expect(schedule.takeDueScope(now: start.addingTimeInterval(60)) == .local)
-        schedule.watcherAvailable(true, now: start.addingTimeInterval(61))
-        schedule.started(.local, now: start.addingTimeInterval(61))
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(60)) == nil)
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(121)) == nil)
         for second in stride(from: 300, through: 1800, by: 300) {
             #expect(schedule.takeDueScope(now: start.addingTimeInterval(Double(second))) == .remote)
         }
-        #expect(schedule.takeDueScope(now: start.addingTimeInterval(1861)) == .local)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(1861)) == nil)
     }
 
     @Test func openingCurrentStoreAndReadingFactsDoesNotWaitForScanLock() throws {
@@ -118,7 +165,7 @@ struct AutomaticSyncTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let events = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
-        let watcher = try CodexLogWatcher(codexHome: root) { events.continuation.yield(()) }
+        let watcher = try CodexLogWatcher(codexHome: root) { _ in events.continuation.yield(()) }
         defer { events.continuation.finish(); withExtendedLifetime(watcher) {} }
         let file = root.appendingPathComponent("sessions/new/day/rollout-test.jsonl")
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -141,7 +188,7 @@ struct AutomaticSyncTests {
         let files = ["\(name).sqlite-shm", "\(name).sqlite-wal", "\(name).sqlite"].map { root.appendingPathComponent($0) }
         for file in files { try Data("initial".utf8).write(to: file) }
         let count = Mutex(0)
-        let watcher = try CodexLogWatcher(codexHome: root) { count.withLock { $0 += 1 } }
+        let watcher = try CodexLogWatcher(codexHome: root) { _ in count.withLock { $0 += 1 } }
         defer { withExtendedLifetime(watcher) {} }
         // Drain creation events coalesced at the root before observing updates to existing files.
         try await Task.sleep(for: .seconds(2))

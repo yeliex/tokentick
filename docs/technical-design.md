@@ -273,15 +273,18 @@ Apply intersections, literal search, stable sorting, and pagination in SQL. Coun
 
 | Trigger | Schedule |
 | --- | --- |
-| Filesystem changes | Coalesce for 2 seconds, with at least 10 seconds between local scans |
-| Reconciliation | Every 30 minutes with a watcher, every minute without one |
+| Filesystem changes | Coalesce for 2 seconds, with at least 1 minute between local scans while the app is active and 5 minutes while inactive; activation changes recalculate the delay from the previous scan start |
+| Full local discovery | Startup, manual refresh, source-data invalidation after device deletion, or an explicit FSEvents rescan/root-change/lost-event notification; no periodic full scan |
+| Watcher failure | Report the error and stop automatic local collection; no automatic retry or polling fallback |
 | API refresh | Every 5 minutes without fresh main-limit logs |
 | Accepted main-limit logs | May defer API until 5 minutes after the observation, at most 30 minutes after the previous API start |
 | Successful price refresh | Once per UTC day |
 | Cancellation | At least 60 seconds of quiet time |
-| Wake | Rebind watchers and reconcile once rather than replaying missed timers |
+| Wake | Keep the existing watcher and process queued changes without replaying missed timers or forcing a full scan |
 
 Only one synchronization runs at a time; additional work is coalesced. Current-schema WAL readers query committed facts without waiting for a complete scan. Cache rebuilds and schema recreation retain cross-process write coordination.
+
+The built-in local source establishes its FSEvents stream before startup discovery. It retains changed log directories until the next collection pass, including historical directories; file events select the parent directory and directory events select that subtree. Metadata-only events collect task/account/Fast metadata without enumerating rollout directories. SQLite shared-memory events remain excluded to avoid read-triggered scans. Changes arriving during collection remain queued for the next pass. Failed or cancelled selections are retained for the next event or manual refresh rather than automatically retried. A configured-root change starts a new watcher and full discovery; manual refresh and CLI collection remain full scans. Added remote/folder devices retain their separate polling policy.
 
 Unchanged rollout files retain their scan checkpoints without writes; moving a file updates its source path. Synchronization refreshes statistics only when their revision is stale, rebuilding affected dates through the existing invalidation markers. Explicit statistics rebuilds still replace the full cache. Synchronization waits for the write lock, while UI queries fall back to committed facts if another writer holds it.
 

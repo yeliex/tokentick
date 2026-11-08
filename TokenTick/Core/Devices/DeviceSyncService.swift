@@ -54,8 +54,13 @@ public struct DeviceSyncService: Sendable {
         }
     }
 
-    func synchronizeLocal(codexHome: URL, onProgress: (@Sendable (ScanProgress) -> Void)?) async throws -> ScanReport {
-        let result = try await synchronize(.local(root: codexHome), refreshMetadata: true, onProgress: onProgress)
+    func synchronizeLocal(codexHome: URL, directories: [String]? = nil, onProgress: (@Sendable (ScanProgress) -> Void)?) async throws -> ScanReport {
+        let device = RemoteDevice.local(root: codexHome)
+        let result = try await CollectionScheduler.shared.run(key: store.databaseURL.standardizedFileURL.path + ":" + device.id) {
+            try await withSource(device) { source in
+                try await collectSource(device, source: source, refreshMetadata: true, directories: directories, onProgress: onProgress)
+            }
+        }
         guard let scan = result.scan else { throw DeviceSourceFailure.invalidResponse }
         return scan
     }
@@ -116,6 +121,7 @@ public struct DeviceSyncService: Sendable {
     }
 
     private func collectSource(_ device: RemoteDevice, source: any DeviceFileSource, refreshMetadata: Bool,
+        directories: [String]? = nil,
         onProgress: (@Sendable (ScanProgress) -> Void)?) async throws -> DeviceSyncResult {
         let root = try await source.probe()
         let account = try? await (source as? any DeviceAccountSource)?.account()
@@ -132,7 +138,7 @@ public struct DeviceSyncService: Sendable {
         var report = try await UsageScanner(store: store, device: device, priority: priority,
             maximumFilesPerPass: device.id == "local" ? .max : 32,
             maximumBytesPerPass: device.id == "local" ? .max : 64 * 1_024 * 1_024,
-            preferIncrementalManifest: !refreshMetadata, accountID: account?.id)
+            preferIncrementalManifest: !refreshMetadata, accountID: account?.id, selectedDirectories: directories)
             .scan(source: source, onProgress: onProgress)
         let catalogPending = try store.deviceCatalogCursor(device: device.id, sourceRevision: device.sourceRevision) != nil
         let shouldRefreshMetadata = refreshMetadata || report.scannedFiles > 0 || catalogPending

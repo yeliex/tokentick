@@ -2,38 +2,44 @@ import Foundation
 
 /// Schedule triggers only; scans, prices, and API calls use the shared synchronization entry point.
 public struct AutomaticSyncSchedule: Sendable {
-    private var localDue: Date
     private var remoteDue: Date
     private var remoteDeadline: Date
     private var localAllowed: Date
     private var changedAt: Date?
-    private var localInterval: TimeInterval = 1_800
+    private var lastLocalStart: Date?
+    private var isActive = true
+    private var quietUntil = Date.distantPast
+    private var watcherAvailable = true
 
     public init(now: Date = Date()) {
-        localDue = now; remoteDue = now; remoteDeadline = now; localAllowed = now
+        changedAt = now; remoteDue = now; remoteDeadline = now; localAllowed = now
     }
 
     public var nextCheck: Date {
-        min(remoteDue, max(localAllowed, min(localDue, changedAt ?? .distantFuture)))
+        min(remoteDue, max(localAllowed, changedAt ?? .distantFuture))
     }
 
     public mutating func logsChanged(now: Date = Date()) {
+        guard watcherAvailable else { return }
         // Anchor coalescing to the first event so continuous writes cannot postpone scans indefinitely.
         changedAt = min(changedAt ?? .distantFuture, now.addingTimeInterval(2))
     }
 
-    public mutating func recovered(now: Date = Date()) {
-        changedAt = now
+    public mutating func applicationActive(_ active: Bool) {
+        isActive = active
+        if let lastLocalStart {
+            localAllowed = max(quietUntil, lastLocalStart.addingTimeInterval(active ? 60 : 300))
+        }
     }
 
-    public mutating func watcherAvailable(_ available: Bool, now: Date = Date()) {
-        localInterval = available ? 1_800 : 60
-        localDue = min(localDue, now.addingTimeInterval(localInterval))
+    public mutating func watcherAvailable(_ available: Bool) {
+        watcherAvailable = available
+        if !available { changedAt = nil }
     }
 
     public mutating func takeDueScope(now: Date = Date()) -> SynchronizationScope? {
         guard now >= nextCheck else { return nil }
-        let local = now >= max(localAllowed, min(localDue, changedAt ?? .distantFuture))
+        let local = now >= max(localAllowed, changedAt ?? .distantFuture)
         let remote = now >= remoteDue
         let scope: SynchronizationScope = remote ? (local ? .all : .remote) : .local
         started(scope, now: now)
@@ -42,8 +48,8 @@ public struct AutomaticSyncSchedule: Sendable {
 
     public mutating func started(_ scope: SynchronizationScope, now: Date = Date()) {
         if scope == .all || scope == .local {
-            localDue = now.addingTimeInterval(localInterval)
-            localAllowed = now.addingTimeInterval(10)
+            lastLocalStart = now
+            localAllowed = now.addingTimeInterval(isActive ? 60 : 300)
             changedAt = nil
         }
         if scope == .all || scope == .api || scope == .remote {
@@ -59,8 +65,8 @@ public struct AutomaticSyncSchedule: Sendable {
 
     public mutating func cancelled(now: Date = Date()) {
         changedAt = nil
-        localAllowed = now.addingTimeInterval(60)
-        localDue = max(localDue, localAllowed)
-        remoteDue = max(remoteDue, localAllowed)
+        quietUntil = now.addingTimeInterval(60)
+        localAllowed = max(localAllowed, quietUntil)
+        remoteDue = max(remoteDue, quietUntil)
     }
 }

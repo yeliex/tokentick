@@ -11,6 +11,8 @@ struct UsageScanner: Sendable {
     var maximumBytesPerPass: UInt64 = 64 * 1_024 * 1_024
     var preferIncrementalManifest = false
     var accountID: String? = nil
+    // nil discovers all logs; an empty selection collects metadata without enumerating logs.
+    var selectedDirectories: [String]? = nil
 
     func scan(source: any DeviceFileSource, onProgress: (@Sendable (ScanProgress) -> Void)? = nil) async throws -> ScanReport {
         let lock = FileWriteLock(url: store.databaseURL.appendingPathExtension("device-\(device.id).lock"))
@@ -19,7 +21,8 @@ struct UsageScanner: Sendable {
 
     private func scanUnlocked(source: any DeviceFileSource, onProgress: (@Sendable (ScanProgress) -> Void)?) async throws -> ScanReport {
         let directories: [String]?
-        if preferIncrementalManifest {
+        if let selectedDirectories { directories = selectedDirectories }
+        else if preferIncrementalManifest {
             let root = try await source.probe()
             directories = try store.incrementalManifestDirectories(device: device, root: root)
         } else { directories = nil }

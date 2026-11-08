@@ -59,8 +59,9 @@ public struct LocalUsageScanner: Sendable {
     }
 
     public func scan(codexHome: URL = LocalUsageScanner.defaultCodexHome,
+                     directories: [String]? = nil,
                      onProgress: (@Sendable (ScanProgress) -> Void)? = nil) async throws -> ScanReport {
         try await DeviceSyncService(store: store, executable: Bundle.main.executableURL!)
-            .synchronizeLocal(codexHome: codexHome, onProgress: onProgress)
+            .synchronizeLocal(codexHome: codexHome, directories: directories, onProgress: onProgress)
     }
 }

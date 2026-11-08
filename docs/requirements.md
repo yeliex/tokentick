@@ -26,6 +26,8 @@ The app supports multiple user-configured SSH connections and selected Codex fol
 
 ## Usage records and attribution
 
+The built-in local source performs full log discovery at app startup and on manual refresh. During normal operation, filesystem notifications select changed directories, including historical ones, with at least one minute between automatic scans while the app is active and five minutes while inactive. No periodic full scan runs. Explicit filesystem notifications requiring a rescan trigger full discovery. An unavailable source or failed watcher reports an error without automatic watcher retries or polling fallback. Preserve the watcher across sleep and keep changes received during collection for the next pass.
+
 - Retain each valid usage event with its available response ID, turn ID, source ordinal, timestamp, UTC date/hour/minute, model, token components, applied prices, and source location.
 - Preserve real source identifiers. Missing historical IDs remain null; do not generate a response ID from a turn or ordinal.
 - Across tasks containing the same turn, retain only the source task created earliest. A fork's new turns count normally. Discovering the original later changes ownership transactionally without adding duplicate consumption.

@@ -6,6 +6,42 @@ import Testing
 @testable import TokenTickCore
 
 struct LocalUsageScannerTests {
+    @Test func selectedLocalDirectoriesSkipHistoryAndRetainAppendAndArchiveCheckpoints() async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let oldDirectory = "sessions/2025/01/01"
+        let newDirectory = "sessions/2026/11/08"
+        for directory in [oldDirectory, newDirectory] {
+            try FileManager.default.createDirectory(at: fixture.root.appendingPathComponent(directory), withIntermediateDirectories: true)
+        }
+        let oldFile = fixture.root.appendingPathComponent(oldDirectory + "/" + fixture.fileName)
+        let otherThread = "00000000-0000-0000-0000-000000000002"
+        let newFile = fixture.root.appendingPathComponent(newDirectory + "/" + fixture.fileName.replacingOccurrences(of: fixture.thread, with: otherThread))
+        let initial = fixture.header + fixture.turn + fixture.record(1)
+        try Data(initial.utf8).write(to: oldFile)
+        try Data(initial.replacingOccurrences(of: fixture.thread, with: otherThread)
+            .replacingOccurrences(of: "turn-1", with: "turn-2").utf8).write(to: newFile)
+        #expect(try await fixture.scan().insertedRequests == 2)
+        try fixture.append(fixture.record(2), to: oldFile)
+        try fixture.append(fixture.record(2).replacingOccurrences(of: fixture.thread, with: otherThread)
+            .replacingOccurrences(of: "turn-1", with: "turn-2"), to: newFile)
+        let scanner = LocalUsageScanner(store: fixture.store)
+        let recent = try await scanner.scan(codexHome: fixture.root, directories: [newDirectory])
+        #expect(recent.discoveredFiles == 1 && recent.insertedRequests == 1)
+        #expect(try fixture.total() == 360)
+        let historical = try await scanner.scan(codexHome: fixture.root, directories: [oldDirectory])
+        #expect(historical.discoveredFiles == 1 && historical.insertedRequests == 1)
+        let archive = fixture.root.appendingPathComponent("archived_sessions/" + fixture.fileName)
+        try FileManager.default.moveItem(at: oldFile, to: archive)
+        let archived = try await scanner.scan(codexHome: fixture.root, directories: [oldDirectory, "archived_sessions"])
+        #expect(archived.discoveredFiles == 1 && archived.unchangedFiles == 1 && archived.insertedRequests == 0)
+        #expect(try fixture.total() == 480)
+        let metadata = try await scanner.scan(codexHome: fixture.root, directories: [])
+        #expect(metadata.discoveredFiles == 0 && metadata.scannedFiles == 0)
+        #expect(try fixture.store.usageRecords().rows.filter { $0.threadID == fixture.thread }
+            .allSatisfy { $0.lastKnownPath == archive.path } == true)
+    }
+
     @Test func localCopyTakesOwnershipAndDeviceFiltersSurviveSourceChanges() async throws {
         let local = try Fixture()
         let remote = try Fixture()
@@ -500,8 +536,8 @@ struct LocalUsageScannerTests {
         let store = fixture.store
         let root = fixture.root
         let task = Task {
-            try await LocalUsageScanner(store: store).scan(codexHome: root) { _ in
-                withUnsafeCurrentTask { $0?.cancel() }
+            try await LocalUsageScanner(store: store).scan(codexHome: root) { progress in
+                if progress.completedFiles > 0 { withUnsafeCurrentTask { $0?.cancel() } }
             }
         }
         do {
