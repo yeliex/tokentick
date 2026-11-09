@@ -70,4 +70,4 @@ Keep durable requirements and technical design up to date. Do not commit a growi
 
 Before a requested commit, review the repository, branch, and exact diff; stage only intended files. Follow Conventional Commits and check whether changeset configuration exists. Prefer `Co-authored-by: Codex <codex@openai.com>`. Push requested commits unless local-only work was requested. A commit request does not authorize tagging, publishing, or merging.
 
-Packaging extracts the root README's `## Installation` section. Verify that extraction after documentation changes. Distribution uses ad-hoc signing and Sparkle's separate Ed25519 update signature; never print or commit signing keys. Publishing a version tag triggers the release workflow and requires release authorization.
+Packaging extracts the root README's `## Installation` section. Verify that extraction after documentation changes. Distribution uses Developer ID signing, Apple notarization, and Sparkle's separate Ed25519 update signature; never print or commit signing keys. Publishing a version tag triggers the release workflow and requires release authorization.

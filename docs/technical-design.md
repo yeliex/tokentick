@@ -368,8 +368,11 @@ For documentation or script changes, check relative links, shell syntax, and dis
 ## Packaging and release
 
 ```sh
-# Local ad-hoc distribution; does not install or publish.
+# Local Developer ID-signed distribution; does not install or publish.
 ./script/package_release.sh
+
+# Notarize with credentials previously stored by notarytool.
+TOKENTICK_NOTARY_PROFILE="<keychain-profile>" ./script/package_release.sh
 
 # Explicit marketing version and increasing build number.
 ./script/package_release.sh 0.1.1 3
@@ -397,7 +400,9 @@ Release checkout includes full history and tags. `script/generate_release_notes.
 
 Actions uses `SPARKLE_PRIVATE_KEY`, matching `SUPublicEDKey` in Info.plist. The appcast script receives CI signing material through `TOKENTICK_SPARKLE_PRIVATE_KEY` and passes it over standard input; local signing uses the `tokentick` keychain account. Do not print, commit, or routinely regenerate the private key.
 
-macOS code signing and Sparkle Ed25519 signatures serve different purposes. Distribution is ad-hoc signed without Apple notarization or a paid Developer Program account. Sign Sparkle components inside-out; the app's library-validation entitlement permits the dynamic framework without a Team ID. Creating a local package does not authorize tagging or publishing a release.
+Release builds use Developer ID Application signing; Debug builds use Apple Development signing. Sign nested components inside-out with hardened runtime and secure timestamps. Keep the bundle identifier and signing team stable across updates, and preserve Sparkle's separate Ed25519 update key.
+
+Set `TOKENTICK_NOTARY_PROFILE` to notarize local packages; otherwise they remain unnotarized, as recorded in `BUILD.txt`. CI requires successful notarization and Gatekeeper validation before publishing. Required repository secrets are declared in [the release workflow](../.github/workflows/release.yml). Creating a local package does not authorize tagging or publishing a release.
 
 ## Reset reminders
 

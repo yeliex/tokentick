@@ -62,7 +62,7 @@ shasum -a 256 -c <archive-name>.zip.sha256
 
 ### App
 
-Extract the archive, move `TokenTick.app` to Applications, and open it. If macOS blocks the ad-hoc signed app, allow it in System Settings → Privacy & Security after confirming the download's source.
+Extract the archive, move `TokenTick.app` to Applications, and open it. Older ad-hoc signed releases may require approval in System Settings → Privacy & Security after confirming the download's source.
 
 Update through **Check for Updates…** in the app menu or Settings → About.
 

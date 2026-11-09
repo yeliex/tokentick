@@ -365,9 +365,10 @@
 			"isa" = "XCBuildConfiguration";
 			"name" = "Release";
 			"buildSettings" = {
-				"CODE_SIGN_IDENTITY" = "-";
+				"CODE_SIGN_IDENTITY" = "Developer ID Application";
+				"DEVELOPMENT_TEAM" = "47YTFN9LPP";
 				"PRODUCT_NAME" = "tokentick";
-				"CODE_SIGN_STYLE" = "Automatic";
+				"CODE_SIGN_STYLE" = "Manual";
 			};
 		};
 		"FA188A58A13305401E559449" = {
@@ -402,12 +403,13 @@
 			"name" = "Release";
 			"buildSettings" = {
 				"GENERATE_INFOPLIST_FILE" = "NO";
-				"CODE_SIGN_IDENTITY" = "-";
-				"MARKETING_VERSION" = "0.2.1";
+				"CODE_SIGN_IDENTITY" = "Developer ID Application";
+				"DEVELOPMENT_TEAM" = "47YTFN9LPP";
+				"MARKETING_VERSION" = "1.0.0";
 				"ENABLE_HARDENED_RUNTIME" = "YES";
 				"ENABLE_APP_SANDBOX" = "NO";
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.yeliex.tokentick";
-				"CODE_SIGN_STYLE" = "Automatic";
+				"CODE_SIGN_STYLE" = "Manual";
 				"INFOPLIST_FILE" = "TokenTick/Resources/Info.plist";
 				"CODE_SIGN_ENTITLEMENTS" = "TokenTick/Resources/TokenTick.entitlements";
 				"ASSETCATALOG_COMPILER_APPICON_NAME" = "TokenTick";
@@ -632,8 +634,9 @@
 			"name" = "Debug";
 			"buildSettings" = {
 				"GENERATE_INFOPLIST_FILE" = "NO";
-				"CODE_SIGN_IDENTITY" = "-";
-				"MARKETING_VERSION" = "0.2.1";
+				"CODE_SIGN_IDENTITY" = "Apple Development";
+				"DEVELOPMENT_TEAM" = "47YTFN9LPP";
+				"MARKETING_VERSION" = "1.0.0";
 				"ENABLE_HARDENED_RUNTIME" = "YES";
 				"ENABLE_APP_SANDBOX" = "NO";
 				"PRODUCT_BUNDLE_IDENTIFIER" = "com.yeliex.tokentick";
@@ -653,7 +656,8 @@
 			"isa" = "XCBuildConfiguration";
 			"name" = "Debug";
 			"buildSettings" = {
-				"CODE_SIGN_IDENTITY" = "-";
+				"CODE_SIGN_IDENTITY" = "Apple Development";
+				"DEVELOPMENT_TEAM" = "47YTFN9LPP";
 				"PRODUCT_NAME" = "tokentick";
 				"CODE_SIGN_STYLE" = "Automatic";
 			};

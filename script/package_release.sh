@@ -2,10 +2,19 @@
 set -euo pipefail
 
 if [ "$#" -ne 0 ] && { [ "$#" -ne 2 ] || [[ ! "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ ! "$2" =~ ^[1-9][0-9]*$ ]]; }; then
-  echo "Usage: $0 [version increasing-build-number] (ad-hoc signing)" >&2
+  echo "Usage: $0 [version increasing-build-number] (Developer ID signing)" >&2
   exit 2
 fi
-BUILD_SETTINGS=("CODE_SIGN_IDENTITY=-" "CODE_SIGN_STYLE=Manual")
+SIGNING_IDENTITY="Developer ID Application: Yexin Wang (47YTFN9LPP)"
+BUILD_SETTINGS=("CODE_SIGN_IDENTITY=$SIGNING_IDENTITY" "CODE_SIGN_STYLE=Manual" "DEVELOPMENT_TEAM=47YTFN9LPP" "OTHER_CODE_SIGN_FLAGS=--timestamp")
+if ! security find-identity -p codesigning -v | grep -Fq "\"$SIGNING_IDENTITY\""; then
+  echo "Developer ID signing identity not found: $SIGNING_IDENTITY" >&2
+  exit 1
+fi
+if [ "${CI:-}" = "true" ] && [ -z "${TOKENTICK_NOTARY_PROFILE:-}" ]; then
+  echo "CI releases require TOKENTICK_NOTARY_PROFILE." >&2
+  exit 1
+fi
 if [ "$#" -eq 2 ]; then
   BUILD_SETTINGS+=("MARKETING_VERSION=$1" "CURRENT_PROJECT_VERSION=$2")
 fi
@@ -56,17 +65,18 @@ cp "$BUILD_DIR/SourcePackages/checkouts/sentry-cocoa/LICENSE.md" "$PACKAGE_DIR/L
 APP_EXECUTABLE="$PACKAGE_DIR/TokenTick.app/Contents/MacOS/TokenTick"
 CLI_EXECUTABLE="$PACKAGE_DIR/bin/tokentick"
 # The CLI build may update shared resource signatures; seal app resources after final assembly.
-/usr/bin/codesign --force --sign - --timestamp=none "$PACKAGE_DIR/TokenTick.app/Contents/Resources/GRDB_GRDB.bundle"
+/usr/bin/codesign --force --sign "$SIGNING_IDENTITY" --timestamp "$PACKAGE_DIR/TokenTick.app/Contents/Resources/GRDB_GRDB.bundle"
 SPARKLE="$PACKAGE_DIR/TokenTick.app/Contents/Frameworks/Sparkle.framework"
 for COMPONENT in "$SPARKLE/Versions/B/XPCServices/Downloader.xpc" \
   "$SPARKLE/Versions/B/XPCServices/Installer.xpc" "$SPARKLE/Versions/B/Updater.app" \
   "$SPARKLE/Versions/B/Autoupdate" "$SPARKLE"; do
-  /usr/bin/codesign --force --sign - --timestamp=none \
-    --preserve-metadata=identifier,entitlements,requirements,flags,runtime "$COMPONENT"
+  /usr/bin/codesign --force --sign "$SIGNING_IDENTITY" --timestamp --options runtime \
+    --preserve-metadata=identifier,entitlements "$COMPONENT"
 done
-/usr/bin/codesign --force --sign - --timestamp=none --options runtime \
+/usr/bin/codesign --force --sign "$SIGNING_IDENTITY" --timestamp --options runtime "$PACKAGE_DIR/TokenTick.app/Contents/Helpers/tokentick"
+/usr/bin/codesign --force --sign "$SIGNING_IDENTITY" --timestamp --options runtime \
   --entitlements "$PROJECT_ROOT/TokenTick/Resources/TokenTick.entitlements" "$PACKAGE_DIR/TokenTick.app"
-/usr/bin/codesign --force --sign - --timestamp=none --options runtime "$CLI_EXECUTABLE"
+/usr/bin/codesign --force --sign "$SIGNING_IDENTITY" --timestamp --options runtime "$CLI_EXECUTABLE"
 /usr/bin/codesign --verify --deep --strict "$PACKAGE_DIR/TokenTick.app"
 /usr/bin/codesign --verify --strict "$CLI_EXECUTABLE"
 /usr/bin/codesign -dvvv "$PACKAGE_DIR/TokenTick.app" >"$PACKAGE_DIR/App-signature.txt" 2>&1
@@ -77,10 +87,22 @@ done
 "$CLI_EXECUTABLE" --help >"$LOG_DIR/release-cli-help.log"
 "$PACKAGE_DIR/TokenTick.app/Contents/Helpers/tokentick" --help >"$LOG_DIR/release-embedded-cli-help.log"
 
+NOTARIZED=false
+if [ -n "${TOKENTICK_NOTARY_PROFILE:-}" ]; then
+  NOTARY_ARCHIVE="$STAGING/notarization.zip"
+  /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$PACKAGE_DIR" "$NOTARY_ARCHIVE"
+  xcrun notarytool submit "$NOTARY_ARCHIVE" --keychain-profile "$TOKENTICK_NOTARY_PROFILE" --wait
+  xcrun stapler staple "$PACKAGE_DIR/TokenTick.app"
+  xcrun stapler validate "$PACKAGE_DIR/TokenTick.app"
+  /usr/sbin/spctl --assess --type execute --verbose "$PACKAGE_DIR/TokenTick.app"
+  rm "$NOTARY_ARCHIVE"
+  NOTARIZED=true
+fi
+
 {
   echo "configuration=Release"
-  echo "signing=ad-hoc"
-  echo "notarized=false"
+  echo "signing=Developer ID"
+  echo "notarized=$NOTARIZED"
   echo "source_commit=$(git -C "$PROJECT_ROOT" rev-parse HEAD)"
   if [ -n "$(git -C "$PROJECT_ROOT" status --porcelain)" ]; then
     echo "source_dirty=true"
@@ -107,4 +129,4 @@ if [ -n "${GITHUB_OUTPUT:-}" ]; then
   echo "update_archive=$UPDATE_ARCHIVE" >>"$GITHUB_OUTPUT"
 fi
 echo "App update archive: $UPDATE_ARCHIVE"
-echo "Signing: ad-hoc, without notarization or a paid developer account. See the bundled README.md for installation. Requires macOS 26 and Apple Silicon."
+echo "Signing: Developer ID; notarized=$NOTARIZED. Requires macOS 26 and Apple Silicon."
