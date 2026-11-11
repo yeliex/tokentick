@@ -12,7 +12,7 @@ actor SSHDeviceSource: DeviceFileSource, DeviceAccountSource, DeviceTraceSource 
     private var catalogDesktopLoaded = false
     private var catalogDesktop: DesktopProjectCatalog?
 
-    init(device: RemoteDevice, executable: URL, configurationDirectory: URL, sshConfiguration: URL? = nil) async throws {
+    init(device: RemoteDevice, executable: URL, configurationDirectory: URL, sshConfiguration: URL? = nil) throws {
         guard case .ssh(let host, let user, let port, let home) = device.connection else {
             throw DeviceConfigurationError.invalidConfiguration
         }
@@ -26,7 +26,7 @@ actor SSHDeviceSource: DeviceFileSource, DeviceAccountSource, DeviceTraceSource 
         }
         arguments += ["--", host.hasPrefix("[") && host.hasSuffix("]") ? String(host.dropFirst().dropLast()) : host]
         self.arguments = arguments
-        var environment = try await LoginShellEnvironment.shared.values()
+        var environment = ProcessInfo.processInfo.environment
         if hasPassword {
             environment["SSH_ASKPASS"] = executable.path
             environment["SSH_ASKPASS_REQUIRE"] = "force"

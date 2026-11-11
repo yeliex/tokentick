@@ -99,6 +99,8 @@ Add devices in Settings → Remote Devices using an SSH address or **Use Local F
 
 SSH uses your existing system configuration. If the address has no path, TokenTick uses the remote `CODEX_HOME` or `~/.codex`.
 
+TokenTick does not load local shell startup files. Use absolute executable paths in SSH `ProxyCommand` settings, such as `/opt/homebrew/bin/cloudflared` for a Homebrew installation on Apple Silicon.
+
 Overview groups usage across devices by account. Filter by account in Overview or by device in usage details. When removing a connection, choose whether to keep its collected history. Account limits and storage information remain specific to your local device.
 
 ## CLI

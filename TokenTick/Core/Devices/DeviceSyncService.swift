@@ -106,7 +106,7 @@ public struct DeviceSyncService: Sendable {
             if url.startAccessingSecurityScopedResource() { scopedURL = url }
             source = device.id == "local" ? try LocalFileSource(root: url) : DirectoryDeviceSource(root: url, executable: executable)
         case .ssh:
-            source = try await SSHDeviceSource(device: device, executable: executable,
+            source = try SSHDeviceSource(device: device, executable: executable,
                 configurationDirectory: configurationDirectory ?? configurations.url.deletingLastPathComponent(), sshConfiguration: sshConfiguration)
         }
         defer { scopedURL?.stopAccessingSecurityScopedResource() }
