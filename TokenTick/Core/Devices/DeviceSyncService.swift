@@ -13,6 +13,7 @@ public struct DeviceSyncResult: Codable, Sendable {
 public struct DeviceConnectionTestResult: Sendable {
     public let root: String
     public let accountEmail: String?
+    public var accountError: String? = nil
 }
 
 /// Share the source lifecycle between Settings and scheduled collection.
@@ -78,9 +79,15 @@ public struct DeviceSyncService: Sendable {
         }
         return try await withSource(device, configurationDirectory: draftDirectory) { source in
             let root = try await source.probe()
-            let identity = try? await (source as? any DeviceAccountSource)?.account()
+            var identity: DeviceAccount?
+            var accountError: String?
+            do { identity = try await (source as? any DeviceAccountSource)?.account() }
+            catch {
+                try Task.checkCancellation()
+                accountError = error.localizedDescription
+            }
             try Task.checkCancellation()
-            return DeviceConnectionTestResult(root: root, accountEmail: identity?.email)
+            return DeviceConnectionTestResult(root: root, accountEmail: identity?.email, accountError: accountError)
         }
     }
 
@@ -124,7 +131,13 @@ public struct DeviceSyncService: Sendable {
         directories: [String]? = nil,
         onProgress: (@Sendable (ScanProgress) -> Void)?) async throws -> DeviceSyncResult {
         let root = try await source.probe()
-        let account = try? await (source as? any DeviceAccountSource)?.account()
+        var account: DeviceAccount?
+        var accountError: String?
+        do { account = try await (source as? any DeviceAccountSource)?.account() }
+        catch {
+            try Task.checkCancellation()
+            if device.id != "local" { accountError = error.localizedDescription }
+        }
         try Task.checkCancellation()
         let previousRevision = try await store.pool.read { try UsageStore.statisticsRevision($0) }
         var completedCycles = 0
@@ -140,6 +153,9 @@ public struct DeviceSyncService: Sendable {
             maximumBytesPerPass: device.id == "local" ? .max : 64 * 1_024 * 1_024,
             preferIncrementalManifest: !refreshMetadata, accountID: account?.id, selectedDirectories: directories)
             .scan(source: source, onProgress: onProgress)
+        if let accountError {
+            report.addIssue("account", ScanIssue(fileName: root, line: nil, message: accountError))
+        }
         let catalogPending = try store.deviceCatalogCursor(device: device.id, sourceRevision: device.sourceRevision) != nil
         let shouldRefreshMetadata = refreshMetadata || report.scannedFiles > 0 || catalogPending
         if let traces = source as? any DeviceTraceSource {

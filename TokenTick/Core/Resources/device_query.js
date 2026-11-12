@@ -11,7 +11,14 @@ try {
     let DatabaseSync;
     try { DatabaseSync = require('node:sqlite').DatabaseSync; } catch { fail('unsupported'); }
     if (typeof DatabaseSync !== 'function' || typeof JSON.rawJSON !== 'function') fail('unsupported');
-    const root = fs.realpathSync(request.root || process.env.CODEX_HOME || path.join(os.homedir(), '.codex'));
+    let root;
+    try {
+        root = fs.realpathSync(request.root || process.env.CODEX_HOME || path.join(os.homedir(), '.codex'));
+        if (!fs.statSync(root).isDirectory()) fail('missingDirectory');
+    } catch (error) {
+        if (error.code === 'ENOENT' || error.code === 'ENOTDIR') fail('missingDirectory');
+        throw error;
+    }
     function source(name) {
         if (typeof name !== 'string' || path.basename(name) !== name || name.includes('\\') || name.includes('/')) fail('invalidPath');
         const result = fs.realpathSync(path.join(root, name));
@@ -32,6 +39,30 @@ try {
     let result;
     switch (request.operation) {
     case 'root': result = root; break;
+    case 'executable': {
+        const windows = process.platform === 'win32';
+        const candidates = (process.env.PATH || '').split(path.delimiter)
+            .flatMap(p => (windows ? ['codex.exe', 'codex.cmd'] : ['codex']).map(n => path.join(p, n)));
+        if (process.platform === 'darwin') {
+            for (const p of ['/Applications', path.join(os.homedir(), 'Applications')])
+                for (const app of ['Codex.app', 'ChatGPT.app'])
+                    for (const entry of ['codex', 'codex-cli/bin/codex'])
+                        candidates.push(path.join(p, app, 'Contents/Resources', entry));
+        }
+        if (windows && process.env.ProgramFiles) {
+            const apps = path.join(process.env.ProgramFiles, 'WindowsApps');
+            try {
+                for (const name of fs.readdirSync(apps).filter(n => n.startsWith('OpenAI.Codex_'))
+                    .sort((a, b) => b.localeCompare(a, undefined, {numeric: true})))
+                    candidates.push(path.join(apps, name, 'app/resources/codex.exe'));
+            } catch {}
+        }
+        result = candidates.find(p => {
+            try { fs.accessSync(p, fs.constants.X_OK); return fs.statSync(p).isFile(); } catch { return false; }
+        });
+        if (!result) fail('missingExecutable');
+        break;
+    }
     case 'catalog': {
         const files = names().filter(name => /^state_\d+\.sqlite$/.test(name))
             .sort((a, b) => Number(b.slice(6, -7)) - Number(a.slice(6, -7)));

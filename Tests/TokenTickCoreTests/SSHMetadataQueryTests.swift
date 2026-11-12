@@ -4,6 +4,55 @@ import Testing
 @testable import TokenTickCore
 
 struct SSHMetadataQueryTests {
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["TOKENTICK_TEST_NODE"] != nil),
+          arguments: ["Codex.app", "ChatGPT.app"], ["codex", "codex-cli/bin/codex"])
+    func remoteMacDiscoversBundledExecutableAndReportsMissingCLI(app: String, entry: String) async throws {
+        let node = try #require(ProcessInfo.processInfo.environment["TOKENTICK_TEST_NODE"])
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let remotePath = "/Applications/\(app)/Contents/Resources/\(entry)"
+        let executable = root.appendingPathComponent(String(remotePath.dropFirst()))
+        let source = String(decoding: try SSHMetadataQuery.input(.init(operation: "executable", root: root.path)), as: UTF8.self)
+        let encodedSource = String(decoding: try JSONEncoder().encode(source), as: UTF8.self)
+        let encodedRoot = String(decoding: try JSONEncoder().encode(root.path), as: UTF8.self)
+        // Model a remote Mac with an isolated application directory and no CLI on PATH.
+        let script = """
+        const vm = require('node:vm'), fs = require('node:fs');
+        const root = \(encodedRoot);
+        const mapped = p => p.startsWith('/Applications/') ? root + p : p;
+        const remoteFS = {...fs,
+            accessSync: (p, mode) => fs.accessSync(mapped(p), mode),
+            statSync: p => fs.statSync(mapped(p))
+        };
+        vm.runInNewContext(\(encodedSource), {
+            require: name => name === 'node:fs' ? remoteFS
+                : name === 'node:os' ? {homedir: () => root + '/user'} : require(name),
+            process: {platform: 'darwin', env: {PATH: root + '/bin'}, stdout: process.stdout}, Buffer, JSON
+        });
+        """
+        func query() async throws -> String {
+            let output = try await DeviceCommand.run(executable: URL(fileURLWithPath: node), arguments: ["-"], input: Data(script.utf8))
+            #expect(output.status == 0)
+            return try SSHMetadataQuery.decode(output.output, as: String.self)
+        }
+        await #expect(throws: DeviceSourceFailure.missingExecutable) { try await query() }
+        try FileManager.default.createDirectory(at: executable.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("#!/bin/sh\n".utf8).write(to: executable)
+        await #expect(throws: DeviceSourceFailure.missingExecutable) { try await query() }
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        #expect(try await query() == remotePath)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["TOKENTICK_TEST_NODE"] != nil))
+    func missingRootReportsMissingDirectory() async throws {
+        let node = try #require(ProcessInfo.processInfo.environment["TOKENTICK_TEST_NODE"])
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        await #expect(throws: DeviceSourceFailure.missingDirectory) {
+            let _: String = try await run(node, .init(operation: "root", root: root.path))
+        }
+    }
+
     @Test func commandQuotesPathsWithoutInterpolatingSourceInput() throws {
         #expect(try SSHMetadataQuery.command(path: "/home/a'b/node", shell: .posix) == "'/home/a'\\''b/node' -")
         #expect(try SSHMetadataQuery.command(path: "C:/Users/a'b c/node.exe", shell: .powershell) == "& 'C:/Users/a''b c/node.exe' -")

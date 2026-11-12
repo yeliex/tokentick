@@ -72,5 +72,24 @@ struct SSHIntegrationTests {
         #expect(compressed.scan?.duplicateRequests == 2 && compressed.scan?.issueCount == 0)
         #expect(try await service.synchronize(device).scan?.unchangedFiles == 1)
         #expect(try store.usageRecords().rows.count == 2)
+
+        let completionBeforeFailure = try store.deviceCollectionDates(configuration)
+        let countsBeforeFailure = try store.tableCounts()
+        try await node("require('node:fs').renameSync('/usr/local/bin/codex', '/usr/local/bin/codex-hidden');")
+        let missingCLI = try await service.test(device)
+        #expect(missingCLI.accountEmail == nil)
+        #expect(missingCLI.accountError == DeviceSourceFailure.missingExecutable.localizedDescription)
+        #expect(try store.tableCounts() == countsBeforeFailure)
+        #expect(try store.deviceCollectionDates(configuration) == completionBeforeFailure)
+        let partial = try await service.synchronize(device)
+        #expect(partial.scan?.diagnosticCounts["account"] == 1)
+        #expect(partial.scan?.issues.contains { $0.message == DeviceSourceFailure.missingExecutable.localizedDescription } == true)
+        #expect(try store.usageRecords().rows.count == 2)
+        #expect(try store.deviceCollectionDates(configuration) == completionBeforeFailure)
+
+        let missingDirectory = RemoteDevice(name: "Missing", connection: .ssh(host: "fixture", user: nil, port: nil, codexHome: "/root/missing-codex"))
+        await #expect(throws: DeviceSourceFailure.missingDirectory) { try await service.test(missingDirectory) }
+        await #expect(throws: DeviceSourceFailure.missingDirectory) { try await service.synchronize(missingDirectory) }
+        #expect(try store.usageRecords().rows.count == 2)
     }
 }

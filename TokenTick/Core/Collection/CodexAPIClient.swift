@@ -22,8 +22,10 @@ public struct CodexAPIClient: Sendable {
         let candidates = explicit.map { [$0.path] } ??
             path.split(separator: ":").map { "\($0)/codex" }
             + applicationDirectories.flatMap { directory in
-                ["Codex.app", "ChatGPT.app"].map {
-                    directory.appendingPathComponent("\($0)/Contents/Resources/codex").path
+                ["Codex.app", "ChatGPT.app"].flatMap { app in
+                    ["codex", "codex-cli/bin/codex"].map {
+                        directory.appendingPathComponent("\(app)/Contents/Resources/\($0)").path
+                    }
                 }
             }
         guard let path = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {

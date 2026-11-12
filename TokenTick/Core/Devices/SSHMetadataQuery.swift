@@ -46,30 +46,14 @@ struct SSHMetadataQuery: Sendable {
         }
     }
 
-    func accountSession(root: String) throws -> CodexAPISession {
+    func accountSession(root: String) async throws -> CodexAPISession {
+        let executable: String = try await read(.init(operation: "executable", root: root), as: String.self)
         // A static launcher carries the selected home as JSON; the RPC stream stays on stdin/stdout.
         let home = String(decoding: try JSONEncoder().encode(root), as: UTF8.self)
+        let path = String(decoding: try JSONEncoder().encode(executable), as: UTF8.self)
         let script = """
-        const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
+        const executable = \(path);
         const windows = process.platform === 'win32';
-        const candidates = (process.env.PATH || '').split(path.delimiter)
-            .flatMap(p => (windows ? ['codex.exe', 'codex.cmd'] : ['codex']).map(n => path.join(p, n)));
-        if (process.platform === 'darwin') {
-            for (const p of ['/Applications', path.join(os.homedir(), 'Applications')])
-                for (const app of ['Codex.app', 'ChatGPT.app']) candidates.push(path.join(p, app, 'Contents/Resources/codex'));
-        }
-        if (windows && process.env.ProgramFiles) {
-            const apps = path.join(process.env.ProgramFiles, 'WindowsApps');
-            try {
-                for (const name of fs.readdirSync(apps).filter(n => n.startsWith('OpenAI.Codex_'))
-                    .sort((a, b) => b.localeCompare(a, undefined, {numeric: true})))
-                    candidates.push(path.join(apps, name, 'app/resources/codex.exe'));
-            } catch {}
-        }
-        const executable = candidates.find(p => {
-            try { fs.accessSync(p, fs.constants.X_OK); return fs.statSync(p).isFile(); } catch { return false; }
-        });
-        if (!executable) process.exit(1);
         const shell = windows && executable.endsWith('.cmd');
         const child = require('node:child_process').spawn(shell ? '\"' + executable + '\"' : executable, ['app-server', '--stdio'], {
             stdio: 'inherit', env: {...process.env, CODEX_HOME: \(home)},

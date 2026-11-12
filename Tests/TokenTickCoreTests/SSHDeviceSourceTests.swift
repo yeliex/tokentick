@@ -3,6 +3,19 @@ import Testing
 @testable import TokenTickCore
 
 struct SSHDeviceSourceTests {
+    @Test(arguments: [false, true])
+    func missingOrNonDirectoryRootReportsMissingDirectory(createFile: Bool) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let root = directory.appendingPathComponent("codex")
+        if createFile { try Data().write(to: root) }
+        let transport = try SFTPTransport(executable: URL(fileURLWithPath: "/usr/libexec/sftp-server"), arguments: ["-R"])
+        let source = SSHDeviceSource(home: root.path, client: SFTPClient(transport: transport))
+        await #expect(throws: DeviceSourceFailure.missingDirectory) { try await source.probe() }
+        await source.close()
+    }
+
     @Test func explicitHomeRelativePathUsesRemoteLoginDirectory() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let codex = root.appendingPathComponent("custom-codex")

@@ -99,6 +99,8 @@ Add devices in Settings → Remote Devices using an SSH address or **Use Local F
 
 SSH uses your existing system configuration. If the address has no path, TokenTick uses the remote `CODEX_HOME` or `~/.codex`.
 
+Specify the Codex directory in the SSH address when it is configured only in the remote interactive shell. A missing directory is reported as a connection error. If the Codex CLI or account cannot be read, connection tests show the account error and synchronization keeps collecting readable logs with a warning. Bundled CLI discovery supports both `Resources/codex` and `Resources/codex-cli/bin/codex` in Codex.app and ChatGPT.app.
+
 TokenTick does not load local shell startup files. Use absolute executable paths in SSH `ProxyCommand` settings, such as `/opt/homebrew/bin/cloudflared` for a Homebrew installation on Apple Silicon.
 
 Overview groups usage across devices by account. Filter by account in Overview or by device in usage details. When removing a connection, choose whether to keep its collected history. Account limits and storage information remain specific to your local device.

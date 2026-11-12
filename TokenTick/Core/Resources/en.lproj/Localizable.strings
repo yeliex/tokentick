@@ -54,6 +54,8 @@
 "Unable to communicate with the device worker." = "Unable to communicate with the device worker.";
 
 "The Codex directory is unavailable. Check the connection and directory permissions." = "The Codex directory is unavailable. Check the connection and directory permissions.";
+"The Codex directory does not exist or is not a folder. Check this device's Codex path." = "The Codex directory does not exist or is not a folder. Check this device's Codex path.";
+"Codex CLI was not found on this device. Install Codex or add its executable to the remote SSH PATH." = "Codex CLI was not found on this device. Install Codex or add its executable to the remote SSH PATH.";
 
 "The source file changed during reading. It will be checked again before resuming." = "The source file changed during reading. It will be checked again before resuming.";
 

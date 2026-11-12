@@ -55,6 +55,8 @@ struct RemoteDevicesSettingsView: View {
 
     private func card(_ device: RemoteDevice) -> some View {
         let status = model.statuses[device.id]
+        let accountError = status?.connectionTest != nil ? status?.connectionTest?.accountError
+            : status?.result?.scan?.diagnosticSamples["account"]?.message
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 Image(systemName: device.connection.kind == "directory" ? "folder" : "desktopcomputer").font(.title2).foregroundStyle(.secondary)
@@ -86,11 +88,15 @@ struct RemoteDevicesSettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             if status?.connectionTest != nil || status?.result != nil {
-                Text(status?.connectionTest?.accountEmail ?? status?.result?.accountEmail ?? String(localized: "Unknown account"))
-                    .font(.caption).foregroundStyle(.secondary)
+                if let error = accountError {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                } else {
+                    Text(status?.connectionTest?.accountEmail ?? status?.result?.accountEmail ?? String(localized: "Unknown account"))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             if status?.busy != true, let issues = status?.result?.scan?.issues {
-                ForEach(Array(issues.prefix(3).enumerated()), id: \.offset) { _, issue in
+                ForEach(Array(issues.filter { $0.message != accountError }.prefix(3).enumerated()), id: \.offset) { _, issue in
                     Text(issue.message).font(.caption).foregroundStyle(.red).textSelection(.enabled)
                 }
             }
@@ -240,9 +246,10 @@ private struct RemoteDeviceEditor: View {
             saveTask = Task {
                 defer { testing = false; saveTask = nil }
                 do {
-                    _ = try await model.testDraft(device)
+                    let result = try await model.testDraft(device)
                     try Task.checkCancellation()
                     connectionAvailable = true
+                    error = result.accountError
                 } catch is CancellationError { }
                 catch { self.error = error.localizedDescription }
             }

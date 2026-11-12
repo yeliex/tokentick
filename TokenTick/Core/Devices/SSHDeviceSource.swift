@@ -106,7 +106,7 @@ actor SSHDeviceSource: DeviceFileSource, DeviceAccountSource, DeviceTraceSource 
         let root = try await databaseRoot()
         let query = try await query()
         let task = Task.detached(priority: .utility) {
-            let session = try query.accountSession(root: root)
+            let session = try await query.accountSession(root: root)
             defer { session.close() }
             return try DeviceAccount.read(session: session)
         }
@@ -145,8 +145,13 @@ actor SSHDeviceSource: DeviceFileSource, DeviceAccountSource, DeviceTraceSource 
            drive.first?.isASCII == true, drive.first?.isLetter == true {
             requested = "/" + drive.replacingOccurrences(of: "\\", with: "/")
         }
-        let path = try await client.realpath(requested)
-        guard try await client.stat(path).isDirectory else { throw DeviceSourceFailure.inaccessible }
+        let path: String
+        do {
+            path = try await client.realpath(requested)
+            guard try await client.stat(path).isDirectory else { throw DeviceSourceFailure.missingDirectory }
+        } catch let status as SFTPClient.Status where status.code == 2 {
+            throw DeviceSourceFailure.missingDirectory
+        }
         root = path.hasSuffix("/") && path.count > 1 ? String(path.dropLast()) : path
         return root!
     }

@@ -35,12 +35,14 @@ extension DeviceFileSource {
 }
 
 enum DeviceSourceFailure: String, Error, Codable, LocalizedError {
-    case inaccessible, changed, invalidPath, invalidResponse, unsupported, authentication, hostVerification, conflictingCopies, configuration, smbDirectory
+    case inaccessible, missingDirectory, missingExecutable, changed, invalidPath, invalidResponse, unsupported, authentication, hostVerification, conflictingCopies, configuration, smbDirectory
 
     var errorDescription: String? {
         switch self {
         case .smbDirectory: String(localized: "SMB-mounted folders are not supported. Use an SSH connection for this device.", bundle: .module)
         case .inaccessible: String(localized: "The Codex directory is unavailable. Check the connection and directory permissions.", bundle: .module)
+        case .missingDirectory: String(localized: "The Codex directory does not exist or is not a folder. Check this device's Codex path.", bundle: .module)
+        case .missingExecutable: String(localized: "Codex CLI was not found on this device. Install Codex or add its executable to the remote SSH PATH.", bundle: .module)
         case .changed: String(localized: "The source file changed during reading. It will be checked again before resuming.", bundle: .module)
         case .invalidPath: String(localized: "The source path leaves the selected Codex directory.", bundle: .module)
         case .invalidResponse: String(localized: "The device returned an invalid response.", bundle: .module)

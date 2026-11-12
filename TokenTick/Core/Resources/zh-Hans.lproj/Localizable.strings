@@ -54,6 +54,8 @@
 "Unable to communicate with the device worker." = "无法与设备读取进程通信。";
 
 "The Codex directory is unavailable. Check the connection and directory permissions." = "无法访问 Codex 目录。请检查连接和目录权限。";
+"The Codex directory does not exist or is not a folder. Check this device's Codex path." = "Codex 目录不存在或不是文件夹。请检查此设备的 Codex 路径。";
+"Codex CLI was not found on this device. Install Codex or add its executable to the remote SSH PATH." = "此设备上未找到 Codex CLI。请安装 Codex，或将其可执行程序加入远程 SSH 的 PATH。";
 
 "The source file changed during reading. It will be checked again before resuming." = "读取期间源文件发生变化。恢复前将重新检查文件。";
 

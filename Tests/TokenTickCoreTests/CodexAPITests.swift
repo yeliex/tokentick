@@ -16,13 +16,13 @@ struct CodexAPITests {
         #expect(decoding.errorMessage?.contains("Expected an integer") == true)
     }
 
-    @Test(arguments: ["Codex.app", "ChatGPT.app"])
-    func discoversBundledExecutableWithoutPATH(app: String) throws {
+    @Test(arguments: ["Codex.app", "ChatGPT.app"], ["codex", "codex-cli/bin/codex"])
+    func discoversBundledExecutableWithoutPATH(app: String, entry: String) throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let system = root.appendingPathComponent("Applications")
         let user = root.appendingPathComponent("User/Applications")
-        let cli = user.appendingPathComponent("\(app)/Contents/Resources/codex")
+        let cli = user.appendingPathComponent("\(app)/Contents/Resources/\(entry)")
         try FileManager.default.createDirectory(at: cli.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("#!/bin/sh\n".utf8).write(to: cli)
         #expect(throws: CodexAPIError.self) {
