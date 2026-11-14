@@ -4,6 +4,11 @@ import Foundation
 /// Transport reads happen before acquiring the destination writer lock; commits contain only facts and checkpoints.
 struct UsageScanner: Sendable {
     private struct CommitFailure: Error { let underlying: any Error }
+    private struct CopyMetadata: Encodable {
+        let path: String
+        let size: UInt64
+        let modifiedAt: Double
+    }
     let store: UsageStore
     let device: RemoteDevice
     let priority: DevicePriority
@@ -56,7 +61,8 @@ struct UsageScanner: Sendable {
             do {
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.sortedKeys]
-                let fingerprint = copies.count == 1 ? "" : SHA256.hash(data: try encoder.encode(copies)).map { String(format: "%02x", $0) }.joined()
+                let metadata = copies.map { CopyMetadata(path: $0.path, size: $0.size, modifiedAt: $0.modifiedAt) }
+                let fingerprint = copies.count == 1 ? "" : SHA256.hash(data: try encoder.encode(metadata)).map { String(format: "%02x", $0) }.joined()
                 let cursor = try store.scanCursor(rolloutID: identity.rolloutID.uuidString.lowercased(), device: device.id, sourceRevision: device.sourceRevision)
                 if copies.count > 1 && cursor?.file.copyFingerprint != fingerprint {
                     var digest: SHA256.Digest?
@@ -119,7 +125,7 @@ struct UsageScanner: Sendable {
         var scan = RolloutScan(identity: identity, accountID: cursor?.state.accountID ?? accountID)
         if let cursor, cursor.state.version == RolloutParserState.currentVersion,
            !identity.isCompressed, !cursor.file.compressed, cursor.offset > 0,
-           cursor.file.sourceIdentity == file.identity, file.size >= cursor.offset,
+           file.size >= cursor.offset,
            file.size > cursor.file.size || (file.size == cursor.file.size && file.modifiedAt == cursor.file.modifiedAt) {
             let count = Int(min(cursor.offset, 4_096))
             if try await hash(source, file, offset: 0, count: count) == cursor.file.prefixHash,

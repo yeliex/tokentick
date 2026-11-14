@@ -4,6 +4,52 @@ import Testing
 @testable import TokenTickCore
 
 struct DeviceUsageScannerTests {
+    @Test(arguments: [false, true])
+    func physicalIdentityChangesSkipUnchangedFilesAndVerifiedCopies(hasCopy: Bool) async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let bytes = Data((header + record(1)).utf8)
+        let source = Source(data: bytes, database: fixture.store.databaseURL)
+        if hasCopy { await source.setDuplicate(bytes) }
+        let scanner = UsageScanner(store: fixture.store, device: fixture.device, priority: DevicePriority())
+        #expect(try await scanner.scan(source: source).insertedRequests == 1)
+        await source.changeIdentities()
+        await source.resetTransferred()
+        let reopened = try UsageStore(databaseURL: fixture.store.databaseURL)
+        let report = try await UsageScanner(store: reopened, device: fixture.device, priority: DevicePriority()).scan(source: source)
+        #expect(report.unchangedFiles == 1 && report.scannedFiles == 0 && report.issueCount == 0)
+        #expect(await source.transferred == 0)
+    }
+
+    @Test func changedPhysicalIdentityStillResumesValidatedAppend() async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let source = Source(data: Data((header + record(1)).utf8), database: fixture.store.databaseURL)
+        let scanner = UsageScanner(store: fixture.store, device: fixture.device, priority: DevicePriority())
+        _ = try await scanner.scan(source: source)
+        await source.changeIdentities()
+        let appended = Data(record(2).utf8)
+        await source.append(appended)
+        let report = try await scanner.scan(source: source)
+        #expect(report.insertedRequests == 1 && report.duplicateRequests == 0 && report.issueCount == 0)
+        #expect(report.scannedBytes == UInt64(appended.count))
+        #expect(try fixture.store.usageRecords().rows.count == 2)
+    }
+
+    @Test func replacedLargerFileWithChangedIdentityReplaysWhenBoundariesDiffer() async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let source = Source(data: Data((header + record(1)).utf8), database: fixture.store.databaseURL)
+        let scanner = UsageScanner(store: fixture.store, device: fixture.device, priority: DevicePriority())
+        _ = try await scanner.scan(source: source)
+        let replacement = Data((header + record(2) + record(3)).utf8)
+        await source.replace(replacement)
+        let report = try await scanner.scan(source: source)
+        #expect(report.insertedRequests == 2 && report.issueCount == 0)
+        #expect(report.scannedBytes == UInt64(replacement.count))
+        #expect(try fixture.store.usageRecords().rows.count == 3)
+    }
+
     @Test func remoteCopyDeduplicatesThenReadsOnlyItsNewTail() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
@@ -79,6 +125,7 @@ struct DeviceUsageScannerTests {
         let cursor = try #require(try fixture.store.scanCursor(rolloutID: "00000000-0000-0000-0000-000000000001", device: fixture.device.id))
         #expect(!cursor.file.completed && cursor.offset > 0)
         await source.failReads(at: nil)
+        await source.changeIdentities()
         let recovered = try await scanner.scan(source: source)
         #expect(recovered.issues.isEmpty)
         #expect(recovered.insertedRequests == 3)
@@ -280,6 +327,7 @@ struct DeviceUsageScannerTests {
     private actor Source: DeviceFileSource {
         var data: Data
         var modified: Double = 1
+        var identityPrefix = ""
         var transferred = 0
         var duplicate: Data?
         var olderLog: Data?
@@ -291,6 +339,8 @@ struct DeviceUsageScannerTests {
         let database: URL
         init(data: Data, database: URL) { self.data = data; self.database = database }
         func append(_ bytes: Data) { data.append(bytes); modified += 1 }
+        func changeIdentities() { identityPrefix += "changed:" }
+        func replace(_ bytes: Data) { data = bytes; modified += 1; changeIdentities() }
         func resetTransferred() { transferred = 0 }
         func setDuplicate(_ bytes: Data) { duplicate = bytes; modified += 1 }
         func setOlderLog(_ bytes: Data) { olderLog = bytes }
@@ -298,14 +348,14 @@ struct DeviceUsageScannerTests {
         func manifest() -> DeviceSourceManifest {
             var files = [DeviceSourceFile(
                 path: "sessions/rollout-2026-09-09T00-00-00-00000000-0000-0000-0000-000000000001.jsonl",
-                size: UInt64(data.count), modifiedAt: modified, identity: "synthetic")]
+                size: UInt64(data.count), modifiedAt: modified, identity: identityPrefix + "synthetic")]
             if let duplicate {
                 files.append(DeviceSourceFile(path: "archived_sessions/rollout-2026-09-09T00-00-00-00000000-0000-0000-0000-000000000001.jsonl",
-                    size: UInt64(duplicate.count), modifiedAt: modified, identity: "duplicate"))
+                    size: UInt64(duplicate.count), modifiedAt: modified, identity: identityPrefix + "duplicate"))
             }
             if let olderLog {
                 files.append(DeviceSourceFile(path: "archived_sessions/rollout-2026-09-08T00-00-00-00000000-0000-0000-0000-000000000002.jsonl",
-                    size: UInt64(olderLog.count), modifiedAt: 0, identity: "older"))
+                    size: UInt64(olderLog.count), modifiedAt: 0, identity: identityPrefix + "older"))
             }
             return DeviceSourceManifest(root: "/synthetic", files: files)
         }
@@ -319,7 +369,7 @@ struct DeviceUsageScannerTests {
             try FileWriteLock(url: database.appendingPathExtension("write.lock")).withLock(nonBlocking: true) {}
             if let failingOffset, offset >= failingOffset { throw DeviceSourceFailure.inaccessible }
             transferred += count
-            let bytes = file.identity == "duplicate" ? duplicate! : file.identity == "older" ? olderLog! : data
+            let bytes = file.identity.hasSuffix("duplicate") ? duplicate! : file.identity.hasSuffix("older") ? olderLog! : data
             return bytes.subdata(in: Int(offset)..<(Int(offset) + count))
         }
     }

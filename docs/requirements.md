@@ -47,6 +47,8 @@ Collection is read-only against Codex files. Moving, compressing, reverting, or 
 
 The scanner streams bounded data and commits batches. It must recover safely from append, partial lines, interruption, truncation, replacement, archive moves, and compression changes. A cursor advances only with its committed records. Rescans, restarts, and concurrent app/CLI activity must not duplicate usage or corrupt the database.
 
+Identify logs by rollout ID. Completed logs with unchanged size, modification time, representation, and parser version skip body reads; changing only the filesystem device number or inode does not invalidate collection progress. Plain-file continuation checks the committed content boundaries. Compressed logs retain size and modification-time checks and are read again when their representation or metadata changes. Replacing content while preserving both size and modification time is outside this change-detection contract.
+
 The app synchronizes while running using filesystem notifications, startup/wake checks, and periodic reconciliation. Synchronization can be cancelled and retried; quitting stops collection. An unavailable source must not discard successful work from other sources.
 
 ## App diagnostics

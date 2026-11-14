@@ -14,7 +14,6 @@ struct FileSnapshot: Codable {
     let inode: UInt64
     let device: UInt64
     let compressed: Bool
-    var sourceIdentity: String?
     var copyFingerprint: String?
     var completed = false
     var prefixHash = ""
@@ -34,14 +33,13 @@ struct FileSnapshot: Codable {
         modifiedAt = source.modifiedAt
         inode = 0
         device = 0
-        sourceIdentity = source.identity
         self.compressed = compressed
     }
 
     func sameFile(as other: Self) -> Bool {
+        // Physical identities can change across mounts; rollout checkpoints compare content metadata.
         completed && size == other.size && modifiedAt == other.modifiedAt
-            && inode == other.inode && device == other.device && compressed == other.compressed
-            && sourceIdentity == other.sourceIdentity
+            && compressed == other.compressed
     }
 
 }

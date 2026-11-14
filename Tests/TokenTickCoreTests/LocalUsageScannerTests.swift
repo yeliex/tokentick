@@ -204,6 +204,50 @@ struct LocalUsageScannerTests {
         #expect(try fixture.total() == 120)
     }
 
+    @Test(arguments: [false, true])
+    func replacingPhysicalFileWithUnchangedMetadataSkipsBody(compressed: Bool) async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let text = Data((fixture.header + fixture.turn + fixture.count(1)).utf8)
+        let bytes = compressed ? try compress(text) : text
+        let file = fixture.root.appendingPathComponent("sessions/" + fixture.fileName + (compressed ? ".zst" : ""))
+        try bytes.write(to: file)
+        let modified = Date(timeIntervalSince1970: 1_700_000_000)
+        try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: file.path)
+        #expect(try await fixture.scan().insertedRequests == 1)
+        let before = try FileManager.default.attributesOfItem(atPath: file.path)
+        try bytes.write(to: file, options: .atomic)
+        try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: file.path)
+        let after = try FileManager.default.attributesOfItem(atPath: file.path)
+        #expect((before[.systemFileNumber] as? NSNumber) != (after[.systemFileNumber] as? NSNumber))
+        #expect((before[.modificationDate] as? Date) == (after[.modificationDate] as? Date))
+        let report = try await fixture.scan()
+        #expect(report.unchangedFiles == 1 && report.scannedFiles == 0 && report.scannedBytes == 0)
+        #expect(report.issueCount == 0 && report.insertedRequests == 0)
+    }
+
+    @Test func compressedMetadataChangesStillTriggerReading() async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let text = fixture.header + fixture.turn + fixture.count(1)
+        let file = fixture.root.appendingPathComponent("sessions/" + fixture.fileName + ".zst")
+        let bytes = try compress(Data(text.utf8))
+        try bytes.write(to: file)
+        _ = try await fixture.scan()
+        let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
+        let modified = try #require(attributes[.modificationDate] as? Date).addingTimeInterval(60)
+        try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: file.path)
+        let touched = try await fixture.scan()
+        #expect(touched.scannedFiles == 1 && touched.duplicateRequests == 1 && touched.issueCount == 0)
+        let replacement = try compress(Data((text + fixture.count(2)).utf8))
+        #expect(replacement.count != bytes.count)
+        try replacement.write(to: file)
+        try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: file.path)
+        let resized = try await fixture.scan()
+        #expect(resized.scannedFiles == 1 && resized.insertedRequests == 1 && resized.issueCount == 0)
+        #expect(try fixture.total() == 240)
+    }
+
     @Test func unchangedFilesDoNotRewriteScanCheckpoints() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
