@@ -4,23 +4,15 @@ import TokenTickCore
 
 struct OverviewView: View {
     @Environment(ApplicationModel.self) private var app
+    @Environment(\.scenePhase) private var scenePhase
     var openConversation: (UsageQuery) -> Void
     @SceneStorage("overview.period") private var storedPeriod = OverviewPeriod.week.rawValue
     private var period: OverviewPeriod { OverviewPeriod(rawValue: storedPeriod) ?? .week }
     @State private var accounts: [String] = []
-    @State private var loadedPeriod: OverviewPeriod?
-    @State private var report: OverviewReport?
-    @State private var loading = false
     @State private var error: String?
-    private struct Request: Hashable { let period: OverviewPeriod; let refresh: Int; let query: UsageQuery }
     private var timezone: String { app.status?.timezone ?? TimeZone.current.identifier }
-    private var request: Request { Request(period: period, refresh: app.usageRefreshID, query: app.overviewQuery(for: period)) }
-    @State private var loadedWeekRange: WeekRange?
-    private var selectionChanged: Bool {
-        loadedPeriod != period || report?.query.account != request.query.account
-            || (period == .week && (loadedWeekRange != app.weekRange
-                || (app.weekRange == .cycle && report?.query != request.query)))
-    }
+    private var request: OverviewUsageRequest { app.overviewUsageRequest(for: period, sections: .all) }
+    private var report: OverviewReport? { app.overviewUsageReport(for: request) }
 
     var body: some View {
         ScrollView {
@@ -65,11 +57,11 @@ struct OverviewView: View {
                     }
                     .alignmentGuide(VerticalAlignment.center) { $0[VerticalAlignment.center] + 1 }
                 }
-                if selectionChanged && (loading || report != nil) {
-                    ProgressView(String(localized: "Summarizing usage")).frame(maxWidth: .infinity, minHeight: 260)
-                } else if let error {
+                if let error {
                     ContentUnavailableView(String(localized: "Unable to load usage"), systemImage: "exclamationmark.triangle", description: Text(error))
-                    Button(String(localized: "Retry")) { app.retryUsageQuery() }
+                    Button(String(localized: "Retry")) { app.reloadUsage() }
+                } else if report == nil && (app.store != nil || app.error == nil) {
+                    ProgressView(String(localized: "Summarizing usage")).frame(maxWidth: .infinity, minHeight: 260)
                 } else if let report, let total = report.total {
                     VStack(alignment: .leading, spacing: 22) {
                     HStack(alignment: .top, spacing: 18) {
@@ -145,36 +137,42 @@ struct OverviewView: View {
                     ContentUnavailableView(String(localized: "No usage in the selected period"), systemImage: "chart.bar")
                         .frame(maxWidth: .infinity, alignment: .center)
                 }
-                if report?.total == nil || error != nil || (selectionChanged && (loading || report != nil)) {
+                if report?.total == nil || error != nil {
                     CodexStorageSummaryView()
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
                 .padding(32).frame(maxWidth: 1280).frame(maxWidth: .infinity)
         }
+        .onAppear { app.visibleOverviewPeriod = period }
+        .onChange(of: period) { app.visibleOverviewPeriod = period }
+        .onDisappear { app.visibleOverviewPeriod = nil }
         .task(id: request) {
-            guard let store = app.store else { return }
             let current = request
-            loading = report == nil || selectionChanged; error = nil
+            error = nil
             do {
-                let worker = Task.detached(priority: .userInitiated) {
-                    let report = try store.overviewReport(period: current.period, query: current.query)
-                    return (report, try store.usageFilterOptions().accounts)
-                }
-                let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
-                guard !Task.isCancelled, current == request else { return }
-                accounts = result.1
-                if accounts.count <= 1, app.selectedAccount != .all { app.selectedAccount = .all }
-                if report?.hasSameContent(as: result.0) != true || selectionChanged { report = result.0 }
-                loadedPeriod = current.period
-                loadedWeekRange = app.weekRange
+                try await app.loadOverviewUsage(current)
             } catch {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, current == request, !(error is CancellationError) else { return }
                 AppTelemetry.capture(error, operation: "overview.query")
-                self.error = error.localizedDescription; report = nil
+                self.error = error.localizedDescription
             }
-            loading = false
         }
-        .task {
+        .task(id: app.usageRefreshID) {
+            guard let store = app.store else { return }
+            let revision = app.usageRefreshID
+            do {
+                let worker = Task.detached(priority: .utility) { try store.usageFilterOptions().accounts }
+                let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+                guard !Task.isCancelled, revision == app.usageRefreshID else { return }
+                accounts = result
+                if accounts.count <= 1, app.selectedAccount != .all { app.selectedAccount = .all }
+            } catch {
+                guard !Task.isCancelled, revision == app.usageRefreshID else { return }
+                AppTelemetry.capture(error, operation: "overview.accounts")
+            }
+        }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
             app.updateUsageTime()
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(60)) } catch { return }

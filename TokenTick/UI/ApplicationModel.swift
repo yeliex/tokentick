@@ -15,6 +15,18 @@ enum WeekRange: String {
     }
 }
 
+struct OverviewUsageRequest: Hashable {
+    let period: OverviewPeriod
+    let revision: Int
+    let query: UsageQuery
+    let selection: UsageQuery
+    let sections: OverviewReport.Sections
+
+    func covers(_ other: Self) -> Bool {
+        revision == other.revision && query == other.query && sections.rawValue >= other.sections.rawValue
+    }
+}
+
 @MainActor @Observable
 final class ApplicationModel {
     private(set) var store: UsageStore?
@@ -33,10 +45,19 @@ final class ApplicationModel {
         if !Calendar.current.isDate(now, equalTo: usageAsOf, toGranularity: .minute) { usageAsOf = now }
     }
 
-    func retryUsageQuery() {
+    func reloadUsage() {
         usageAsOf = Date()
         usageRefreshID += 1
     }
+
+    func menuOpened() {
+        updateUsageTime()
+        automatic?.menuOpened()
+    }
+
+    var visibleOverviewPeriod: OverviewPeriod?
+    private var overviewUsage: [OverviewPeriod: (request: OverviewUsageRequest, report: OverviewReport)] = [:]
+    @ObservationIgnored private var overviewQueries: [OverviewPeriod: (request: OverviewUsageRequest, task: Task<Void, Error>)] = [:]
 
     private struct CycleKey: Equatable {
         let account: String
@@ -87,6 +108,61 @@ final class ApplicationModel {
         }
         return query
     }
+
+    func overviewUsageRequest(for period: OverviewPeriod, sections: OverviewReport.Sections) -> OverviewUsageRequest {
+        let query = overviewQuery(for: period)
+        var selection = query
+        // Keep the previous report through rolling updates, but never across a different account, day, or cycle.
+        if !query.filters.usesCycleTurnDates {
+            selection.filters.occurredBefore = nil
+            if period != .day && !(period == .week && weekRange == .thisWeek) {
+                selection.filters.occurredFrom = nil
+            }
+        }
+        return OverviewUsageRequest(period: period, revision: usageRefreshID, query: query,
+                                    selection: selection, sections: sections)
+    }
+
+    func overviewUsageReport(for request: OverviewUsageRequest, keepPreviousCycle: Bool = false) -> OverviewReport? {
+        guard let cached = overviewUsage[request.period],
+              cached.request.sections.rawValue >= request.sections.rawValue else { return nil }
+        if cached.request.selection == request.selection { return cached.report }
+        // The menu labels the old cycle with its own dates until the new result is ready.
+        guard keepPreviousCycle, cached.request.query.filters.usesCycleTurnDates, request.query.filters.usesCycleTurnDates,
+              cached.request.query.account == request.query.account, cached.request.query.timezone == request.query.timezone else { return nil }
+        return cached.report
+    }
+
+    func loadOverviewUsage(_ request: OverviewUsageRequest) async throws {
+        let period = request.period
+        guard !Task.isCancelled, let store, request.revision == usageRefreshID,
+              request.query == overviewQuery(for: period) else { return }
+        if overviewUsage[period]?.request.covers(request) == true { return }
+        if let active = overviewQueries[period], active.request.covers(request) {
+            return try await active.task.value
+        }
+        overviewQueries[period]?.task.cancel()
+        let task = Task { [self] in
+            let worker = Task.detached(priority: request.sections == .all ? .userInitiated : .utility) {
+                try store.overviewReport(period: period, query: request.query, sections: request.sections)
+            }
+            defer {
+                if overviewQueries[period]?.request == request { overviewQueries[period] = nil }
+            }
+            let report = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
+            try Task.checkCancellation()
+            guard request.revision == usageRefreshID, request.query == overviewQuery(for: period) else { return }
+            if let cached = overviewUsage[period], cached.request.selection == request.selection,
+               cached.request.sections == request.sections, cached.report.hasSameContent(as: report) {
+                overviewUsage[period]?.request = request
+                return
+            }
+            overviewUsage[period] = (request, report)
+        }
+        overviewQueries[period] = (request, task)
+        try await task.value
+    }
+
     let resetReminders = ResetReminderController()
     var requestedPage: AppPage?
     var isRefreshingAPI = false

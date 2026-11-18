@@ -88,6 +88,41 @@ struct AutomaticSyncTests {
         #expect(schedule.takeDueScope(now: start.addingTimeInterval(10_000)) == nil)
     }
 
+    @Test func openingMenuAdvancesOnlyPendingLocalWork() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var schedule = AutomaticSyncSchedule(now: start)
+        schedule.applicationActive(false)
+        #expect(schedule.takeDueScope(now: start) == .all)
+
+        let opened = start.addingTimeInterval(10)
+        schedule.menuOpened(now: opened)
+        #expect(schedule.takeDueScope(now: opened) == nil)
+        schedule.logsChanged(now: opened)
+        #expect(schedule.takeDueScope(now: opened) == nil)
+        schedule.menuOpened(now: opened)
+        schedule.applicationActive(true)
+        #expect(schedule.takeDueScope(now: opened) == .local)
+        #expect(schedule.takeDueScope(now: opened) == nil)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(300)) == .remote)
+    }
+
+    @Test func openingMenuKeepsCancellationQuietPeriodAndWatcherFailure() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var schedule = AutomaticSyncSchedule(now: start)
+        schedule.started(.all, now: start)
+        schedule.cancelled(now: start.addingTimeInterval(1))
+        let opened = start.addingTimeInterval(2)
+        schedule.logsChanged(now: opened)
+        schedule.menuOpened(now: opened)
+        #expect(schedule.takeDueScope(now: opened) == nil)
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(61)) == .local)
+
+        schedule.watcherAvailable(false)
+        schedule.logsChanged(now: start.addingTimeInterval(62))
+        schedule.menuOpened(now: start.addingTimeInterval(62))
+        #expect(schedule.takeDueScope(now: start.addingTimeInterval(62)) == nil)
+    }
+
     @Test func eventsDuringWorkAreRetainedAndCancellationHasQuietPeriod() {
         let start = Date(timeIntervalSince1970: 1_000)
         var schedule = AutomaticSyncSchedule(now: start)

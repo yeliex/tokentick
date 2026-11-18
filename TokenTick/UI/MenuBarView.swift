@@ -6,6 +6,7 @@ struct MenuBarView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
     @Environment(ApplicationModel.self) private var app
+    @State private var isPresented = false
 
     private var email: String? {
         guard let account = app.currentLimits?.accountID,
@@ -28,7 +29,7 @@ struct MenuBarView: View {
                     .padding(.bottom, -6)
             }
             Divider()
-            MenuUsageView { showPage(.overview) }
+            MenuUsageView(isPresented: isPresented) { showPage(.overview) }
             Divider()
             VStack(spacing: 0) {
                 ForEach(AppPage.allCases) { page in
@@ -51,7 +52,16 @@ struct MenuBarView: View {
         .background {
             MainWindowSettingsButton().frame(width: 0, height: 0).clipped().opacity(0).accessibilityHidden(true)
         }
-        .task { await app.refreshExpiredLimits() }
+        .background {
+            MenuPanelOpeningObserver { presented in
+                guard isPresented != presented else { return }
+                isPresented = presented
+                if presented { app.menuOpened() }
+            }.frame(width: 0, height: 0).accessibilityHidden(true)
+        }
+        .task(id: isPresented) {
+            if isPresented { await app.refreshExpiredLimits() }
+        }
     }
 
     private func showPage(_ page: AppPage) {
@@ -63,7 +73,7 @@ struct MenuBarView: View {
     }
 
     private var subscriptionLoading: Bool {
-        (app.currentLimits == nil || email == nil) && (app.isSyncing || app.store == nil && app.error == nil)
+        app.currentLimits == nil && (app.isSyncing || app.store == nil && app.error == nil)
     }
 
     private var subscriptionHeader: some View {
@@ -93,12 +103,13 @@ struct MenuBarView: View {
     }
 
     private func syncStatus(now: Date) -> String {
-        if app.isSyncing { return String(localized: "Syncing…") }
         if app.error != nil { return String(localized: "Sync failed") }
         if let observed = app.currentLimits?.observedAt, now.timeIntervalSince1970 - observed > 900 {
             return String(localized: "Limits are out of date")
         }
-        guard let finished = app.lastSync?.finishedAt else { return String(localized: "Not synced yet") }
+        guard let finished = app.lastSync?.finishedAt else {
+            return app.isSyncing ? String(localized: "Syncing…") : String(localized: "Not synced yet")
+        }
         let minutes = max(0, Int(now.timeIntervalSince1970 - finished) / 60)
         if minutes == 0 { return String(localized: "Synced just now") }
         if minutes < 60 { return String(localized: "Synced \(minutes) min ago") }
@@ -118,6 +129,46 @@ struct MenuBarView: View {
         .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
         .padding(.horizontal, 10)
         .contentShape(Rectangle())
+    }
+}
+
+private struct MenuPanelOpeningObserver: NSViewRepresentable {
+    let onPresentationChange: (Bool) -> Void
+
+    func makeNSView(context: Context) -> ObserverView {
+        let view = ObserverView()
+        view.onPresentationChange = onPresentationChange
+        return view
+    }
+
+    func updateNSView(_ view: ObserverView, context: Context) {
+        view.onPresentationChange = onPresentationChange
+    }
+
+    final class ObserverView: NSView {
+        var onPresentationChange: ((Bool) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            let center = NotificationCenter.default
+            center.removeObserver(self, name: NSWindow.didBecomeKeyNotification, object: nil)
+            center.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
+            guard let window else { return }
+            // SwiftUI can keep the menu content mounted after closing the panel.
+            center.addObserver(self, selector: #selector(windowDidBecomeKey),
+                               name: NSWindow.didBecomeKeyNotification, object: window)
+            center.addObserver(self, selector: #selector(windowDidResignKey),
+                               name: NSWindow.didResignKeyNotification, object: window)
+            if window.isKeyWindow {
+                Task { [weak self] in
+                    guard self?.window?.isKeyWindow == true else { return }
+                    self?.onPresentationChange?(true)
+                }
+            }
+        }
+
+        @objc private func windowDidBecomeKey() { onPresentationChange?(true) }
+        @objc private func windowDidResignKey() { onPresentationChange?(false) }
     }
 }
 

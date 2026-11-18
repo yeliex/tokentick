@@ -122,6 +122,11 @@ struct OverviewReportTests {
                 """, arguments: [now.timeIntervalSince1970 - 1, now.timeIntervalSince1970 - 86401, now.timeIntervalSince1970 - 1])
         }
         let report = try store.overviewReport(period: .day, now: now, timezone: "UTC")
+        let totalOnly = try store.overviewReport(period: .day, query: report.query, sections: .total)
+        let withTrend = try store.overviewReport(period: .day, query: report.query, sections: .trend)
+        #expect(totalOnly.total == report.total)
+        #expect(withTrend.total == report.total && withTrend.trend == report.trend)
+        #expect(totalOnly.trend.isEmpty && totalOnly.models.isEmpty && withTrend.modes.isEmpty)
         #expect(Set(report.modes.map(\.name)) == ["standard", "fast", "long_context", "fast_long_context", "unknown"])
         #expect(report.modes.reduce(0) { $0 + $1.tokens } == report.total?.totalTokens)
         #expect(report.efforts.reduce(0) { $0 + $1.tokens } == 450)

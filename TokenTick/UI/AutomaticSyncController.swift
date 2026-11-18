@@ -77,6 +77,11 @@ final class AutomaticSyncController {
     func cancelled() { schedule.cancelled(); arm() }
     func sourceDataInvalidated() { changed(CodexLogChanges(directories: nil)) }
 
+    func menuOpened() {
+        guard schedule.menuOpened() else { return }
+        if !synchronizeIfDue() { arm() }
+    }
+
     private func watch() {
         watcher = nil
         guard let home else { return }
@@ -126,6 +131,13 @@ final class AutomaticSyncController {
         arm()
     }
 
+    private func synchronizeIfDue() -> Bool {
+        guard !suspended, let app, !app.isSyncing, !app.isDeletingDeviceData,
+              let scope = schedule.takeDueScope() else { return false }
+        app.synchronize(scope, localDirectories: pending.directories.map { $0.sorted() })
+        return true
+    }
+
     private func arm() {
         timer?.cancel(); timer = nil
         guard home != nil, !suspended, let app, !app.isSyncing, !app.isDeletingDeviceData else { return }
@@ -133,12 +145,9 @@ final class AutomaticSyncController {
         let delay = min(30, max(0.01, schedule.nextCheck.timeIntervalSinceNow))
         timer = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
-            guard let self, let app = self.app, !app.isSyncing, !app.isDeletingDeviceData, !self.suspended else { return }
+            guard let self else { return }
             self.refreshHome()
-            if let scope = self.schedule.takeDueScope() {
-                app.synchronize(scope, localDirectories: self.pending.directories.map { $0.sorted() })
-            }
-            else { self.arm() }
+            if !self.synchronizeIfDue() { self.arm() }
         }
     }
 }

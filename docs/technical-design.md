@@ -276,6 +276,7 @@ Apply intersections, literal search, stable sorting, and pagination in SQL. Coun
 | Trigger | Schedule |
 | --- | --- |
 | Filesystem changes | Coalesce for 2 seconds, with at least 1 minute between local scans while the app is active and 5 minutes while inactive; activation changes recalculate the delay from the previous scan start |
+| Menu opens | Advance one pending local scan, keeping the existing selection and waiting for any in-flight synchronization or cancellation quiet period |
 | Full local discovery | Startup, manual refresh, source-data invalidation after device deletion, or an explicit FSEvents rescan/root-change/lost-event notification; no periodic full scan |
 | Watcher failure | Report the error and stop automatic local collection; no automatic retry or polling fallback |
 | API refresh | Every 5 minutes without fresh main-limit logs |
@@ -298,9 +299,9 @@ Window-owned detail state preserves filters, grouping, pagination, and selected 
 
 The menu-bar label uses cached template images, not a nested periodic `TimelineView`; repeated label invalidation can cause host layout churn. The menu chart maps tokens and costs independently for rendering, but tooltips retain original units. Missing amounts break the cost line. Menu averages divide by actual elapsed days; overview averages use the covered chart buckets, including empty buckets.
 
-Menu usage queries capture the current time when they start, including on reopening and after usage revisions, so a retained view's previous timer tick cannot exclude newly collected events. The minute timer also refreshes rolling ranges while the menu stays open.
+Overview and the menu read the same report snapshot for a matching period, account, and timezone. One in-flight query or cached report serves both views when it covers the requested sections. The menu requests totals and a 30-day trend. Overview also needs model breakdowns and recent conversations, which are read in the same transaction as its totals and trend. An active Overview or open menu advances the shared cutoff at most once a minute. Closing the menu stops its report requests. The menu keeps available totals and charts visible while refreshing and shows an error alongside them if the refresh fails. An existing cycle total remains labeled with its own start date while the matching account's new cycle loads.
 
-The menu and Plan usage share the current weekly window selection and `currentWeeklyLimitUsage` query. The menu displays the inferred start and amounts from that result, including while Plan usage awaits a reset. Missing cycle evidence selects the rolling seven-day query.
+The menu and Overview use the same inferred start and account for current-cycle usage. Missing cycle evidence selects the rolling seven-day query.
 
 Use English internal identifiers and localize display titles separately. App strings live in `TokenTick/Resources/Localizable.xcstrings`; Core strings live in `TokenTick/Core/Resources` and load through `Bundle.module`. English is the fallback, Simplified Chinese follows macOS preferences, and cumulative history is labeled Lifetime. Chinese translations and multilingual test fixtures are intentional data.
 

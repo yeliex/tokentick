@@ -47,6 +47,10 @@ public struct OverviewUsageShare: Sendable, Equatable, Identifiable {
 }
 
 public struct OverviewReport: Sendable {
+    public enum Sections: Int, Sendable, Hashable {
+        case total, trend, all
+    }
+
     public let query: UsageQuery
     public let total: UsageSummary?
     public let models: [UsageSummary]
@@ -75,15 +79,18 @@ extension UsageStore {
         return try overviewReport(period: period, query: query)
     }
 
-    public func overviewReport(period: OverviewPeriod, query: UsageQuery) throws -> OverviewReport {
+    public func overviewReport(period: OverviewPeriod, query: UsageQuery, sections: OverviewReport.Sections = .all) throws -> OverviewReport {
         guard let identifier = query.timezone, let timezone = TimeZone(identifier: identifier) else { throw UsageQueryError.invalidTimezone }
         try query.validate()
         return try pool.read { db in
             StatisticsSQL.prepare(db, timezone: timezone)
             let total = try Self.readUsageReport(query, timezone: timezone, db: db)
+            if sections == .total {
+                return OverviewReport(query: query, total: total.rows.first, models: [], modes: [], apiModes: [], efforts: [],
+                                      trend: [], conversations: [], unknownDateTokens: total.unknownDateTokens, hourly: false)
+            }
             var grouped = query
-            grouped.grouping = .model; grouped.limit = 10_000; grouped.sort = .tokens
-            let models = try Self.readUsageReport(grouped, timezone: timezone, db: db).rows
+            grouped.limit = 10_000
             grouped.grouping = .day; grouped.sort = .automatic
             let day = StatisticsSQL.dayExpression
             let expression: String? = period == .all
@@ -96,6 +103,12 @@ extension UsageStore {
                 let date = try? style.parse(group)
                 return date.map { OverviewTrendPoint(date: $0, summary: row) }
             }.sorted { $0.date < $1.date }
+            if sections == .trend {
+                return OverviewReport(query: query, total: total.rows.first, models: [], modes: [], apiModes: [], efforts: [],
+                                      trend: trend, conversations: [], unknownDateTokens: total.unknownDateTokens, hourly: false)
+            }
+            grouped.grouping = .model; grouped.sort = .tokens
+            let models = try Self.readUsageReport(grouped, timezone: timezone, db: db).rows
             let filters = UsageFiltersSQL(query.filters)
             var predicate = filters.predicate
             var arguments = filters.arguments

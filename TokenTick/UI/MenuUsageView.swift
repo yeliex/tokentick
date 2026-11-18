@@ -4,41 +4,37 @@ import Charts
 import TokenTickCore
 
 struct MenuUsageView: View {
+    let isPresented: Bool
     var openOverview: () -> Void
     @Environment(ApplicationModel.self) private var app
-    @State private var totals: [OverviewPeriod: UsageSummary] = [:]
-    @State private var weeklyTotal: UsageSummary?
-    @State private var loadedWeekQuery: UsageQuery?
-    @State private var weekError: String?
-    @State private var month: OverviewReport?
     @State private var error: String?
     private var now: Date { app.usageAsOf }
     @State private var hoveredDate: Date?
     private let periods: [OverviewPeriod] = [.day, .week, .month, .quarter]
     private var timezone: String { app.status?.timezone ?? TimeZone.current.identifier }
-    private struct Request: Hashable {
-        let refresh: Int
-        let timezone: String
-        let now: Date
-        let account: UsageAccountScope
+    private func request(for period: OverviewPeriod) -> OverviewUsageRequest {
+        let sections: OverviewReport.Sections = period == app.visibleOverviewPeriod ? .all : period == .month ? .trend : .total
+        return app.overviewUsageRequest(for: period, sections: sections)
     }
-    private var request: Request {
-        Request(refresh: app.usageRefreshID, timezone: timezone, now: now, account: app.selectedAccount)
+
+    private func report(for period: OverviewPeriod) -> OverviewReport? {
+        app.overviewUsageReport(for: app.overviewUsageRequest(for: period, sections: period == .month ? .trend : .total),
+                                keepPreviousCycle: true)
     }
 
     var body: some View {
+        let reports = Dictionary(uniqueKeysWithValues: periods.compactMap { period in
+            report(for: period).map { (period, $0) }
+        })
         VStack(alignment: .leading, spacing: 14) {
-            if let error = error ?? weekError {
-                Text(String(localized: "Unable to load usage")).font(.headline)
-                Text(error).font(.caption).foregroundStyle(.secondary).lineLimit(2).help(error)
-                Button(String(localized: "Retry")) { app.retryUsageQuery() }
-            } else if let month, month.query.account == app.selectedAccount {
+            if !reports.isEmpty {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 14) {
                     ForEach(periods) { period in
+                        let report = reports[period]
                         if period == .week {
-                            let query = app.overviewQuery(for: .week)
+                            let query = report?.query ?? app.overviewQuery(for: .week)
                             Button(action: app.advanceWeekRange) {
-                                usageTile(total: loadedWeekQuery == query ? weeklyTotal : nil) {
+                                usageTile(total: report?.total, loading: report == nil) {
                                     HStack(alignment: .firstTextBaseline, spacing: 3) {
                                         Text(app.weekRange == .lastSevenDays ? String(localized: "Last 7 days") : app.weekRange.title)
                                         if query.filters.usesCycleTurnDates, let start = query.filters.occurredFrom {
@@ -53,63 +49,46 @@ struct MenuUsageView: View {
                             }.buttonStyle(.plain).help(String(localized: "Switch usage period"))
                         } else {
                             Button(action: openOverview) {
-                                usageTile(total: totals[period]) {
+                                usageTile(total: report?.total, loading: report == nil) {
                                     Text(period == .day ? String(localized: "Today") : String(localized: "Last \(period.title)"))
                                 }
                             }.buttonStyle(.plain)
                         }
                     }
                 }
-                chart(month)
-                    .simultaneousGesture(TapGesture().onEnded { openOverview() })
-                    .accessibilityAction(named: Text(String(localized: "Overview")), openOverview)
-            } else {
+                if let month = reports[.month] {
+                    chart(month)
+                        .simultaneousGesture(TapGesture().onEnded { openOverview() })
+                        .accessibilityAction(named: Text(String(localized: "Overview")), openOverview)
+                }
+            } else if error == nil {
                 ProgressView(String(localized: "Loading usage…")).frame(maxWidth: .infinity, minHeight: 180)
             }
+            if let error {
+                Text(String(localized: "Unable to load usage")).font(.headline)
+                Text(error).font(.caption).foregroundStyle(.secondary).lineLimit(2).help(error)
+                Button(String(localized: "Retry")) { app.reloadUsage() }
+            }
         }
-        .task(id: request) {
-            guard let store = app.store else { return }
-            let current = request
+        .task(id: isPresented ? periods.map { request(for: $0) } : []) {
+            guard isPresented else { return }
+            let requests = periods.map { request(for: $0) }
+            error = nil
             do {
-                let worker = Task.detached(priority: .utility) {
-                    var totals: [OverviewPeriod: UsageSummary] = [:]
-                    for period in [OverviewPeriod.day, .quarter] {
-                        var query = period.query(now: current.now, timezone: current.timezone)
-                        query.account = current.account
-                        totals[period] = try store.usageReport(query).rows.first
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    for current in requests {
+                        group.addTask { try await app.loadOverviewUsage(current) }
                     }
-                    let month = try store.overviewReport(period: .month, now: current.now, timezone: current.timezone, account: current.account)
-                    totals[.month] = month.total
-                    return (totals, month)
+                    try await group.waitForAll()
                 }
-                let result = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
-                guard !Task.isCancelled, current == request else { return }
-                if totals != result.0 { totals = result.0 }
-                month = result.1
-                error = nil
             } catch {
-                guard !Task.isCancelled, current == request else { return }
+                guard !Task.isCancelled, requests == periods.map({ request(for: $0) }), !(error is CancellationError) else { return }
                 AppTelemetry.capture(error, operation: "menu.query")
                 self.error = error.localizedDescription
             }
         }
-        .task(id: WeekRequest(query: app.overviewQuery(for: .week), refresh: app.usageRefreshID)) {
-            let query = app.overviewQuery(for: .week)
-            guard let store = app.store else { return }
-            do {
-                let worker = Task.detached(priority: .utility) { try store.usageReport(query).rows.first }
-                let total = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
-                guard !Task.isCancelled else { return }
-                weeklyTotal = total
-                loadedWeekQuery = query
-                weekError = nil
-            } catch {
-                guard !Task.isCancelled else { return }
-                weekError = error.localizedDescription
-                AppTelemetry.capture(error, operation: "menu.query")
-            }
-        }
-        .task {
+        .task(id: isPresented) {
+            guard isPresented else { return }
             app.updateUsageTime()
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(60)) } catch { return }
@@ -118,12 +97,7 @@ struct MenuUsageView: View {
         }
     }
 
-    private struct WeekRequest: Hashable {
-        let query: UsageQuery
-        let refresh: Int
-    }
-
-    private func usageTile(total: UsageSummary?,
+    private func usageTile(total: UsageSummary?, loading: Bool = false,
                            @ViewBuilder title: () -> some View) -> some View {
         let amount = total?.knownAmountNanoUSD
         let tokenCount = total?.totalTokens
@@ -131,9 +105,16 @@ struct MenuUsageView: View {
         let tokens = UsageFormatting.tokens(tokenCount) + " Tokens"
         return VStack(alignment: .leading, spacing: 4) {
             title().font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
-            Text(UsageFormatting.money(amount)).font(.system(size: 18, weight: .semibold))
+            if loading {
+                ProgressView().controlSize(.small).frame(height: 22, alignment: .leading)
+                    .accessibilityLabel(String(localized: "Loading usage…"))
+            } else {
+                Text(UsageFormatting.money(amount)).font(.system(size: 18, weight: .semibold))
+            }
             Group {
-                if let api = UsageFormatting.differingAPIAmount(amount, apiAmount) {
+                if loading {
+                    Text(verbatim: tokens).hidden()
+                } else if let api = UsageFormatting.differingAPIAmount(amount, apiAmount) {
                     ViewThatFits(in: .horizontal) {
                         Text(verbatim: "\(tokens) • \(UsageFormatting.money(api)) API").fixedSize()
                         Text(verbatim: "\(tokens) • \(UsageFormatting.compactMoney(api)) API")
