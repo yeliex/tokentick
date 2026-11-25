@@ -121,12 +121,12 @@ extension UsageStore {
             }
             func modeExpression(contextColumn: String) -> String {
                 """
-                CASE WHEN \(contextColumn) IS NULL THEN 'unknown'
-                    WHEN u.tier = 'ultrafast' THEN CASE WHEN \(contextColumn) = 1 THEN 'ultrafast_long_context' ELSE 'ultrafast' END
-                    WHEN u.tier = 'fast' OR (u.tier IS NULL AND EXISTS (
-                        SELECT 1 FROM app_metadata WHERE key = 'fast_trace:' || u.thread_id || ':' || u.turn_id
-                    ))
+                CASE WHEN COALESCE(u.pricing_tier,u.tier) = 'ultrafast' THEN CASE WHEN \(contextColumn) = 1 THEN 'ultrafast_long_context' ELSE 'ultrafast' END
+                    WHEN COALESCE(u.pricing_tier,u.tier) = 'fast'
                         THEN CASE WHEN \(contextColumn) = 1 THEN 'fast_long_context' ELSE 'fast' END
+                    WHEN COALESCE(u.pricing_tier,u.tier) = 'flex'
+                        THEN CASE WHEN \(contextColumn) = 1 THEN 'flex_long_context' ELSE 'flex' END
+                    WHEN \(contextColumn) IS NULL THEN 'unknown'
                     WHEN \(contextColumn) = 1 THEN 'long_context' ELSE 'standard' END
                 """
             }

@@ -69,7 +69,7 @@ Background device scans use a full-manifest timestamp keyed by device and source
 
 ### `prices`
 
-The primary key is `(model, date, tier)`. Base component columns are `input_price`, `output_price`, `cache_read_price`, and `cache_write_price`; matching `long_*` columns and `long_context_threshold` describe long-context pricing.
+The primary key is `(model, tier, effective_at)`. The `date` column records the UTC date for display. Base component columns are `input_price`, `output_price`, `cache_read_price`, and `cache_write_price`; matching `long_*` columns and `long_context_threshold` describe long-context pricing.
 
 `context_rule` is `uniform`, `requestInputGreaterThan`, or `unsupported`. `source_url`, `is_bundled`, `combination_rule`, and `combination_source` preserve the source and direct/derived combination basis. Raw `source_json`, cost payloads, and experimental payloads are not stored.
 
@@ -172,7 +172,7 @@ When plain and compressed siblings coexist in one directory, prefer the plain re
 
 Bind `thread_settings_applied` settings at the next task/turn start. A persistent setting change cannot rewrite an active or historical turn. Keep explicit-null and missing-field semantics distinct. When pre-context usage has no model, use the following model-bearing context in the same turn and rollout to price it, including after an incremental scan resumes.
 
-If tier evidence is missing, read matching top-level `response.create.service_tier` or actual TurnInput/UserInput evidence from Codex `logs_*.sqlite`. Match task and turn, not nearby timestamps or nested body fields. A settings submission ID is not a turn ID. Incremental trace cursors track database/WAL changes; SHM-only changes must not trigger a self-sustaining scan loop. Late evidence reprices affected usage.
+Read service-tier evidence from Codex trace records. A matching response ID gives `response.completed` priority over request evidence, which takes priority over the rollout's turn settings. A trace without a response ID can fill a missing tier only for a single-usage turn. Conflicts of equal strength provide no tier. Match device, task and turn as well as the response ID when present. A settings submission ID is not a turn ID. Incremental trace cursors track database/WAL changes; SHM-only changes must not trigger a self-sustaining scan loop. Late evidence reprices affected usage.
 
 ### Collection boundaries
 
@@ -186,21 +186,11 @@ Task mappings read the newest Codex state database and desktop project catalog. 
 
 ## Pricing
 
-The parser reads `openai.models` from models.dev's `api.json`. Standard `cost` components provide base rates. `cost.tiers[]` defines context thresholds, while experimental modes with explicit `cost` and `provider.body.service_tier` define independent service-tier rows. A context tier is not a service tier.
+The parser reads `openai.models` from models.dev v2. Text input, output, and cache prices establish the base rates. Apply the text components' context overrides, then their service-tier multipliers. The global API estimate uses the default 30-minute cache-write rate when the source lists both durations. A row supports one long-context threshold. Multiple thresholds and unrecognized text override conditions are unsupported.
 
-A row supports one long-context threshold. Multiple effective thresholds or ambiguous rules are unsupported. A legacy field name such as `context_over_200k` is not sufficient evidence to hard-code a threshold.
+Refresh successfully at most once per UTC day for the same catalog version. The first v2 refresh can run on a day that already has a successful v1 refresh. Compare actual rates and context rules when saving snapshots. Save announced rates with their published effective timestamps, and reconcile updates to future entries on a successful fetch. Effective snapshots remain fixed. Where upstream dates lack a zone, use the documented Pacific time for GPT-6.2 Ultrafast. Undated v2 rates start at first observation. Failures preserve existing prices.
 
-Prefer explicit combined mode/context rates. Otherwise derive each component independently:
-
-```text
-mode_long = mode_base × standard_long / standard_base
-```
-
-A missing required rate or zero denominator leaves that component unknown. Never assume Fast is always twice the standard price. Retain the derivation basis and mark it as an estimate.
-
-Refresh successfully at most once per UTC day. Compare rates and rules, not display descriptions, before saving a new snapshot. A same-day correction replaces that day's row; no intraday version is modeled. Failures preserve existing prices.
-
-Select the latest snapshot not later than the usage's UTC date, or the earliest snapshot for older usage. If no database snapshot exists for that model/tier, consult the bundled catalog. The first observed price date is not claimed as its true historical effective date. Unknown tier with no trace evidence uses standard pricing; confirmed Fast never falls back to standard.
+Select the latest snapshot effective at the usage timestamp. Retain the earlier-use estimate from legacy daily snapshots and the bundled fallback when no applicable stored rate exists. A dated bundled rate can supersede an older stored estimate when no synchronized schedule exists for that model and tier. A later v2 observation alone does not establish a historical rate. Unknown tier uses standard pricing; a confirmed tier uses its own rates.
 
 ```text
 ordinary_input = input_tokens − cache_read_tokens − cache_write_tokens
@@ -212,7 +202,7 @@ Use `Decimal` and checked `Int64` operations. Reasoning is already included in o
 
 Store the resolved billing mode on each usage row (`billing_mode` is `plan` or `api`). Repricing reads this field directly. Both calculations use the dated service-tier price. Only the plan estimate disables long-context rates. A known `token_count.rate_limits.plan_type` marks the current turn in the scan checkpoint and updates earlier usage in the same transaction, including for zero-token events. Auth traces can identify ChatGPT when the rollout omits a plan. Conflicting traces fall back to API unless the rollout confirms a plan. Unknown requests default to API independently of the account's current subscription.
 
-New prices, bundled data, or pricing rules mark history for repricing. `sync-prices` alone only fetches prices; `reprice` or shared synchronization updates costs and caches.
+New prices and bundled data mark missing historical amounts for backfill. Shared synchronization preserves populated amounts and components. Replay also preserves applied pricing when it only enriches non-pricing metadata. The explicit `reprice` command recalculates historical costs using the same effective-time lookup. `sync-prices` updates the catalog; shared synchronization updates usage and caches.
 
 ## API and limits
 

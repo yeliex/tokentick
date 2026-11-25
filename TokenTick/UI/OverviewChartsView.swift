@@ -202,6 +202,8 @@ struct ModelUsageView: View {
         case "fast_long_context": String(localized: "Fast + long context")
         case "ultrafast": String(localized: "Ultrafast")
         case "ultrafast_long_context": String(localized: "Ultrafast + long context")
+        case "flex": String(localized: "Flex")
+        case "flex_long_context": String(localized: "Flex + long context")
         case "long_context": String(localized: "Long context")
         default: name
         }

@@ -117,8 +117,8 @@ try {
             const previous = request.cursor;
             if (previous && BigInt(previous.inode) === before.ino && BigInt(previous.device) === before.dev && BigInt(previous.lastID) <= maximum && previous.anchor === anchor(BigInt(previous.lastID))) start = BigInt(previous.lastID);
             const fields = columns(db, 'logs');
-            const sql = tracePageSQL.replace('TRACE_THREAD', fields.has('thread_id') ? 'thread_id' : 'NULL')
-                .replace('TRACE_TARGET', fields.has('target') ? 'target' : 'NULL');
+            const sql = tracePageSQL.replaceAll('TRACE_THREAD', fields.has('thread_id') ? 'thread_id' : 'NULL')
+                .replaceAll('TRACE_TARGET', fields.has('target') ? 'target' : 'NULL');
             const rows = integers(sql).iterate(start, maximum);
             const entries = [];
             let bytes = 0, more = false;

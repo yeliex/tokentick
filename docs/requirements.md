@@ -61,15 +61,19 @@ Handled errors include a bounded chain of underlying causes so wrapped update an
 
 ## Costs and prices
 
-Prices come from the OpenAI portion of models.dev, with a bundled JSON catalog for offline and historical coverage. A successful refresh is needed at most once per day; unchanged prices do not create another dated snapshot.
+Prices come from the OpenAI portion of models.dev v2, with a bundled JSON catalog for offline and historical coverage. A successful refresh is needed at most once per day; unchanged prices do not create another snapshot.
 
-Prices are recorded by model, UTC date, and service tier. Each tier has base rates and, where supported, a long-context threshold and rates. Explicit combined tier/context prices take precedence. When those are absent, derive each component using that component's standard long/base ratio and retain the derivation basis. Unsupported context rules do not silently use base rates.
+The bundled catalog retains existing fallback rates and fills missing OpenAI Responses text rates from models.dev v2. Stored price history takes precedence when pricing historical usage.
 
-Use confirmed Fast evidence from rollouts or matching Codex trace records. If no tier evidence exists, price using the standard tier while preserving the unknown observation. A confirmed Fast request with no Fast price must not fall back to standard.
+Prices are recorded by model, service tier, and effective time. Apply each text rate override before the service-tier multiplier. Save announced rates ahead of time, and apply them only to requests at or after the published boundary, including when offline. Unsupported context rules leave affected amounts unknown.
+
+Use response tier evidence before request tier evidence when they match a response ID. Turn settings provide a fallback. A turn-level trace without a response ID may fill a missing observation for a single usage record. If no tier evidence exists, price using the standard tier while preserving the unknown observation. A confirmed tier uses prices for that tier.
+
+The bundled price for `codex-auto-review` is zero at every speed. Keep its token usage in statistics. Regular code review and requests recorded under a different model use their own model rates.
 
 Input includes cached tokens; output includes reasoning. Avoid double charging either subset. Determine long-context pricing from an individual request's input, not cumulative turn input. Preserve missing rates and costs as null while exposing calculable components. Calculations use decimal arithmetic and integer nanoUSD, never floating-point accumulation.
 
-Price or rule changes can reprice history and invalidate derived statistics. Repricing is resumable; rebuilding the statistics cache is transactional.
+Automatic pricing fills missing historical amounts while preserving known amounts and components. Corrections from stronger response evidence recalculate the matching usage. Explicit repricing is resumable; rebuilding the statistics cache is transactional.
 
 ## Server reference usage
 
@@ -117,7 +121,7 @@ The six periods are Today, 7 days, 30 days, 90 days, 1 year, and Lifetime. Today
 
 Show total tokens and known estimated costs together with input, output, reasoning, cache-read, and cache-write components. Use a combined token-bar/cost-line trend, with distinct units and hover values. Group one year by Monday-based weeks, Lifetime by months, and the other periods by days. Include zero-use buckets in averages; missing costs must not become zero.
 
-Three concentric rings break usage down by model, mutually exclusive mode (standard, Fast, long context, Fast plus long context), and recorded reasoning effort. They share the token/cost selector and period, and link hover states with their lists. Keep unknown categories last. Reasoning effort comes from the log's setting, not reasoning-token counts.
+Three concentric rings break usage down by model, usage mode, and recorded reasoning effort. Usage mode combines one service tier (Standard, Fast, Ultrafast, or Flex) with context length. The rings share the token/cost selector and period, and link hover states with their lists. Keep unknown categories last. Reasoning effort comes from the log's setting, not reasoning-token counts.
 
 Recent tasks show only consumption within the selected interval and are ordered by the latest usage in that interval. Opening a task carries the exact interval into Usage details.
 

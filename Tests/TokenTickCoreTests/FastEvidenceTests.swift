@@ -53,10 +53,10 @@ struct FastEvidenceTests {
         try await store.pool.write { db in
             for (key, fast) in [("missing", nil as Bool?), ("ordinary", false)] {
                 try db.execute(sql: """
-                    INSERT INTO usage(source_line,rollout_id,thread_id,turn_id,model,usage_date,tier,input_tokens,output_tokens,
+                    INSERT INTO usage(source_line,rollout_id,thread_id,turn_id,response_id,model,usage_date,tier,input_tokens,output_tokens,
                       cache_read_tokens,cache_write_tokens,total_tokens,source,pricing_source)
-                    VALUES (1,?,?,?,'gpt-6-astra','2026-09-10',?,1000,100,500,0,1100,'local','{"keep":true}')
-                    """, arguments: [key, Self.thread, Self.turn, fast.map { $0 ? "fast" : "standard" }])
+                    VALUES (1,?,?,?,?,'gpt-6-astra','2026-09-10',?,1000,100,500,0,1100,'local','{"keep":true}')
+                    """, arguments: [key, Self.thread, Self.turn, key, fast.map { $0 ? "fast" : "standard" }])
             }
         }
         #expect(try store.repriceUsage().fullyPriced == 2)
@@ -64,13 +64,20 @@ struct FastEvidenceTests {
         #expect(before.allSatisfy { $0.amountNanoUSD == 10_500_000 })
         let trace = try DatabaseQueue(path: root.appendingPathComponent("logs_2.sqlite").path)
         try await trace.write { try $0.execute(sql: "CREATE TABLE logs(id INTEGER PRIMARY KEY,ts INTEGER,thread_id TEXT,feedback_log_body TEXT)") }
-        let body = "session_loop{thread_id=\(Self.thread)}:turn{turn.id=\(Self.turn)}: websocket request: "
+        let prefix = "session_loop{thread_id=\(Self.thread)}:turn{turn.id=\(Self.turn)}: "
+        let body = prefix + "response_id=missing websocket request: "
             + #"{"type":"response.create","service_tier":"priority","input":"private-user-body"}"#
-        try await trace.write { try $0.execute(sql: "INSERT INTO logs VALUES (1,100,?,?)", arguments: [Self.thread, body]) }
+        let response = prefix + #"websocket event: {"type":"response.completed","response":{"id":"ordinary","service_tier":"ultrafast"}}"#
+        try await trace.write {
+            try $0.execute(sql: "INSERT INTO logs VALUES (1,100,?,?), (2,101,?,?), (3,102,?,?)", arguments: [
+                Self.thread, body, Self.thread, response,
+                Self.thread, prefix + #"response_id=ordinary websocket request: {"type":"response.create","service_tier":"default"}"#])
+        }
         _ = try await LocalUsageScanner(store: store).scan(codexHome: root)
         let after = try store.usageRecords().rows
         #expect(after.first(where: { $0.isFast == nil })?.amountNanoUSD == 21_000_000)
-        #expect(after.first(where: { $0.isFast == false })?.amountNanoUSD == 10_500_000)
+        #expect(after.first(where: { $0.isFast == false })?.pricingTier == "ultrafast")
+        #expect(after.first(where: { $0.isFast == false })?.amountNanoUSD == 63_000_000)
         #expect(after.first(where: { $0.isFast == nil })?.pricingIsFast == true)
         #expect(after.map(\.totalTokens) == before.map(\.totalTokens))
         let revision = try store.status().factsRevision
@@ -83,19 +90,42 @@ struct FastEvidenceTests {
             try db.execute(sql: "DELETE FROM logs; INSERT INTO logs VALUES (1,101,?,?)", arguments: [Self.thread, body.replacingOccurrences(of: Self.turn, with: "00000000-0000-0000-0000-000000000003")])
         }
         _ = try await LocalUsageScanner(store: store).scan(codexHome: root)
-        #expect(try await store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM app_metadata WHERE key LIKE 'fast_trace:%'") } == 2)
+        #expect(try await store.pool.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM app_metadata WHERE key LIKE 'tier_trace:%'") } == 3)
     }
 
     @Test func onlyOwnedTurnAndTopLevelModeProvideEvidence() {
         func parse(_ body: String, thread: String? = Self.thread) -> CodexFastEvidence? {
-            CodexFastEvidence.parse(body: body, threadID: thread, fileName: "logs_2.sqlite", rowID: 1, timestamp: 100)
+            CodexFastEvidence.parse(body: body, threadID: thread)
         }
         let prefix = "session_loop{thread_id=\(Self.thread)}: Submission sub=Submission { id: \"\(Self.turn)\", op: "
         #expect(parse(prefix + #"TurnInput { service_tier: Some(Some("fast")) } }"#)?.turnID == Self.turn)
         #expect(parse(prefix + #"ThreadSettings { service_tier: Some(Some("priority")) } }"#) == nil)
         #expect(parse(prefix + #"TurnInput { text: "service_tier: Some(Some(\"priority\"))", service_tier: None } }"#) == nil)
         let request = "thread_id=\(Self.thread) turn_id=\(Self.turn) websocket request: "
-        #expect(parse(request + #"{"type":"response.create","service_tier":"default","input":{"service_tier":"priority"}}"#) == nil)
+        #expect(parse(request + #"{"type":"response.create","service_tier":"default","input":{"service_tier":"priority"}}"#)?.tier == "standard")
+        #expect(parse(request + #"{"type":"response.create","generate":false,"service_tier":"ultrafast"}"#) == nil)
         #expect(parse(request + #"{"type":"response.create","service_tier":"priority"}"#, thread: Self.turn) == nil)
+    }
+
+    @Test func unlinkedTraceDoesNotSpreadTierToMultipleUsageRecords() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        try store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO usage(source_line,rollout_id,thread_id,turn_id,model,usage_date,input_tokens,output_tokens,
+                    cache_read_tokens,cache_write_tokens,total_tokens,source)
+                VALUES (1,'a',?,?,'gpt-6.2-sol','2026-11-24',10,2,0,0,12,'local'),
+                       (2,'a',?,?,'gpt-6.2-sol','2026-11-24',10,2,0,0,12,'local')
+                """, arguments: [Self.thread, Self.turn, Self.thread, Self.turn])
+        }
+        let body = "thread_id=\(Self.thread) turn_id=\(Self.turn) websocket request: "
+            + #"{"type":"response.create","service_tier":"ultrafast"}"#
+        let evidence = try #require(CodexFastEvidence.parse(body: body, threadID: Self.thread))
+        let page = DeviceTracePage(entries: [], cursor: .init(inode: 1, device: 1, lastID: 1, anchor: nil), hasMore: false)
+        _ = try store.commitTraceEvidence([evidence], page: page, device: "local", key: "cursor")
+        let records = try store.usageRecords().rows
+        #expect(records.count == 2)
+        #expect(records.allSatisfy { $0.tier == nil && $0.pricingTier == "standard" })
     }
 }

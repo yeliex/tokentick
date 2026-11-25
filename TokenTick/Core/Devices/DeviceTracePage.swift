@@ -22,7 +22,9 @@ struct DeviceTracePage: Codable, Sendable {
             SELECT id,ts AS timestamp,TRACE_THREAD AS threadID,feedback_log_body AS raw,
                 TRACE_TARGET='feedback_tags' AND instr(feedback_log_body,'run_sampling_request{turn_id=')>0
                 AND instr(feedback_log_body,'}: endpoint="/responses" auth_header_attached=true')>0
-                AND instr(feedback_log_body,' auth_error=""')>0 AS auth
+                AND instr(feedback_log_body,' auth_error=""')>0 AS auth,
+                TRACE_TARGET='feedback_tags' AND instr(feedback_log_body,'run_sampling_request{')>0
+                AND instr(feedback_log_body,'tags_json=')>0 AND instr(feedback_log_body,'"service_tier"')>0 AS sampling
             FROM logs WHERE id>? AND id<=? AND length(CAST(feedback_log_body AS BLOB))<=4194304
         )
         SELECT id,timestamp,threadID,CASE WHEN auth THEN '' ELSE raw END AS body,
@@ -31,7 +33,8 @@ struct DeviceTracePage: Codable, Sendable {
                 WHEN instr(raw,' auth_mode="Chatgpt"')>0 THEN 'chatgpt'
                 WHEN instr(raw,' auth_mode="ApiKey"')>0 THEN 'api_key'
                 ELSE 'unknown' END END AS authMode
-        FROM candidates WHERE auth OR raw LIKE '%websocket request:%' OR raw LIKE '%Submission sub=Submission {%'
+        FROM candidates WHERE auth OR sampling OR raw LIKE '%websocket request:%' OR raw LIKE '%Submission sub=Submission {%'
+            OR (raw LIKE '%websocket event:%' AND raw LIKE '%response.completed%')
         ORDER BY id LIMIT 65
         """
 

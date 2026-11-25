@@ -8,9 +8,8 @@ struct PriceStoreTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
-        let unsupported = #"{"openai":{"models":{"m":{"id":"m","cost":{"input":1,"output":2,"context_over_200k":{"input":3}}}}}}"#
-        let prices = try ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: "2026-09-09")
-            + ModelsDevPrices.decode(Data(unsupported.utf8), date: "2026-09-09")
+        let unsupported = UsagePricingTests.price(model: "m", rates: PriceRates(input: 1, output: 2), rule: .unsupported)
+        let prices = UsagePricingTests.prices() + [unsupported]
         _ = try store.savePrices(prices, date: "2026-09-09")
         let reopened = try UsageStore(databaseURL: store.databaseURL)
         try await reopened.pool.read { db in
@@ -20,42 +19,39 @@ struct PriceStoreTests {
                 #expect(stored == price)
             }
         }
-        let unchanged = try ModelsDevPrices.decode(Data(unsupported.replacingOccurrences(of: "\"input\":3", with: "\"input\":4").utf8), date: "2026-09-10")
-        #expect(try reopened.savePrices(unchanged, date: "2026-09-10").insertedSnapshots == 0)
     }
 
     @Test func dailySnapshotsOnlyRecordPriceChangesAndKeepHistory() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
-        func save(_ date: String, json: String = UsagePricingTests.document) throws -> PriceSyncReport {
-            try store.savePrices(ModelsDevPrices.decode(Data(json.utf8), date: date), date: date)
+        func save(_ date: String, input: Decimal = 10) throws -> PriceSyncReport {
+            try store.savePrices(UsagePricingTests.prices(date: date, input: input), date: date)
         }
         #expect(try save("2026-09-09").insertedSnapshots == 2)
-        #expect(try save("2026-09-10", json: UsagePricingTests.document.replacingOccurrences(of: "Display titles do not affect price comparison", with: "新标题")).insertedSnapshots == 0)
-        let changed = UsagePricingTests.document.replacingOccurrences(of: #""input":10,"output""#, with: #""input":12,"output""#)
-        #expect(try save("2026-09-11", json: changed).insertedSnapshots == 2)
+        #expect(try save("2026-09-10").insertedSnapshots == 0)
+        #expect(try save("2026-09-11", input: 12).insertedSnapshots == 2)
         #expect(try save("2026-09-11").alreadySynced)
         #expect(try store.tableCounts()["prices"] == 4)
         try await store.pool.read { db throws -> Void in
-            #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-08")?.rates.input == 10)
+            #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-08", useDefaults: false) == nil)
             #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-10")?.rates.input == 10)
             #expect(try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-12")?.rates.input == 12)
         }
     }
 
-    @Test func tiersHaveIndependentHistoryAndChangingLongPriceUpdatesDerivedFast() async throws {
+    @Test func tiersHaveIndependentHistoryAndPreserveEarlierLongPrices() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
-        let first = try ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: "2026-09-09")
+        let first = UsagePricingTests.prices()
         _ = try store.savePrices(first.filter { $0.tier == "standard" }, date: "2026-09-09")
-        let next = try ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: "2026-09-10")
+        let next = UsagePricingTests.prices(date: "2026-09-10")
         #expect(try store.savePrices(next, date: "2026-09-10").insertedSnapshots == 1)
-        let changed = UsagePricingTests.document.replacingOccurrences(of: #""input":20,"output":75"#, with: #""input":30,"output":75"#)
-        #expect(try store.savePrices(ModelsDevPrices.decode(Data(changed.utf8), date: "2026-09-11"), date: "2026-09-11").insertedSnapshots == 2)
+        let changed = UsagePricingTests.prices(date: "2026-09-11", longInput: 30)
+        #expect(try store.savePrices(changed, date: "2026-09-11").insertedSnapshots == 2)
         try await store.pool.read { db throws -> Void in
-            let old = try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-01-01", tier: "fast")
+            let old = try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-10", tier: "fast")
             #expect(old?.date == "2026-09-10" && old?.long.input == 40)
             let new = try UsageStore.modelPrice(db: db, model: "gpt-6-astra", date: "2026-09-11", tier: "fast")
             #expect(new?.rates.input == 20 && new?.long.input == 60 && new?.long.output == 150)
@@ -64,12 +60,24 @@ struct PriceStoreTests {
 
 
 
-    @Test func firstSnapshotPricesEarlierRequestsWithoutChangingFacts() async throws {
+    @Test func migratedLegacySnapshotPricesEarlierRequestsWithoutChangingFacts() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
-        let prices = try ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: "2026-09-09")
-        _ = try store.savePrices(prices, date: "2026-09-09")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let url = root.appendingPathComponent("usage.sqlite")
+        let legacy = try DatabaseQueue(path: url.path)
+        try StoreSchema.migrator.migrate(legacy, upTo: "api-context-tier.1")
+        try await legacy.write { db in
+            try db.execute(sql: """
+                INSERT INTO prices(model,date,tier,input_price,output_price,cache_read_price,cache_write_price,context_rule,source_url)
+                VALUES ('gpt-6-astra','2026-09-09','standard','10','50','1','12.5','uniform','https://models.dev/api.json');
+                INSERT INTO app_metadata(key,value) VALUES ('prices_last_success_date','2026-09-09');
+                """)
+        }
+        try legacy.close()
+        let store = try UsageStore(databaseURL: url)
+        #expect(try !store.hasSyncedPrices(on: "2026-09-09"))
+        #expect(try await store.pool.read { try Double.fetchOne($0, sql: "SELECT effective_at FROM prices") } == 1_788_912_000)
         try await store.pool.write { db in
             for date in ["2026-09-08", "2026-09-09"] {
                 try db.execute(sql: """
@@ -120,9 +128,10 @@ struct PriceStoreTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
-        _ = try store.savePrices(ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: "2026-09-09"), date: "2026-09-09")
+        _ = try store.savePrices(UsagePricingTests.prices(), date: "2026-09-09")
         #expect(throws: (any Error).self) {
-            let prices = try ModelsDevPrices.decode(Data("{}".utf8), date: "2026-09-10")
+            let instant = try #require(DateParsing.parseTimestamp("2026-09-10T00:00:00Z"))
+            let prices = try ModelsDevPricesV2.decode(Data("{}".utf8), observedAt: instant)
             _ = try store.savePrices(prices, date: "2026-09-10")
         }
         #expect(try !store.hasSyncedPrices(on: "2026-09-10"))
@@ -133,7 +142,7 @@ struct PriceStoreTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
-        _ = try store.savePrices(ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: "2026-09-09"), date: "2026-09-09")
+        _ = try store.savePrices(UsagePricingTests.prices(), date: "2026-09-09")
         let sessions = root.appendingPathComponent("sessions")
         try FileManager.default.createDirectory(at: sessions, withIntermediateDirectories: true)
         let id = "00000000-0000-0000-0000-000000000005"

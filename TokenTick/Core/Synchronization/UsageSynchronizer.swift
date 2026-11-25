@@ -110,7 +110,7 @@ public struct UsageSynchronizer: Sendable {
                 do {
                     if try store.needsRepricing() {
                         onProgress?(SynchronizationProgress(stage: .repricing, scan: nil))
-                        report.reprice = try store.repriceUsage()
+                        report.reprice = try store.repriceUsage(onlyMissing: true)
                         if let count = report.reprice?.invalidUsage, count > 0 {
                             onDiagnostic?(SynchronizationDiagnostic(operation: "sync.repricing", reason: "invalid_usage", count: count))
                         }

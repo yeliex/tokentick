@@ -111,8 +111,16 @@ extension UsageStore {
                         legacy?.totalTokens,legacy?.inputTokens,legacy?.outputTokens,legacy?.cachedInputTokens,
                         legacy?.cacheWriteInputTokens,legacy?.reasoningOutputTokens])
                 id = db.lastInsertedRowID; inserted += 1
+                if usage.turnID != nil {
+                    let provisional = try Row.fetchAll(db, sql: """
+                        SELECT * FROM usage WHERE turn_key=? AND device=? AND thread_id=? AND pricing_source='turn_trace'
+                        """, arguments: [key, device, usage.threadID])
+                    for row in provisional { _ = try priceUsage(row, db: db) }
+                }
             }
-            if let row = try Row.fetchOne(db, sql: "SELECT * FROM usage WHERE id=?", arguments: [id]) { _ = try priceUsage(row, db: db) }
+            if let row = try Row.fetchOne(db, sql: "SELECT * FROM usage WHERE id=?", arguments: [id]) {
+                _ = try priceUsage(row, db: db, preservingPricingFrom: existing)
+            }
         }
         return (inserted, upgraded, duplicates)
     }

@@ -161,15 +161,14 @@ public struct DeviceSyncService: Sendable {
         if let traces = source as? any DeviceTraceSource {
             do {
                 for file in try await traces.traceFiles() {
-                    let key = "fast_trace_cursor:\(device.id):v2:\(device.sourceRevision):\(file)"
+                    let key = "fast_trace_cursor:\(device.id):v3:\(device.sourceRevision):\(file)"
                     var cursor = try store.fastEvidenceCursor(key: key)
                     var pages = 0
                     while true {
                         let page = try await traces.tracePage(file: file, cursor: cursor)
                         try Task.checkCancellation()
                         let evidence = page.entries.compactMap {
-                            CodexFastEvidence.parse(body: $0.body, threadID: $0.threadID, fileName: file,
-                                rowID: $0.id, timestamp: $0.timestamp)
+                            CodexFastEvidence.parse(body: $0.body, threadID: $0.threadID)
                         }
                         let changed = try FileWriteLock(url: store.databaseURL.appendingPathExtension("write.lock")).withLock {
                             try store.commitTraceEvidence(evidence, page: page, device: device.id, key: key)
@@ -207,6 +206,7 @@ public struct DeviceSyncService: Sendable {
         }
         let revision = try await store.pool.read { try UsageStore.statisticsRevision($0) }
         return DeviceSyncResult(deviceID: device.id, root: root, scan: report, finishedAt: Date(), accountEmail: account?.email, metadataRefreshed: metadataRefreshed,
-            dataChanged: authenticationChanged || revision != previousRevision || completedCycles > 0 || report.scannedFiles > 0)
+            dataChanged: authenticationChanged || revision != previousRevision || completedCycles > 0
+                || report.scannedFiles > 0 || report.refreshedThreads > 0)
     }
 }

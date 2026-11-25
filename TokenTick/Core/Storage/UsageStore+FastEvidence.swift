@@ -39,11 +39,21 @@ extension UsageStore {
                 }
             }
             for evidence in batch {
-                let json = String(decoding: try encoder.encode(evidence), as: UTF8.self)
-                try target.execute(sql: "INSERT INTO app_metadata(key,value) VALUES (?,?) ON CONFLICT DO NOTHING", arguments: [evidence.key, json])
+                try target.execute(sql: """
+                    INSERT INTO app_metadata(key,value) VALUES (?,?)
+                    ON CONFLICT(key) DO UPDATE SET value=CASE
+                        WHEN substr(excluded.value,1,1)>substr(value,1,1) THEN excluded.value
+                        ELSE substr(value,1,2) END
+                    WHERE substr(excluded.value,1,1)>substr(value,1,1)
+                       OR (substr(excluded.value,1,1)=substr(value,1,1) AND length(value)>2 AND value<>excluded.value)
+                    """, arguments: [evidence.key(device: device), "\(evidence.strength):\(evidence.tier)"])
                 if target.changesCount > 0 {
-                    let usage = try Row.fetchCursor(target, sql: "SELECT * FROM usage WHERE thread_id=? AND turn_id=? AND tier IS NULL", arguments: [evidence.threadID, evidence.turnID])
-                    while let row = try usage.next() { _ = try Self.priceUsage(row, db: target) }
+                    let usage = try Row.fetchAll(target, sql: """
+                        SELECT * FROM usage WHERE device=? AND thread_id=? AND turn_id=?
+                            AND ((? IS NOT NULL AND response_id=?) OR (? IS NULL AND tier IS NULL))
+                        """, arguments: [device, evidence.threadID, evidence.turnID,
+                                           evidence.responseID, evidence.responseID, evidence.responseID])
+                    for row in usage { _ = try Self.priceUsage(row, db: target, preservingPricingFrom: row) }
                 }
             }
             try target.execute(sql: "INSERT INTO app_metadata(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",

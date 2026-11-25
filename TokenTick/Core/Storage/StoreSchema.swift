@@ -232,6 +232,27 @@ enum StoreSchema {
         migrator.registerMigration("api-context-tier.1") { db in
             try db.execute(sql: "ALTER TABLE usage ADD COLUMN api_is_long_context INTEGER CHECK(api_is_long_context IN (0,1))")
         }
+        migrator.registerMigration("price-effective-time.1") { db in
+            try db.execute(sql: """
+                ALTER TABLE prices RENAME TO daily_prices;
+                CREATE TABLE prices (
+                    model TEXT NOT NULL, date TEXT NOT NULL, tier TEXT NOT NULL, effective_at REAL NOT NULL,
+                    input_price TEXT, output_price TEXT, cache_read_price TEXT, cache_write_price TEXT,
+                    long_input_price TEXT, long_output_price TEXT, long_cache_read_price TEXT, long_cache_write_price TEXT,
+                    long_context_threshold INTEGER,
+                    context_rule TEXT NOT NULL CHECK(context_rule IN ('uniform','requestInputGreaterThan','unsupported')),
+                    source_url TEXT NOT NULL, is_bundled INTEGER CHECK(is_bundled IN (0,1)),
+                    combination_rule TEXT, combination_source TEXT,
+                    PRIMARY KEY(model, tier, effective_at)
+                );
+                INSERT INTO prices SELECT model, date, tier, unixepoch(date),
+                    input_price, output_price, cache_read_price, cache_write_price,
+                    long_input_price, long_output_price, long_cache_read_price, long_cache_write_price,
+                    long_context_threshold, context_rule, source_url, is_bundled, combination_rule, combination_source
+                FROM daily_prices;
+                DROP TABLE daily_prices;
+                """)
+        }
         return migrator
     }
 }

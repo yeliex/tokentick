@@ -74,7 +74,7 @@ struct RepriceRecoveryTests {
 
         init() throws {
             store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
-            _ = try store.savePrices(ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: "2026-09-09"), date: "2026-09-09")
+            _ = try store.savePrices(UsagePricingTests.prices(), date: "2026-09-09")
             try store.pool.write { db in
                 for index in 1...1025 {
                     try db.execute(sql: """

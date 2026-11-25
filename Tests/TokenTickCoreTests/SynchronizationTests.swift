@@ -31,13 +31,13 @@ struct SynchronizationTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
         let date = Date().formatted(.iso8601.year().month().day().dateSeparator(.dash))
-        _ = try store.savePrices(ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: date), date: date)
+        _ = try store.savePrices(UsagePricingTests.prices(date: date), date: date)
         try writeLog(root: root, malformed: false)
         let report = try await UsageSynchronizer(store: store).synchronize(codexHome: root,
             codexExecutable: root.appendingPathComponent("missing-codex"))
         #expect(report.scan?.insertedRequests == 1)
         #expect(report.prices?.alreadySynced == true)
-        #expect(report.reprice?.examined == 1 && report.reprice?.fullyPriced == 1)
+        #expect(report.reprice?.examined == 0)
         #expect(report.api == nil && report.issues.count == 1)
         #expect(report.statistics?.rebuilt == true)
         #expect(try store.usageSummaries(grouping: .total).first?.knownAmountNanoUSD == 180_000)
@@ -49,7 +49,7 @@ struct SynchronizationTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
         let date = Date().formatted(.iso8601.year().month().day().dateSeparator(.dash))
-        _ = try store.savePrices(ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: date), date: date)
+        _ = try store.savePrices(UsagePricingTests.prices(date: date), date: date)
         try writeLog(root: root, malformed: false)
         let executable = root.appendingPathComponent("codex-fixture")
         let script = """

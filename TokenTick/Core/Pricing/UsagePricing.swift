@@ -39,23 +39,25 @@ struct UsagePricing {
         let output = try amount(tokens: tokens.outputTokens, rate: rates.output)
         let read = try amount(tokens: cacheRead, rate: rates.cacheRead)
         let write = try amount(tokens: cacheWrite, rate: rates.cacheWrite)
-        var total: Int64?
-        if let input, let output, let read, let write {
-            var sum: Int64 = 0
-            for component in [input, output, read, write] {
-                let next = sum.addingReportingOverflow(component)
-                guard !next.overflow else { throw PriceError.amountOverflow }
-                sum = next.partialValue
-            }
-            total = sum
-        }
         return Result(rates: rates, isLongContext: isLong, inputAmount: input, outputAmount: output,
-                      cacheReadAmount: read, cacheWriteAmount: write, amount: total)
+                      cacheReadAmount: read, cacheWriteAmount: write, amount: try total([input, output, read, write]))
+    }
+
+    static func total(_ components: [Int64?]) throws -> Int64? {
+        let known = components.compactMap { $0 }
+        guard known.count == components.count else { return nil }
+        var sum: Int64 = 0
+        for component in known {
+            let next = sum.addingReportingOverflow(component)
+            guard !next.overflow else { throw PriceError.amountOverflow }
+            sum = next.partialValue
+        }
+        return sum
     }
 
     /// USD per million tokens × tokens × 1000 = nanoUSD; use Decimal arithmetic and banker's rounding.
     static func amount(tokens: Int64?, rate: Decimal?) throws -> Int64? {
-        guard let tokens else { return nil }
+        guard let tokens else { return rate == 0 ? 0 : nil }
         if tokens == 0 { return 0 }
         guard let rate else { return nil }
         guard tokens > 0, rate >= 0, !rate.isNaN else { throw PriceError.invalidRate }

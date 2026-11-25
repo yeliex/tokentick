@@ -94,7 +94,9 @@ extension UsageStore {
                 try db.execute(sql: "DELETE FROM scan_files WHERE device=?", arguments: [device])
                 let prefix = "fast_trace_cursor:\(device):"
                 let authPrefix = "turn_auth:\(device):"
+                let tierPrefix = "tier_trace:\(device):"
                 try db.execute(sql: "DELETE FROM app_metadata WHERE substr(key,1,?)=?", arguments: [authPrefix.count, authPrefix])
+                try db.execute(sql: "DELETE FROM app_metadata WHERE substr(key,1,?)=?", arguments: [tierPrefix.count, tierPrefix])
                 try db.execute(sql: "DELETE FROM app_metadata WHERE substr(key,1,?)=?", arguments: [prefix.count, prefix])
                 let catalogPrefix = "device_catalog_cursor:\(device):"
                 try db.execute(sql: "DELETE FROM app_metadata WHERE substr(key,1,?)=?", arguments: [catalogPrefix.count, catalogPrefix])

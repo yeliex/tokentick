@@ -13,22 +13,6 @@ struct PriceRates: Codable, Equatable, Sendable {
         case cacheWrite = "cache_write"
     }
 
-    /// Derive each component independently; do not borrow rates when a price is missing or the denominator is zero.
-    func applyingContextRatio(base: Self, long: Self) throws -> Self {
-        func derive(_ rate: Decimal?, _ base: Decimal?, _ long: Decimal?) throws -> Decimal? {
-            guard let rate, let base, base > 0, let long else { return nil }
-            var numerator = long, denominator = base, ratio = Decimal(), value = rate, result = Decimal()
-            let division = NSDecimalDivide(&ratio, &numerator, &denominator, .bankers)
-            guard division == .noError || division == .lossOfPrecision else { throw PriceError.invalidRate }
-            let multiplication = NSDecimalMultiply(&result, &value, &ratio, .bankers)
-            guard multiplication == .noError || multiplication == .lossOfPrecision else { throw PriceError.invalidRate }
-            return result
-        }
-        return try Self(input: derive(input, base.input, long.input), output: derive(output, base.output, long.output),
-                        cacheRead: derive(cacheRead, base.cacheRead, long.cacheRead),
-                        cacheWrite: derive(cacheWrite, base.cacheWrite, long.cacheWrite)).validated()
-    }
-
     func validated() throws -> Self {
         for price in [input, output, cacheRead, cacheWrite].compactMap({ $0 }) {
             guard !price.isNaN, price >= 0 else { throw PriceError.invalidRate }
@@ -46,6 +30,7 @@ struct ModelPrice: Codable, Equatable, Sendable {
     let longContextThreshold: Int64?
     let contextRule: ContextRule
     let source: PriceSource
+    var effectiveAt: Date? = nil
 
     enum ContextRule: String, Codable { case uniform, requestInputGreaterThan, unsupported }
 
@@ -53,7 +38,6 @@ struct ModelPrice: Codable, Equatable, Sendable {
     func samePricing(as other: Self) -> Bool {
         tier == other.tier && rates == other.rates && long == other.long
             && longContextThreshold == other.longContextThreshold && contextRule == other.contextRule
-            && source.combinationRule == other.source.combinationRule
     }
 }
 

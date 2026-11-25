@@ -7,7 +7,7 @@ struct SettingsAttributionTests {
     @Test func settingsAndTurnStartPriceUsageBeforeContextAndSurviveRestart() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
-        _ = try fixture.store.savePrices(ModelsDevPrices.decode(Data(UsagePricingTests.document.utf8), date: "2026-09-09"), date: "2026-09-09")
+        _ = try fixture.store.savePrices(UsagePricingTests.prices(), date: "2026-09-09")
         try fixture.write(fixture.header + fixture.context("old") + fixture.settings(tier: "priority")
                           + fixture.started("new") + fixture.record(1, turn: "new"))
         #expect(try await fixture.scan().insertedRequests == 1)

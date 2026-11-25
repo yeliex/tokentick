@@ -4,6 +4,26 @@ import Testing
 @testable import TokenTickCore
 
 struct DefaultPricingTests {
+    @Test func bundledAutoReviewIsFreeAcrossServiceTiers() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        try store.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO usage(model, usage_date, tier, billing_mode, input_tokens, output_tokens,
+                    cache_read_tokens, cache_write_tokens, total_tokens, source, rollout_id, source_line)
+                VALUES ('codex-auto-review', '2026-11-24', NULL, 'plan', 10, 4, 2, 1, 14, 'local', 'review', 1),
+                       ('codex-auto-review', '2026-11-24', 'fast', 'plan', 10, 4, 2, 1, 14, 'local', 'review', 2),
+                       ('codex-auto-review', '2026-11-24', 'ultrafast', 'plan', 10, 4, NULL, NULL, 14, 'local', 'review', 3)
+                """)
+        }
+        #expect(try store.repriceUsage().fullyPriced == 3)
+        let rows = try store.usageRecords().rows
+        #expect(rows.count == 3)
+        #expect(rows.allSatisfy { $0.totalTokens == 14 && $0.amountNanoUSD == 0 && $0.apiAmountNanoUSD == 0 })
+        #expect(Set(rows.compactMap(\.pricingTier)) == ["standard", "fast", "ultrafast"])
+    }
+
     @Test func subscriptionAndAPIAmountsSurviveRepricingAndAggregation() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -40,11 +60,12 @@ struct DefaultPricingTests {
         let tokens = TokenUsage(inputTokens: 1_000, outputTokens: 100, cachedInputTokens: 500, cacheWriteInputTokens: 0,
                                 reasoningOutputTokens: 0, totalTokens: 1_100)
         #expect(try UsagePricing.calculate(tokens: tokens, price: price).amount == 2_362_500)
-        let missing = Data(#"{"openai":{"models":{"gpt-5.2-codex":{"id":"gpt-5.2-codex"}}}}"#.utf8)
-        _ = try store.savePrices(ModelsDevPrices.decode(missing, date: "2026-09-09"), date: "2026-09-09")
+        let missing = UsagePricingTests.price(model: "gpt-5.2-codex", rates: .unknown)
+        _ = try store.savePrices([missing], date: "2026-09-09")
         #expect(try store.pool.read { try UsageStore.modelPrice(db: $0, model: "gpt-5.2-codex", date: "2026-09-09") }?.source.isBundled == true)
-        let data = Data(#"{"openai":{"models":{"gpt-5.2-codex":{"id":"gpt-5.2-codex","cost":{"input":2,"output":16,"cache_read":0.2}}}}}"#.utf8)
-        _ = try store.savePrices(ModelsDevPrices.decode(data, date: "2026-09-10"), date: "2026-09-10")
+        let priceUpdate = UsagePricingTests.price(model: "gpt-5.2-codex", date: "2026-09-10",
+                                                 rates: PriceRates(input: 2, output: 16, cacheRead: 0.2))
+        _ = try store.savePrices([priceUpdate], date: "2026-09-10")
         let updated = try store.pool.read { try UsageStore.modelPrice(db: $0, model: "gpt-5.2-codex", date: "2026-09-10") }
         #expect(updated?.rates.input == 2 && updated?.source.isBundled != true)
         #expect(try store.pool.read { try UsageStore.modelPrice(db: $0, model: "unpublished-model", date: "2026-09-10") } == nil)

@@ -135,7 +135,15 @@ private struct UsageRecordDetail: View {
             }
             Section(String(localized: "Model and pricing mode")) {
                 UsageDetailField(String(localized: "Model"), value: record.model ?? String(localized: "Other"))
-                UsageDetailField("Fast", value: record.isFast.map { $0 ? String(localized: "Yes") : String(localized: "No") } ?? (record.pricingIsFast ? String(localized: "Yes (additional logs)") : String(localized: "Unknown")))
+                let mode = switch record.pricingTier ?? record.tier {
+                case "standard": String(localized: "Standard")
+                case "fast": String(localized: "Fast")
+                case "ultrafast": String(localized: "Ultrafast")
+                case "flex": String(localized: "Flex")
+                case let tier?: tier
+                case nil: String(localized: "Unknown")
+                }
+                UsageDetailField(String(localized: "Usage mode"), value: mode)
             }
             Section("Tokens") {
                 UsageDetailField(String(localized: "Total"), value: UsageFormatting.tokens(record.totalTokens)).help(UsageFormatting.exactTokens(record.totalTokens))

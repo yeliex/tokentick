@@ -9,7 +9,7 @@ public struct PriceSynchronizer: Sendable {
         if try store.hasSyncedPrices(on: requestedDate) {
             return PriceSyncReport(date: requestedDate, alreadySynced: true, models: 0, insertedSnapshots: 0, unsupportedContextModels: [], missingPriceModels: [])
         }
-        guard let url = URL(string: ModelsDevPrices.sourceURL) else { throw PriceError.invalidDocument }
+        guard let url = URL(string: ModelsDevPricesV2.sourceURL) else { throw PriceError.invalidDocument }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
         request.setValue("TokenTick/\(ApplicationInfo.version)", forHTTPHeaderField: "User-Agent")
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
@@ -24,9 +24,10 @@ public struct PriceSynchronizer: Sendable {
             guard data.count < maximum else { throw SyncError.responseTooLarge }
             data.append(byte)
         }
-        let date = Date().formatted(.iso8601.year().month().day().dateSeparator(.dash))
-        let prices = try ModelsDevPrices.decode(data, date: date)
-        return try store.savePrices(prices, date: date)
+        let observedAt = Date()
+        let date = observedAt.formatted(.iso8601.year().month().day().dateSeparator(.dash))
+        let prices = try ModelsDevPricesV2.decode(data, observedAt: observedAt)
+        return try store.savePrices(prices, date: date, observedAt: observedAt)
     }
 
     enum SyncError: LocalizedError {

@@ -90,12 +90,11 @@ struct OverviewReportTests {
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
         try store.pool.write { db in
             try db.execute(sql: """
-                INSERT INTO app_metadata(key,value) VALUES ('fast_trace:thread:turn','{}');
-                INSERT INTO usage(source_line,rollout_id,thread_id,turn_id,total_tokens,tier,is_long_context,usage_date,source,pricing_source) VALUES
-                    (1,'trace','thread','turn',100,NULL,0,'2026-09-01','local','{}'),
-                    (1,'standard','thread','turn',200,'standard',0,'2026-09-01','local','{}'),
-                    (1,'fast','thread','other',300,'fast',0,'2026-09-01','local','{}'),
-                    (1,'default','thread','other',400,NULL,0,'2026-09-01','local','{}');
+                INSERT INTO usage(source_line,rollout_id,thread_id,turn_id,total_tokens,tier,pricing_tier,is_long_context,usage_date,source,pricing_source) VALUES
+                    (1,'trace','thread','turn',100,'standard','fast',0,'2026-09-01','local','request_trace'),
+                    (1,'standard','thread','turn',200,'standard','standard',0,'2026-09-01','local','rollout'),
+                    (1,'fast','thread','other',300,'fast',NULL,0,'2026-09-01','local','{}'),
+                    (1,'default','thread','other',400,NULL,'standard',0,'2026-09-01','local','default_standard');
                 """)
         }
         let report = try store.overviewReport(period: .all, now: Date(), timezone: "UTC")

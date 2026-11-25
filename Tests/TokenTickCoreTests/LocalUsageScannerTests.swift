@@ -6,6 +6,28 @@ import Testing
 @testable import TokenTickCore
 
 struct LocalUsageScannerTests {
+    @Test func metadataReplayKeepsAppliedRatesAndAmounts() async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let original = UsagePricingTests.price(model: "gpt-test", date: "2026-09-08",
+                                               rates: PriceRates(input: 1, output: 10, cacheRead: 0.1))
+        _ = try fixture.store.savePrices([original], date: original.date)
+        let file = try fixture.write(fixture.header + fixture.turn + fixture.record(1))
+        #expect(try await fixture.scan().insertedRequests == 1)
+        let before = try #require(try fixture.store.usageRecords().rows.first)
+        #expect(before.amountNanoUSD == 246_000)
+        let updated = UsagePricingTests.price(model: "gpt-test", rates: PriceRates(input: 4, output: 10, cacheRead: 0.1))
+        _ = try fixture.store.savePrices([updated], date: updated.date)
+        let turn = fixture.turn.replacingOccurrences(of: #""model":"gpt-test""#, with: #""model":"gpt-test","effort":"high""#)
+        try Data((fixture.header + turn + fixture.record(1)).utf8).write(to: file, options: .atomic)
+        let replay = try await fixture.scan()
+        #expect(replay.insertedRequests == 0 && replay.upgradedRequests == 1)
+        let after = try #require(try fixture.store.usageRecords().rows.first)
+        #expect(after.reasoningEffort == "high")
+        #expect(after.inputPrice == before.inputPrice && after.inputAmountNanoUSD == before.inputAmountNanoUSD)
+        #expect(after.amountNanoUSD == before.amountNanoUSD && after.apiAmountNanoUSD == before.apiAmountNanoUSD)
+    }
+
     @Test func selectedLocalDirectoriesSkipHistoryAndRetainAppendAndArchiveCheckpoints() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
@@ -597,8 +619,8 @@ struct LocalUsageScannerTests {
     @Test func pricedUsageAndClearedCatalogSurviveRepeatedScans() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
-        let prices = #"{"openai":{"models":{"gpt-test":{"id":"gpt-test","cost":{"input":1.25,"output":2.5,"cache_read":0.125,"cache_write":1.25}}}}}"#
-        _ = try fixture.store.savePrices(ModelsDevPrices.decode(Data(prices.utf8), date: "2026-09-09"), date: "2026-09-09")
+        let price = UsagePricingTests.price(model: "gpt-test", rates: PriceRates(input: 1.25, output: 2.5, cacheRead: 0.125, cacheWrite: 1.25))
+        _ = try fixture.store.savePrices([price], date: "2026-09-09")
         _ = try fixture.write(fixture.header + fixture.turn + fixture.record(1) + "{\"type\":\"future_event\",\"payload\":{\"unknown\":true}}\n")
         let source = try DatabaseQueue(path: fixture.root.appendingPathComponent("state_5.sqlite").path)
         try await source.write { db in
