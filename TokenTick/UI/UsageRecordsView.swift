@@ -35,7 +35,7 @@ struct UsageRecordsView: View {
                         TableColumn(String(localized: "Time")) { row in
                             Text(row.occurredAt.map { UsageFormatting.timestamp($0, timezone: TimeZone(identifier: query.timezone ?? "UTC") ?? .gmt) }
                                  ?? row.usageDate ?? String(localized: "Unknown"))
-                        }.width(min: 110, ideal: 150)
+                        }.width(162)
                         TableColumn(String(localized: "Model")) { row in
                             let model = row.model ?? String(localized: "Other")
                             VStack(alignment: .leading, spacing: 1) {
@@ -46,17 +46,17 @@ struct UsageRecordsView: View {
                             }
                         }.width(min: 125, ideal: 145, max: 155)
                         TableColumn("Tokens") { row in TokenText(value: row.totalTokens).monospacedDigit() }
-                            .width(min: 80, ideal: 100)
-                        TableColumn(String(localized: "Details")) { row in
-                            Button(String(localized: "Details")) { selectedRecord = row }.buttonStyle(.borderless)
-                        }.width(50)
+                            .width(72)
                         TableColumn(String(localized: "Subscription estimate")) { row in Text(UsageFormatting.money(row.knownAmountNanoUSD)).monospacedDigit() }
-                            .width(min: 90, ideal: 110)
+                            .width(119)
                         if records.contains(where: { $0.differingAPIAmount != nil }) {
                             TableColumn(String(localized: "API value")) { row in
                                 if let api = row.differingAPIAmount { Text(UsageFormatting.money(api)).monospacedDigit() }
-                            }.width(min: 70, ideal: 90)
+                            }.width(92)
                         }
+                        TableColumn(String(localized: "Details")) { row in
+                            Button(String(localized: "Details")) { selectedRecord = row }.buttonStyle(.borderless)
+                        }.width(65)
                     }
                     .tableStyle(.inset(alternatesRowBackgrounds: false)).scrollContentBackground(.hidden)
                     .overlay {

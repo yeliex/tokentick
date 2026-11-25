@@ -15,7 +15,7 @@ struct UsageTableView: View {
         VStack(spacing: 0) {
             Table(rows, selection: $selection) {
                 TableColumn(isThread ? String(localized: "Task") : String(localized: "Name")) { row in
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Button { openRow(row) } label: {
                             HStack {
                                 Text(row.title).lineLimit(1)
@@ -24,20 +24,23 @@ struct UsageTableView: View {
                                 Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
                             }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                         }.buttonStyle(.plain)
-                        if isThread { Text(UsageFormatting.project(row.thread?.projectName)).font(.caption).foregroundStyle(.secondary) }
-                    }.padding(.vertical, 7).help(row.title)
-                }.width(min: 180, ideal: 340)
+                        if isThread {
+                            Text(UsageFormatting.project(row.thread?.projectName))
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }.padding(.vertical, 3).help(row.title)
+                }.width(min: 130, ideal: 200)
                 TableColumn("Tokens") { row in TokenText(value: row.summary.totalTokens).monospacedDigit() }
-                    .width(min: 105, ideal: 125)
+                    .width(86)
                 TableColumn(String(localized: "Subscription estimate")) { row in Text(UsageFormatting.money(row.summary.knownAmountNanoUSD)).monospacedDigit() }
-                    .width(min: 90, ideal: 110)
+                    .width(126)
                 if rows.contains(where: { $0.summary.differingAPIAmount != nil }) {
                     TableColumn(String(localized: "API value")) { row in
                         if let api = row.summary.differingAPIAmount { Text(UsageFormatting.money(api)).monospacedDigit() }
-                    }.width(min: 90, ideal: 110)
+                    }.width(96)
                 }
                 TableColumn(String(localized: "Requests")) { row in Text(row.summary.records.formatted()).monospacedDigit() }
-                    .width(min: 75, ideal: 90)
+                    .width(76)
 
                 TableColumn(String(localized: "Details")) { row in
                     Button(String(localized: "Details")) { showDetails(row) }.buttonStyle(.borderless)
