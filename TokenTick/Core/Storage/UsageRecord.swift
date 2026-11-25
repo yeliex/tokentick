@@ -50,6 +50,7 @@ public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
     public let fileName: String?
     public let lastKnownPath: String?
     public let reasoningEffort: String?
+    public let isContextCompaction: Bool
     public let pricingTier: String?
     public let pricingSource: String?
     public var pricingIsFast: Bool { (pricingTier ?? tier) == "fast" }
@@ -60,7 +61,7 @@ public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
         case tier, isLongContext, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens
         case reasoningTokens, totalTokens, inputPrice, outputPrice, cacheReadPrice, cacheWritePrice
         case inputAmountNanoUSD, outputAmountNanoUSD, cacheReadAmountNanoUSD, cacheWriteAmountNanoUSD, amountNanoUSD, knownAmountNanoUSD
-        case source, rolloutID, sourceLine, fileName, lastKnownPath, reasoningEffort, pricingTier, pricingSource
+        case source, rolloutID, sourceLine, fileName, lastKnownPath, reasoningEffort, isContextCompaction, pricingTier, pricingSource
         case apiKnownAmountNanoUSD, apiAmountNanoUSD
     }
     public func encode(to encoder: any Encoder) throws {
@@ -108,6 +109,7 @@ public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
         try values.encode(lastKnownPath, forKey: .lastKnownPath)
         try values.encode(reasoningEffort, forKey: .reasoningEffort)
         try values.encode(pricingTier, forKey: .pricingTier)
+        try values.encode(isContextCompaction, forKey: .isContextCompaction)
         try values.encode(pricingSource, forKey: .pricingSource)
     }
 }
@@ -138,6 +140,8 @@ extension UsageRecord {
             amountNanoUSD: row["amount"], knownAmountNanoUSD: row["known_amount"],
             apiKnownAmountNanoUSD: row["api_known_amount"], apiAmountNanoUSD: row["api_amount"], source: row["source"],
             rolloutID: row["rollout_id"], sourceLine: row["source_line"], fileName: row["file_name"],
-            lastKnownPath: row["current_path"], reasoningEffort: row["reasoning_effort"], pricingTier: row["pricing_tier"], pricingSource: row["pricing_source"])
+            lastKnownPath: row["current_path"], reasoningEffort: row["reasoning_effort"],
+            isContextCompaction: row["is_context_compaction"],
+            pricingTier: row["pricing_tier"], pricingSource: row["pricing_source"])
     }
 }

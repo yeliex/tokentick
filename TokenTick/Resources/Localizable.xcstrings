@@ -623,6 +623,13 @@
         }
       }
     },
+    "Context compaction": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "上下文压缩" }
+        }
+      }
+    },
     "Cost": {
       "extractionState": "manual",
       "localizations": {

@@ -35,7 +35,8 @@ extension UsageStore {
     }
 
     func commitScan(_ usages: [CollectedUsage], device: String = "local", sourceRevision: Int = 0, priority: DevicePriority = DevicePriority(), limits: [CurrentLimitSnapshot] = [], turnsWithPlans: Set<String> = [], modelBackfills: [RolloutParser.ModelBackfill] = [], identity: RolloutIdentity, url: URL, line: Int, offset: UInt64,
-                    file: FileSnapshot, state: inout RolloutParserState, report: inout ScanReport) throws {
+                    file: FileSnapshot, state: inout RolloutParserState, report: inout ScanReport,
+                    compactions: [(turn: String, response: String)] = []) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let fileJSON = String(decoding: try encoder.encode(file), as: UTF8.self)
@@ -47,6 +48,13 @@ extension UsageStore {
             let counts = try pool.write { db in
                 let threadID = identity.threadID.uuidString.lowercased()
                 var counts = try Self.collectTurns(usages, session: state.session, device: device, priority: priority, db: db)
+                for compaction in compactions {
+                    try db.execute(sql: """
+                        UPDATE usage SET is_context_compaction=1
+                        WHERE turn_key=? AND response_id=? AND thread_id=? AND is_context_compaction=0
+                        """, arguments: ["turn:" + compaction.turn, compaction.response, threadID])
+                    counts.upgraded += db.changesCount
+                }
                 for turn in turnsWithPlans {
                     // 已有认证日志时，保留套餐证据的优先级；普通轮次无需创建元数据行。
                     try db.execute(sql: "UPDATE app_metadata SET value='plan' WHERE key=? AND value<>'plan'",

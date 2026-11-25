@@ -28,6 +28,49 @@ struct LocalUsageScannerTests {
         #expect(after.amountNanoUSD == before.amountNanoUSD && after.apiAmountNanoUSD == before.apiAmountNanoUSD)
     }
 
+    @Test func compactionLinksResponsesAcrossScansAndRemainsIndependentOfEffort() async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let knownTurn = fixture.turn.replacingOccurrences(of: #""model":"gpt-test""#, with: #""model":"gpt-6.2-sol","effort":"high""#)
+        let unknownTurn = fixture.turn.replacingOccurrences(of: "gpt-test", with: "gpt-6.2-sol")
+        let file = try fixture.write(fixture.header + knownTurn + fixture.record(1) + unknownTurn + fixture.record(2) + fixture.record(3))
+        #expect(try await fixture.scan().insertedRequests == 3)
+        let before = try fixture.store.usageRecords().rows
+        #expect(before.allSatisfy { $0.amountNanoUSD != nil && !$0.isContextCompaction })
+
+        try fixture.append(fixture.compacted(1, identifiedRecord: true) + fixture.compacted(3, identifiedRecord: false)
+                           + fixture.compacted(99, identifiedRecord: true), to: file)
+        let append = try await fixture.scan()
+        #expect(append.insertedRequests == 0 && append.upgradedRequests == 2 && append.issueCount == 0)
+        let after = try fixture.store.usageRecords().rows
+        let marked = after.filter(\.isContextCompaction)
+        #expect(Set(marked.compactMap(\.responseID)) == ["response-1", "response-3"])
+        #expect(marked.first { $0.responseID == "response-1" }?.reasoningEffort == "high")
+        #expect(marked.first { $0.responseID == "response-3" }?.reasoningEffort == nil)
+        #expect(after.map(\.amountNanoUSD) == before.map(\.amountNanoUSD))
+        #expect(after.map(\.apiAmountNanoUSD) == before.map(\.apiAmountNanoUSD))
+
+        let report = try fixture.store.overviewReport(period: .all, now: Date(), timezone: "UTC")
+        #expect(report.total?.totalTokens == 360)
+        #expect(report.efforts.first { $0.name == "high" } == nil)
+        #expect(report.efforts.first { $0.name == "unknown" }?.tokens == 120)
+        let compaction = try #require(report.efforts.first { $0.name == "context_compaction" })
+        #expect(compaction.tokens == 240)
+        #expect(compaction.amount == marked.compactMap(\.amountNanoUSD).reduce(0, +))
+        #expect(compaction.apiAmount == marked.compactMap(\.apiAmountNanoUSD).reduce(0, +))
+        #expect(report.efforts.reduce(0) { $0 + $1.tokens } == 360)
+        let threadQuery = report.query.focused(on: .thread, value: fixture.thread)
+        #expect(try fixture.store.usageRecords(threadQuery).rows == after)
+
+        try await fixture.store.pool.write { db in
+            try db.execute(sql: "UPDATE usage SET is_context_compaction=0")
+            try db.execute(sql: "UPDATE scan_files SET parser_state_json=json_set(parser_state_json,'$.version',16)")
+        }
+        let replay = try await fixture.scan()
+        #expect(replay.insertedRequests == 0 && replay.upgradedRequests == 2 && replay.issueCount == 0)
+        #expect(try fixture.store.usageRecords().rows == after)
+    }
+
     @Test func selectedLocalDirectoriesSkipHistoryAndRetainAppendAndArchiveCheckpoints() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
@@ -678,6 +721,12 @@ struct LocalUsageScannerTests {
         }
         func record(_ n: Int) -> String {
             "{\"timestamp\":\"2026-09-09T00:00:0\(n)Z\",\"type\":\"token_usage_record\",\"payload\":{\"thread_id\":\"\(thread)\",\"turn_id\":\"turn-1\",\"response_id\":\"response-\(n)\",\"usage\":\(counters(1)),\"thread_token_usage\":\(counters(n))}}\n"
+        }
+        func compacted(_ n: Int, identifiedRecord: Bool) -> String {
+            let record = identifiedRecord
+                ? #","latest_token_usage_record":{"thread_id":"\#(thread)","turn_id":"turn-1","response_id":"response-\#(n)"}"#
+                : ""
+            return #"{"timestamp":"2026-09-09T00:01:00Z","type":"compacted","payload":{"compaction_response_id":"response-\#(n)"\#(record)}}"# + "\n"
         }
         func write(_ text: String, name: String? = nil) throws -> URL {
             let url = root.appendingPathComponent("sessions/" + (name ?? fileName))

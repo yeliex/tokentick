@@ -210,6 +210,7 @@ struct ModelUsageView: View {
     }
     private func effortTitle(_ name: String) -> String {
         switch name {
+        case "context_compaction": String(localized: "Context compaction")
         case "none": String(localized: "None")
         case "minimal": String(localized: "Minimal")
         case "low": String(localized: "Low")

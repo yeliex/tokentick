@@ -123,6 +123,8 @@ Show total tokens and known estimated costs together with input, output, reasoni
 
 Three concentric rings break usage down by model, usage mode, and recorded reasoning effort. Usage mode combines one service tier (Standard, Fast, Ultrafast, or Flex) with context length. The rings share the token/cost selector and period, and link hover states with their lists. Keep unknown categories last. Reasoning effort comes from the log's setting, not reasoning-token counts.
 
+Group confirmed compaction requests as Context compaction in the reasoning effort ring and list. Keep their recorded effort available in request details and count their usage as usual under their model and usage mode. Mark compaction in the regular request list and details.
+
 Recent tasks show only consumption within the selected interval and are ordered by the latest usage in that interval. Opening a task carries the exact interval into Usage details.
 
 ### Usage details

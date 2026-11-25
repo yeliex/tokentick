@@ -253,6 +253,9 @@ enum StoreSchema {
                 DROP TABLE daily_prices;
                 """)
         }
+        migrator.registerMigration("context-compaction.1") { db in
+            try db.execute(sql: "ALTER TABLE usage ADD COLUMN is_context_compaction INTEGER NOT NULL DEFAULT 0 CHECK(is_context_compaction IN (0,1))")
+        }
         return migrator
     }
 }

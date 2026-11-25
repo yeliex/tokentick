@@ -7,6 +7,7 @@ struct RolloutScan {
     private var limits: [CurrentLimitSnapshot] = []
     private var turnsWithPlans = Set<String>()
     private var modelBackfills: [RolloutParser.ModelBackfill] = []
+    private var compactions: [(turn: String, response: String)] = []
     private(set) var line: Int
     private(set) var offset: UInt64
     private(set) var pendingLines = 0
@@ -28,6 +29,7 @@ struct RolloutScan {
                 if usage.hasPlan, let turn = usage.turnID { turnsWithPlans.insert(turn) }
             }
             if let backfill = parser.modelBackfill { modelBackfills.append(backfill) }
+            if let compaction = parser.compaction { compactions.append(compaction) }
             if let current = parser.currentLimits {
                 if current.historyExclusion == nil, current.knownPlanType != nil, let turn = current.turnID {
                     turnsWithPlans.insert(turn)
@@ -50,11 +52,12 @@ struct RolloutScan {
                          checkpoint: FileSnapshot, report: inout ScanReport, device: String = "local",
                          sourceRevision: Int = 0, priority: DevicePriority = DevicePriority()) throws {
         try store.commitScan(usages, device: device, sourceRevision: sourceRevision, priority: priority, limits: limits, turnsWithPlans: turnsWithPlans, modelBackfills: modelBackfills, identity: identity, url: url, line: line, offset: offset,
-                             file: checkpoint, state: &parser.state, report: &report)
+                             file: checkpoint, state: &parser.state, report: &report, compactions: compactions)
         usages.removeAll(keepingCapacity: true)
         limits.removeAll(keepingCapacity: true)
         turnsWithPlans.removeAll(keepingCapacity: true)
         modelBackfills.removeAll(keepingCapacity: true)
+        compactions.removeAll(keepingCapacity: true)
         pendingLines = 0
     }
 }

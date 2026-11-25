@@ -85,12 +85,15 @@ Each row is one effective usage event, not an aggregate turn and not necessarily
 | `occurred_at`, `usage_date`, `hour`, `minute` | Source time and UTC components; do not invent precision |
 | `turn_started_at`, `source_created_at` | Cycle attribution and earliest-source fork ownership |
 | `model`, `tier`, `reasoning_effort`, `is_long_context` | Observed settings and context classification |
+| `is_context_compaction` | A confirmed compaction response, independent of reasoning effort |
 | `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `reasoning_tokens`, `total_tokens` | Original usage components |
 | `input_price`, `output_price`, `cache_read_price`, `cache_write_price` | Rates actually applied |
 | `input_amount`, `output_amount`, `cache_read_amount`, `cache_write_amount`, `amount` | Component costs and complete total |
 | `pricing_tier`, `pricing_source`, `price_date` | Applied pricing selection, separate from observed tier |
 | `device`, `source`, `rollout_id`, `source_line`, `source_ordinal` | Stable device ID, structured source evidence, and location |
 | `legacy_total`, `legacy_input`, `legacy_output`, `legacy_cache_read`, `legacy_cache_write`, `legacy_reasoning` | Cumulative vectors for matching older Codex reports |
+
+Mark compaction by matching the response ID in a `compacted` event to an identified usage row owned by the same turn and thread. A log replay can add the marker to an existing row without creating any usage or changing the price. An event without a verifiable response link leaves the row unclassified.
 
 Do not persist report bodies, alternate reports, or `evidence_json`. The schema's source constraint permits `local` and `api`, but current daily API reference buckets are not inserted into this table.
 

@@ -22,11 +22,13 @@ struct RolloutParser {
         let lines: Range<Int>
     }
     var modelBackfill: ModelBackfill?
+    var compaction: (turn: String, response: String)?
     var inheritedEvents = 0
 
     mutating func consume(_ data: Data, line: Int) throws -> CollectedUsage? {
         currentLimits = nil
         modelBackfill = nil
+        compaction = nil
         if data.allSatisfy({ $0 == 32 || $0 == 13 || $0 == 9 }) { return nil }
         let event = try decoder.decode(RolloutEvent.self, from: data)
         switch event.payload {
@@ -79,6 +81,16 @@ struct RolloutParser {
             let ambiguous = model != nil && (state.contextModel.map { $0 != model } ?? (session.forked_from_id != nil))
             state.model = ambiguous ? nil : model
             state.unresolvedTurnStartLine = state.model == nil ? line : nil
+            return nil
+        case .compacted(let compacted):
+            guard let session = state.session, let response = compacted.compaction_response_id, !response.isEmpty,
+                  try !isInherited(event, session: session) else { return nil }
+            if let record = compacted.latest_token_usage_record, record.response_id == response,
+               record.thread_id?.lowercased() == session.id.lowercased(), let turn = record.turn_id {
+                compaction = (turn, response)
+            } else if state.recordResponseID == response, let turn = state.recordTurnID {
+                compaction = (turn, response)
+            }
             return nil
         case .other: return nil
         case .count(let count):

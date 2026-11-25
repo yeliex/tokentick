@@ -130,7 +130,10 @@ extension UsageStore {
                     WHEN \(contextColumn) = 1 THEN 'long_context' ELSE 'standard' END
                 """
             }
-            let effortExpression = "COALESCE(NULLIF(u.reasoning_effort, ''), 'unknown')"
+            let effortExpression = """
+                CASE WHEN u.is_context_compaction=1 THEN 'context_compaction'
+                    ELSE COALESCE(NULLIF(u.reasoning_effort, ''), 'unknown') END
+                """
             func shares(_ expression: String) throws -> [OverviewUsageShare] {
                 try Task.checkCancellation()
                 return try Row.fetchAll(db, sql: """

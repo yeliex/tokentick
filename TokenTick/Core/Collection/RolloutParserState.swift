@@ -2,7 +2,7 @@ import Foundation
 
 struct RolloutParserState: Codable {
     // Parser checkpoints are rebuildable; version changes trigger rescanning without rewriting source facts.
-    static let currentVersion = 16
+    static let currentVersion = 17
     var version = currentVersion
     var weeklyWindows: [WeeklyCycleCalculator.Window]?
     var accountID: String?

@@ -36,8 +36,15 @@ struct UsageRecordsView: View {
                             Text(row.occurredAt.map { UsageFormatting.timestamp($0, timezone: TimeZone(identifier: query.timezone ?? "UTC") ?? .gmt) }
                                  ?? row.usageDate ?? String(localized: "Unknown"))
                         }.width(min: 110, ideal: 150)
-                        TableColumn(String(localized: "Model")) { row in Text(row.model ?? String(localized: "Other")).lineLimit(1).help(row.model ?? String(localized: "Other")) }
-                            .width(min: 90, ideal: 120)
+                        TableColumn(String(localized: "Model")) { row in
+                            let model = row.model ?? String(localized: "Other")
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(model).lineLimit(1).help(model)
+                                if row.isContextCompaction {
+                                    Text("Context compaction").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }
+                        }.width(min: 125, ideal: 145, max: 155)
                         TableColumn("Tokens") { row in TokenText(value: row.totalTokens).monospacedDigit() }
                             .width(min: 80, ideal: 100)
                         TableColumn(String(localized: "Details")) { row in
@@ -144,6 +151,9 @@ private struct UsageRecordDetail: View {
                 case nil: String(localized: "Unknown")
                 }
                 UsageDetailField(String(localized: "Usage mode"), value: mode)
+                if record.isContextCompaction {
+                    Text("Context compaction").foregroundStyle(.secondary)
+                }
             }
             Section("Tokens") {
                 UsageDetailField(String(localized: "Total"), value: UsageFormatting.tokens(record.totalTokens)).help(UsageFormatting.exactTokens(record.totalTokens))

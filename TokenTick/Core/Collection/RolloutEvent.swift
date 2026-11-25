@@ -6,7 +6,7 @@ struct RolloutEvent: Decodable {
     let payload: Payload
 
     enum Payload {
-        case session(Session), turn(Turn), settings(Settings), started(Started), count(Count), record(Record), other
+        case session(Session), turn(Turn), settings(Settings), started(Started), count(Count), record(Record), compacted(Compacted), other
     }
     struct Session: Codable {
         var creator_account_id: String? = nil
@@ -71,6 +71,16 @@ struct RolloutEvent: Decodable {
         let turn_token_usage: TokenUsage?
         let thread_token_usage: TokenUsage
     }
+    struct Compacted: Decodable {
+        let compaction_response_id: String?
+        let latest_token_usage_record: UsageIdentity?
+
+        struct UsageIdentity: Decodable {
+            let thread_id: String?
+            let turn_id: String?
+            let response_id: String?
+        }
+    }
     private enum CodingKeys: String, CodingKey { case timestamp, ordinal, type, payload }
     private struct EventType: Decodable { let type: String }
 
@@ -82,6 +92,7 @@ struct RolloutEvent: Decodable {
         case "session_meta": payload = .session(try values.decode(Session.self, forKey: .payload))
         case "turn_context": payload = .turn(try values.decode(Turn.self, forKey: .payload))
         case "token_usage_record": payload = .record(try values.decode(Record.self, forKey: .payload))
+        case "compacted": payload = .compacted(try values.decode(Compacted.self, forKey: .payload))
         case "event_msg":
             let eventType = try values.decode(EventType.self, forKey: .payload)
             switch eventType.type {

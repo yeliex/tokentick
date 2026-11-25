@@ -74,11 +74,18 @@ final class RolloutLineReader {
             let end = suffix.firstIndex(of: 10) ?? chunk.endIndex
             lineBytes += end - chunkPosition
             if !irrelevant {
-                guard line.count + end - chunkPosition <= maximumLineBytes else { throw ReadError.lineTooLarge }
-                line.append(contentsOf: chunk[chunkPosition..<end])
-                if autoreleasepool(invoking: { Self.isIrrelevant(line) }) {
+                if line.count + end - chunkPosition > maximumLineBytes {
+                    // An oversized history replacement should not block subsequent usage records.
+                    let prefix = line.isEmpty ? chunk[chunkPosition..<end].prefix(512) : line.prefix(512)
+                    guard Self.isCompactionEnvelope(prefix) else { throw ReadError.lineTooLarge }
                     irrelevant = true
                     line.removeAll(keepingCapacity: false)
+                } else {
+                    line.append(contentsOf: chunk[chunkPosition..<end])
+                    if autoreleasepool(invoking: { Self.isIrrelevant(line) }) {
+                        irrelevant = true
+                        line.removeAll(keepingCapacity: false)
+                    }
                 }
             }
             if end < chunk.endIndex {
@@ -92,7 +99,9 @@ final class RolloutLineReader {
 
     // Skip bodies only for recognized top-level envelopes; decode unfamiliar layouts with bounded JSON parsing.
     private static let ignoredEnvelope = try? NSRegularExpression(pattern:
-        #"^\s*\{\s*"timestamp"\s*:\s*"[^"\\]*"\s*,\s*(?:"ordinal"\s*:\s*\d+\s*,\s*)?"type"\s*:\s*"(?:response_item|compacted|world_state|retained_context|inter_agent_communication|inter_agent_communication_metadata|security_risk_score|realtime_item)"\s*,\s*"payload"\s*:"#)
+        #"^\s*\{\s*"timestamp"\s*:\s*"[^"\\]*"\s*,\s*(?:"ordinal"\s*:\s*\d+\s*,\s*)?"type"\s*:\s*"(?:response_item|world_state|retained_context|inter_agent_communication|inter_agent_communication_metadata|security_risk_score|realtime_item)"\s*,\s*"payload"\s*:"#)
+    private static let compactionEnvelope = try? NSRegularExpression(pattern:
+        #"^\s*\{\s*"timestamp"\s*:\s*"[^"\\]*"\s*,\s*(?:"ordinal"\s*:\s*\d+\s*,\s*)?"type"\s*:\s*"compacted"\s*,\s*"payload"\s*:"#)
     private static let ignoredEvent = try? NSRegularExpression(pattern:
         #"^\s*\{\s*"timestamp"\s*:\s*"[^"\\]*"\s*,\s*(?:"ordinal"\s*:\s*\d+\s*,\s*)?"type"\s*:\s*"event_msg"\s*,\s*"payload"\s*:\s*\{\s*"type"\s*:\s*"(?!(?:token_count|thread_settings_applied|task_started|turn_started)")[^"]+""#)
 
@@ -101,6 +110,11 @@ final class RolloutLineReader {
         let range = NSRange(prefix.startIndex..., in: prefix)
         return ignoredEnvelope?.firstMatch(in: prefix, range: range) != nil
             || ignoredEvent?.firstMatch(in: prefix, range: range) != nil
+    }
+
+    private static func isCompactionEnvelope(_ data: Data) -> Bool {
+        let prefix = String(decoding: data, as: UTF8.self)
+        return compactionEnvelope?.firstMatch(in: prefix, range: NSRange(prefix.startIndex..., in: prefix)) != nil
     }
 
     func nextChunk() async throws -> Data {
