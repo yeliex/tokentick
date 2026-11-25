@@ -4,6 +4,27 @@ import Testing
 @testable import TokenTickCore
 
 struct DesktopProjectCatalogTests {
+    @Test func sqliteDesktopCatalogResolvesOwnerHintsWithoutGuessingAcrossOwners() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = try DatabaseQueue(path: root.appendingPathComponent(".codex-global-state.sqlite").path)
+        try source.write { db in
+            try db.execute(sql: """
+                CREATE TABLE settings(scope TEXT,key TEXT,value TEXT,PRIMARY KEY(scope,key));
+                INSERT INTO settings VALUES
+                    ('global','local-projects','{"p":{"name":"Saved project","rootPaths":["/saved"]}}'),
+                    ('global','electron-owner-value:thread-workspace-root-hints:a','{"known":"/saved","conflict":"/saved"}'),
+                    ('global','electron-owner-value:thread-workspace-root-hints:b','{"conflict":"/other"}'),
+                    ('global','electron-owner-value:thread-projectless-output-directories:a','{"chat":"/output"}');
+                """)
+        }
+        let decoded = try DesktopProjectCatalog.read(codexHome: root)
+        let catalog = try #require(decoded)
+        #expect(catalog.projectName(threadID: "known", cwd: "/worktree") == "Saved project")
+        #expect(catalog.projectName(threadID: "conflict", cwd: "/worktree") == nil)
+        #expect(catalog.projectName(threadID: "chat", cwd: "/worktree") == "Chat")
+    }
     @Test func explicitMappingAndProjectlessOverrideDirectoryHints() throws {
         let json = #"""
         {"local-projects":{"p":{"name":"TokenTick","rootPaths":["/projects/tokentick"]}},
@@ -62,15 +83,27 @@ struct DesktopProjectCatalogTests {
         let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
         let source = try DatabaseQueue(path: root.appendingPathComponent("state_5.sqlite").path)
         try await source.write { db in
-            try db.execute(sql: "CREATE TABLE threads(id TEXT PRIMARY KEY,title TEXT,cwd TEXT); INSERT INTO threads VALUES ('t','标题','/old/worktree')")
+            try db.execute(sql: """
+                CREATE TABLE threads(id TEXT PRIMARY KEY,title TEXT,cwd TEXT,project_id TEXT);
+                CREATE TABLE projects(id TEXT PRIMARY KEY,name TEXT);
+                INSERT INTO projects VALUES ('state','State');
+                INSERT INTO threads VALUES ('t','标题','/projects/a','state');
+                """)
         }
         try await store.pool.write { db in
             try db.execute(sql: "INSERT INTO usage(source_line,rollout_id,thread_id,source,usage_date,total_tokens,pricing_source) VALUES (1,'one','t','local','2026-09-01',100,'{}'),(1,'two','t','local','2026-09-02',200,'{}')")
         }
         func facts() throws -> [Row] { try store.pool.read { try Row.fetchAll($0, sql: "SELECT * FROM usage ORDER BY id") } }
         let originalFacts = try facts()
-        for project in ["A", "B", "Chat", "A"] {
-            let assignments = project == "Chat" ? [:] : ["t": ["projectKind": "local", "projectId": project]]
+        let cases: [(assignment: String?, project: String?)] = [
+            (nil, "State"), ("B", "B"), ("Chat", "Chat"), ("missing", nil), ("A", "A")
+        ]
+        for (assignment, project) in cases {
+            let assignments = if let assignment, assignment != "Chat" {
+                ["t": ["projectKind": "local", "projectId": assignment]]
+            } else {
+                [String: [String: String]]()
+            }
             let catalog: [String: Any] = [
                 "local-projects": ["A": ["name": "A", "rootPaths": ["/projects/a"]], "B": ["name": "B", "rootPaths": ["/projects/b"]]],
                 "thread-project-assignments": assignments,

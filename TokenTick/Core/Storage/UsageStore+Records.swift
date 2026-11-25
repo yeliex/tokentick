@@ -33,14 +33,15 @@ extension UsageStore {
             case .automatic: order = "u.occurred_at DESC, u.id DESC"
             case .tokens: order = "u.total_tokens DESC, u.id DESC"
             case .amount: order = "known_amount IS NULL, known_amount DESC, u.id DESC"
-            case .name: order = "COALESCE(t.title, u.thread_id) COLLATE NOCASE ASC, u.id DESC"
+            case .name: order = "COALESCE(p.title, t.title, u.thread_id) COLLATE NOCASE ASC, u.id DESC"
             }
             let rows = try Row.fetchAll(db, sql: """
-                SELECT u.*, t.title, t.project_name, f.file_name, f.current_path,
+                SELECT u.*, t.title, t.project_name, t.parent_thread_id, p.title AS parent_title, t.agent_nickname, f.file_name, f.current_path,
                     NULLIF(\(StatisticsSQL.dayExpression), 'unknown') AS statistical_date,
                     tokentick_known_amount(u.input_amount, u.output_amount, u.cache_read_amount, u.cache_write_amount, u.amount) AS known_amount,
                     tokentick_known_amount(u.api_input_amount,u.api_output_amount,u.api_cache_read_amount,u.api_cache_write_amount,u.api_amount) AS api_known_amount
                 FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id AND t.device = u.device
+                LEFT JOIN threads p ON p.thread_id=t.parent_thread_id AND p.device=t.device
                 LEFT JOIN scan_files f ON f.rollout_id = u.rollout_id AND f.device = u.device
                 WHERE \(filters.joined(separator: " AND "))
                 ORDER BY \(order) LIMIT :limit OFFSET :offset

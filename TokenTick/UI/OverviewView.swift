@@ -109,6 +109,9 @@ struct OverviewView: View {
                             Text(String(localized: "No usage attributed to conversations")).foregroundStyle(.secondary).padding(.vertical)
                         }
                         ForEach(report.conversations) { conversation in
+                            let thread = conversation.thread
+                            let title = UsageFormatting.taskTitle(thread.title, id: thread.id, parentTitle: thread.parentTitle,
+                                                                  parentID: thread.parentThreadID, nickname: thread.agentNickname)
                             Button {
                                 var focused = report.query.focused(on: .thread, value: conversation.id)
                                 focused.grouping = .thread
@@ -116,7 +119,9 @@ struct OverviewView: View {
                             } label: {
                                 HStack(alignment: .firstTextBaseline, spacing: 16) {
                                     VStack(alignment: .leading, spacing: 3) {
-                                        Text(conversation.thread.title ?? conversation.id).lineLimit(1).help(conversation.thread.title ?? conversation.id)
+                                        Text(title).lineLimit(1)
+                                            .truncationMode(thread.parentThreadID != nil ? .middle : .tail)
+                                            .help(title)
                                         Text(UsageFormatting.project(conversation.thread.projectName))
                                             .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                             .help(UsageFormatting.project(conversation.thread.projectName))

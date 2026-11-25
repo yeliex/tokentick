@@ -52,7 +52,14 @@ extension UsageStore {
         case .amount: order = "known_amount IS NULL, known_amount DESC, group_value ASC"
         case .name:
             order = query.grouping == .thread
-                ? "COALESCE((SELECT nt.title FROM threads nt LEFT JOIN usage nu ON nu.thread_id=nt.thread_id AND nu.device=nt.device WHERE nt.thread_id=group_value AND (:title_device IS NULL OR nt.device=:title_device) GROUP BY nt.device ORDER BY MAX(nu.occurred_at) DESC, nt.device != 'local', nt.device LIMIT 1), group_value) COLLATE NOCASE ASC, group_value ASC"
+                ? """
+                    COALESCE((SELECT COALESCE(parent.title, nt.parent_thread_id, nt.title) FROM threads nt
+                    LEFT JOIN threads parent ON parent.thread_id=nt.parent_thread_id AND parent.device=nt.device
+                    LEFT JOIN usage nu ON nu.thread_id=nt.thread_id AND nu.device=nt.device
+                    WHERE nt.thread_id=group_value AND (:title_device IS NULL OR nt.device=:title_device)
+                    GROUP BY nt.device ORDER BY MAX(nu.occurred_at) DESC, nt.device != 'local', nt.device LIMIT 1),
+                    group_value) COLLATE NOCASE ASC, group_value ASC
+                    """
                 : "group_value ASC"
         }
         if query.sort == .name, query.grouping == .thread {

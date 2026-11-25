@@ -78,6 +78,45 @@ struct DeviceCatalogCollectorTests {
         #expect(try LocalFileSource(root: root).catalog(after: nil).mappings.first?.projectName == "Second")
     }
 
+    @Test func catalogIdentifiesSubagentsAndInheritsParentUpdatesAcrossPages() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let catalog = try DatabaseQueue(path: root.appendingPathComponent("state_5.sqlite").path)
+        try catalog.write { db in
+            try db.execute(sql: """
+                CREATE TABLE threads(id TEXT PRIMARY KEY,title TEXT,name TEXT,source TEXT,agent_nickname TEXT,project_id TEXT);
+                CREATE TABLE projects(id TEXT PRIMARY KEY,name TEXT);
+                INSERT INTO projects VALUES ('parent-project','Parent project'),('child-project','Child project');
+                INSERT INTO threads VALUES
+                    ('child','  ',NULL,'{"subagent":{"thread_spawn":{"parent_thread_id":"parent","agent_nickname":"Jason"}}}',NULL,'child-project'),
+                    ('parent','Old title','Parent title','vscode',NULL,'parent-project');
+                """)
+        }
+        let page = try DeviceCatalogPage.read(root: root, after: nil)
+        let child = try #require(page.mappings.first { $0.threadID == "child" })
+        let parent = try #require(page.mappings.first { $0.threadID == "parent" })
+        #expect(child.title == nil && child.parentThreadID == "parent" && child.agentNickname == "Jason")
+        let store = try UsageStore(databaseURL: root.appendingPathComponent("usage.sqlite"))
+        _ = try store.updateThreadMappings([child, .init(threadID: "nested", title: nil, projectName: nil, parentThreadID: "child")])
+        #expect(try store.threadInfo(ids: ["child"])["child"]?.projectName == nil)
+        _ = try store.updateThreadMappings([parent])
+        let threads = try store.threadInfo(ids: ["child", "nested"])
+        #expect(threads["child"]?.parentTitle == "Parent title" && threads["child"]?.agentNickname == "Jason")
+        #expect(threads["nested"]?.projectName == "Parent project")
+        try store.pool.write { db in
+            try db.execute(sql: "INSERT INTO usage(thread_id,source_line,rollout_id,total_tokens,usage_date,source) VALUES ('child',1,'child',100,'2026-11-23','local')")
+        }
+        var query = UsageQuery(grouping: .project, timezone: "UTC")
+        query.filters.search = "Parent title"
+        #expect(try store.usageReport(query).rows.first?.group == "Parent project")
+        #expect(try store.usageRecords(query).rows.first?.parentTitle == "Parent title")
+        #expect(try store.updateThreadMappings([child, parent]) == 0)
+        _ = try store.updateThreadMappings([.init(threadID: "parent", title: "Renamed", projectName: "Chat")])
+        #expect(try store.threadInfo(ids: ["nested"])["nested"]?.projectName == "Chat")
+        #expect(try store.usageRecords().rows.first?.parentTitle == "Renamed")
+    }
+
     private struct Source: DeviceFileSource {
         let database: URL
         func probe() -> String { "/fixture" }

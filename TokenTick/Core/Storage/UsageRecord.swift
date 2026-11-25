@@ -50,6 +50,9 @@ public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
     public let fileName: String?
     public let lastKnownPath: String?
     public let reasoningEffort: String?
+    public let parentThreadID: String?
+    public let parentTitle: String?
+    public let agentNickname: String?
     public let isContextCompaction: Bool
     public let pricingTier: String?
     public let pricingSource: String?
@@ -62,7 +65,7 @@ public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
         case reasoningTokens, totalTokens, inputPrice, outputPrice, cacheReadPrice, cacheWritePrice
         case inputAmountNanoUSD, outputAmountNanoUSD, cacheReadAmountNanoUSD, cacheWriteAmountNanoUSD, amountNanoUSD, knownAmountNanoUSD
         case source, rolloutID, sourceLine, fileName, lastKnownPath, reasoningEffort, isContextCompaction, pricingTier, pricingSource
-        case apiKnownAmountNanoUSD, apiAmountNanoUSD
+        case apiKnownAmountNanoUSD, apiAmountNanoUSD, parentThreadID, parentTitle, agentNickname
     }
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
@@ -72,6 +75,9 @@ public struct UsageRecord: Encodable, Sendable, Identifiable, Equatable {
         try values.encode(billingMode, forKey: .billingMode)
         try values.encode(threadID, forKey: .threadID)
         try values.encode(title, forKey: .title)
+        try values.encodeIfPresent(parentThreadID, forKey: .parentThreadID)
+        try values.encodeIfPresent(parentTitle, forKey: .parentTitle)
+        try values.encodeIfPresent(agentNickname, forKey: .agentNickname)
         try values.encode(projectName, forKey: .projectName)
         try values.encode(turnID, forKey: .turnID)
         try values.encode(responseID, forKey: .responseID)
@@ -141,6 +147,7 @@ extension UsageRecord {
             apiKnownAmountNanoUSD: row["api_known_amount"], apiAmountNanoUSD: row["api_amount"], source: row["source"],
             rolloutID: row["rollout_id"], sourceLine: row["source_line"], fileName: row["file_name"],
             lastKnownPath: row["current_path"], reasoningEffort: row["reasoning_effort"],
+            parentThreadID: row["parent_thread_id"], parentTitle: row["parent_title"], agentNickname: row["agent_nickname"],
             isContextCompaction: row["is_context_compaction"],
             pricingTier: row["pricing_tier"], pricingSource: row["pricing_source"])
     }

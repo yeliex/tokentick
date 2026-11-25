@@ -623,6 +623,13 @@
         }
       }
     },
+    "Subagent": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "子代理" }
+        }
+      }
+    },
     "Context compaction": {
       "localizations": {
         "zh-Hans": {

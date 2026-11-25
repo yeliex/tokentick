@@ -18,10 +18,28 @@ struct RolloutEvent: Decodable {
         let subagent_history_start_ordinal: UInt64?
         let history_mode: String?
         let history_base: HistoryBase?
+        var source: SessionSource? = nil
+        var agent_nickname: String? = nil
         struct HistoryBase: Codable {
             let thread_id: String
             let end_ordinal_exclusive: UInt64
             let end_byte_offset: UInt64
+        }
+    }
+    struct SessionSource: Codable {
+        let subagent: Subagent?
+        struct Subagent: Codable {
+            let thread_spawn: Spawn?
+            struct Spawn: Codable {
+                let parent_thread_id: String?
+                let agent_nickname: String?
+            }
+        }
+        private enum CodingKeys: String, CodingKey { case subagent }
+        init(from decoder: any Decoder) throws {
+            // Ordinary sessions have a string source. Only the spawn object contains lineage.
+            let values = try? decoder.container(keyedBy: CodingKeys.self)
+            subagent = try values?.decodeIfPresent(Subagent.self, forKey: .subagent)
         }
     }
     struct Turn: Decodable {

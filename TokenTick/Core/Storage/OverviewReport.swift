@@ -149,8 +149,10 @@ extension UsageStore {
             let apiModes = try shares(modeExpression(contextColumn: "u.api_is_long_context"))
             let efforts = try shares(effortExpression)
             let recent = try Row.fetchAll(db, sql: """
-                SELECT u.thread_id, t.title, t.project_name, MAX(u.occurred_at) AS last_active
+                SELECT u.thread_id, t.title, t.project_name, t.parent_thread_id, p.title AS parent_title, t.agent_nickname,
+                    MAX(u.occurred_at) AS last_active
                 FROM usage u LEFT JOIN threads t ON t.thread_id = u.thread_id AND t.device = u.device
+                LEFT JOIN threads p ON p.thread_id=t.parent_thread_id AND p.device=t.device
                 WHERE u.thread_id IS NOT NULL AND u.occurred_at IS NOT NULL AND (\(predicate))
                 GROUP BY u.thread_id ORDER BY last_active DESC, u.thread_id ASC LIMIT 10
                 """, arguments: arguments)
@@ -158,7 +160,8 @@ extension UsageStore {
                 let id: String = row["thread_id"]
                 let summary = try Self.readUsageReport(query.focused(on: .thread, value: id), timezone: timezone, db: db).rows
                 return summary.first.map { OverviewConversation(thread: ThreadInfo(id: id, title: row["title"],
-                    projectName: row["project_name"], lastActiveAt: row["last_active"]), summary: $0) }
+                    projectName: row["project_name"], lastActiveAt: row["last_active"], parentThreadID: row["parent_thread_id"],
+                    parentTitle: row["parent_title"], agentNickname: row["agent_nickname"]), summary: $0) }
             }.compactMap { $0 }
             return OverviewReport(query: query, total: total.rows.first, models: models, modes: modes, apiModes: apiModes, efforts: efforts, trend: trend,
                 conversations: conversations, unknownDateTokens: total.unknownDateTokens, hourly: false)

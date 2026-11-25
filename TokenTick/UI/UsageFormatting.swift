@@ -3,6 +3,13 @@ import Foundation
 import SwiftUI
 
 enum UsageFormatting {
+    static func taskTitle(_ title: String?, id: String?, parentTitle: String?, parentID: String?, nickname: String?) -> String {
+        if let parentID {
+            return [parentTitle ?? parentID, String(localized: "Subagent"), nickname]
+                .compactMap { $0 }.joined(separator: " · ")
+        }
+        return title ?? id ?? String(localized: "Unattributed")
+    }
     static func project(_ name: String?) -> String { name == "Chat" ? String(localized: "Chat") : name ?? String(localized: "Unattributed") }
     static func tokens(_ value: Int64?) -> String {
         value.map { $0.formatted(.number.notation(.compactName).precision(.fractionLength(0...2)).locale(Locale(identifier: "en_US"))) } ?? "—"

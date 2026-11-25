@@ -20,7 +20,7 @@ struct UsageRecordsView: View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.headline).lineLimit(1)
+                    Text(title).font(.headline).lineLimit(1).truncationMode(.middle).help(title)
                     Text(String(localized: "Usage details"))
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -129,7 +129,8 @@ private struct UsageRecordDetail: View {
     var body: some View {
         Form {
             Section(String(localized: "Turn attribution")) {
-                UsageDetailField(String(localized: "Task"), value: record.title ?? record.threadID ?? String(localized: "Unknown"))
+                UsageDetailField(String(localized: "Task"), value: UsageFormatting.taskTitle(record.title, id: record.threadID,
+                    parentTitle: record.parentTitle, parentID: record.parentThreadID, nickname: record.agentNickname))
                 UsageDetailField(String(localized: "Task ID"), value: record.threadID ?? String(localized: "Unknown"))
                 UsageDetailField(String(localized: "Project"), value: UsageFormatting.project(record.projectName))
                 UsageDetailField(String(localized: "Account"), value: record.accountID ?? String(localized: "Unknown"))

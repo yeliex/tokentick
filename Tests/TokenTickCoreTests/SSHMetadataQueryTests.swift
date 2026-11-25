@@ -118,16 +118,25 @@ struct SSHMetadataQueryTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let db = try DatabaseQueue(path: root.appendingPathComponent("state_5.sqlite").path)
         try await db.write { db in
-            try db.execute(sql: "CREATE TABLE threads(id TEXT PRIMARY KEY,title TEXT,name TEXT,cwd TEXT)")
+            try db.execute(sql: """
+                CREATE TABLE threads(id TEXT PRIMARY KEY,title TEXT,name TEXT,cwd TEXT,project_id TEXT);
+                CREATE TABLE projects(id TEXT PRIMARY KEY,name TEXT);
+                INSERT INTO projects VALUES ('state','State');
+                """)
             for index in 0..<514 {
-                try db.execute(sql: "INSERT INTO threads VALUES(?,?,?,?)", arguments: [String(format: "%04d", index), "old", "title", "/fixture"])
+                try db.execute(sql: "INSERT INTO threads VALUES(?,?,?,?,NULL)", arguments: [String(format: "%04d", index), "old", "title", "/fixture"])
             }
+            try db.execute(sql: "UPDATE threads SET project_id='state' WHERE id='0001'; UPDATE threads SET project_id='missing' WHERE id='0002'")
         }
         try db.close()
         let desktop = root.appendingPathComponent(".codex-global-state.json")
-        try Data(#"{"local-projects":{"p":{"name":"Project","rootPaths":["/fixture"]}}}"#.utf8).write(to: desktop)
+        try Data(#"""
+            {"local-projects":{"p":{"name":"Project","rootPaths":["/fixture"]}},
+             "thread-projectless-output-directories":{"0001":"/output","0002":"/output","0003":"/output"}}
+            """#.utf8).write(to: desktop)
         let page: DeviceCatalogPage = try await run(node, .init(operation: "catalog", root: root.path))
-        #expect(page.mappings.first?.projectName == "Project")
+        #expect(page.mappings.prefix(4).map(\.projectName) == ["Project", "State", nil, "Chat"])
+        #expect(page.mappings.map(\.projectName) == (try DeviceCatalogPage.read(root: root, after: nil)).mappings.map(\.projectName))
         #expect(page.entries.count == 512)
         #expect(page.entries.first?.title == "title")
         try Data("invalid JSON".utf8).write(to: desktop)

@@ -70,17 +70,39 @@ try {
         result = database(files[0], db => {
             const fields = columns(db, 'threads');
             if (!fields.has('id') || !fields.has('title')) fail('unsupported');
-            const title = fields.has('name') ? "COALESCE(NULLIF(t.name,''),t.title)" : 't.title';
+            const title = fields.has('name') ? "COALESCE(NULLIF(TRIM(t.name),''),NULLIF(TRIM(t.title),''))" : "NULLIF(TRIM(t.title),'')";
             const cwd = fields.has('cwd') ? 't.cwd' : 'NULL';
+            const projectID = fields.has('project_id') ? 't.project_id' : 'NULL';
             const projects = fields.has('project_id') && db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='projects'").get();
             if (projects && !['id', 'name'].every(name => columns(db, 'projects').has(name))) fail('unsupported');
             const join = projects ? 'p.name AS projectName FROM threads t LEFT JOIN projects p ON p.id=t.project_id' : 'NULL AS projectName FROM threads t';
             const after = request.after ?? null;
             if (after !== null && (typeof after !== 'string' || after.length > 256)) fail('invalidResponse');
-            const rows = db.prepare(`SELECT t.id,${title} AS title,${cwd} AS cwd,${join} WHERE (? IS NULL OR t.id>?) ORDER BY t.id LIMIT 513`).all(after, after);
+            const spawn = fields.has('source') ? "CASE WHEN json_valid(t.source) THEN json_extract(t.source,'$.subagent.thread_spawn.parent_thread_id') END" : 'NULL';
+            const sourceNickname = fields.has('source') ? "CASE WHEN json_valid(t.source) THEN json_extract(t.source,'$.subagent.thread_spawn.agent_nickname') END" : 'NULL';
+            const nickname = fields.has('agent_nickname') ? `COALESCE(NULLIF(TRIM(t.agent_nickname),''),${sourceNickname})` : sourceNickname;
+            const edges = ['child_thread_id', 'parent_thread_id'].every(name => columns(db, 'thread_spawn_edges').has(name));
+            const parent = edges ? `COALESCE(${spawn},(SELECT CASE WHEN COUNT(DISTINCT e.parent_thread_id)=1 THEN MIN(e.parent_thread_id) END FROM thread_spawn_edges e WHERE e.child_thread_id=t.id))` : spawn;
+            const rows = db.prepare(`SELECT t.id,${title} AS title,${cwd} AS cwd,${projectID} AS projectID,${parent} AS parentThreadID,${nickname} AS agentNickname,${join} WHERE (? IS NULL OR t.id>?) ORDER BY t.id LIMIT 513`).all(after, after);
             return { entries: rows.slice(0, 512), desktop: null, next: rows.length > 512 ? rows[511].id : null, available: true };
         });
-        if (request.includeDesktop !== false && names().includes('.codex-global-state.json')) {
+        const settings = ['local-projects', 'thread-project-assignments', 'thread-workspace-root-hints', 'projectless-thread-ids', 'thread-projectless-output-directories'];
+        const prefixes = ['electron-owner-value:thread-workspace-root-hints:', 'electron-owner-value:thread-projectless-output-directories:'];
+        if (request.includeDesktop !== false && names().includes('.codex-global-state.sqlite')) {
+            result.desktop = database('.codex-global-state.sqlite', db => {
+                const max = 32 * 1024 * 1024;
+                const rows = db.prepare(`SELECT key, CASE WHEN length(CAST(value AS BLOB))<=? THEN value END AS value
+                    FROM settings WHERE scope='global' AND (key IN (?,?,?,?,?) OR key GLOB ? OR key GLOB ?)`)
+                    .all(max, ...settings, ...prefixes.map(prefix => prefix + '*'));
+                if (!rows.length) return null;
+                let bytes = 0;
+                return Object.fromEntries(rows.map(({key, value}) => {
+                    if (typeof value !== 'string' || (bytes += Buffer.byteLength(value)) > max) fail('unsupported');
+                    return [key, JSON.parse(value)];
+                }));
+            });
+        }
+        if (request.includeDesktop !== false && result.desktop === null && names().includes('.codex-global-state.json')) {
             const file = source('.codex-global-state.json');
             const fd = fs.openSync(file, 'r');
             try {
@@ -92,7 +114,8 @@ try {
                     if (size === bytes.length) fail('unsupported');
                 }
                 const state = JSON.parse(bytes.subarray(0, size).toString('utf8'));
-                result.desktop = Object.fromEntries(['local-projects', 'thread-project-assignments', 'thread-workspace-root-hints', 'projectless-thread-ids', 'thread-projectless-output-directories'].filter(key => state[key] !== undefined).map(key => [key, state[key]]));
+                result.desktop = Object.fromEntries(Object.entries(state).filter(([key]) =>
+                    settings.includes(key) || prefixes.some(prefix => key.startsWith(prefix))));
             } finally { fs.closeSync(fd); }
         }
         break;

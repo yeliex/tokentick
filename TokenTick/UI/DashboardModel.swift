@@ -43,7 +43,11 @@ struct UsageDisplayRow: Identifiable, Sendable, Equatable {
     let thread: ThreadInfo?
     let grouping: UsageGrouping
     var id: String { summary.group.map { "value:" + $0 } ?? "unknown" }
-    var title: String { grouping == .project ? UsageFormatting.project(summary.group) : thread?.title ?? summary.group ?? String(localized: "Unattributed") }
+    var title: String {
+        if grouping == .project { return UsageFormatting.project(summary.group) }
+        return UsageFormatting.taskTitle(thread?.title, id: summary.group, parentTitle: thread?.parentTitle,
+                                         parentID: thread?.parentThreadID, nickname: thread?.agentNickname)
+    }
 }
 
 @MainActor @Observable

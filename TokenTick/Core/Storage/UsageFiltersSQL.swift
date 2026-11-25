@@ -21,7 +21,12 @@ struct UsageFiltersSQL {
             }
         }
         if !filters.search.isEmpty {
-            parts.append("(tokentick_contains(t.title, :filter_search) OR tokentick_contains(u.thread_id, :filter_search))")
+            parts.append("""
+                (tokentick_contains(t.title, :filter_search) OR tokentick_contains(u.thread_id, :filter_search)
+                 OR tokentick_contains(t.agent_nickname, :filter_search)
+                 OR EXISTS (SELECT 1 FROM threads p WHERE p.thread_id=t.parent_thread_id AND p.device=t.device
+                            AND tokentick_contains(p.title, :filter_search)))
+                """)
             values += ["filter_search": filters.search]
         }
         // Cycle membership follows the first start of the turn, including later responses.

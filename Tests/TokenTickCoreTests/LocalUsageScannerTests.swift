@@ -28,6 +28,19 @@ struct LocalUsageScannerTests {
         #expect(after.amountNanoUSD == before.amountNanoUSD && after.apiAmountNanoUSD == before.apiAmountNanoUSD)
     }
 
+    @Test func rolloutRetainsExplicitSubagentLineageWithoutCatalog() async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        _ = try fixture.store.updateThreadMappings([.init(threadID: "parent", title: "Parent", projectName: "Project")])
+        let header = fixture.header.replacingOccurrences(of: #""id":"\#(fixture.thread)""#,
+            with: #""id":"\#(fixture.thread)","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent","agent_nickname":"Jason"}}}"#)
+        _ = try fixture.write(header + fixture.turn + fixture.record(1))
+        #expect(try await fixture.scan().insertedRequests == 1)
+        let row = try fixture.store.usageRecords().rows.first
+        #expect(row?.parentThreadID == "parent" && row?.parentTitle == "Parent" && row?.agentNickname == "Jason")
+        #expect(row?.projectName == "Project")
+    }
+
     @Test func compactionLinksResponsesAcrossScansAndRemainsIndependentOfEffort() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }

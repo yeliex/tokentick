@@ -36,6 +36,7 @@ The built-in local source performs full log discovery at app startup and on manu
 - Keep unknown models in token totals and expose incomplete pricing. Missing values and zero are different.
 - Use the latest task title and project mapping. Project renames or reassignment update historical grouping without changing tokens or timestamps. Projects with the same resolved name share a group.
 - Resolve projects from Codex's saved projects and explicit task assignments. An arbitrary working-directory basename is not a project. Explicit projectless tasks use the `Chat` group; missing information alone is not proof of projectless status.
+- Show spawned subagents with the parent task title, a Subagent label, and the recorded nickname. Keep their usage owned by the subagent task and group it under the parent's project.
 
 ## Collection and privacy
 

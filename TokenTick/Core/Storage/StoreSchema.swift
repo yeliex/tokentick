@@ -256,6 +256,13 @@ enum StoreSchema {
         migrator.registerMigration("context-compaction.1") { db in
             try db.execute(sql: "ALTER TABLE usage ADD COLUMN is_context_compaction INTEGER NOT NULL DEFAULT 0 CHECK(is_context_compaction IN (0,1))")
         }
+        migrator.registerMigration("subagent-attribution.1") { db in
+            try db.execute(sql: """
+                ALTER TABLE threads ADD COLUMN parent_thread_id TEXT;
+                ALTER TABLE threads ADD COLUMN agent_nickname TEXT;
+                CREATE INDEX threads_parent ON threads(device,parent_thread_id);
+                """)
+        }
         return migrator
     }
 }

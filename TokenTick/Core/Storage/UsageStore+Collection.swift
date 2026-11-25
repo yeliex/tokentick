@@ -79,7 +79,20 @@ extension UsageStore {
                 for window in checkpoint.windows { updated.merge(window) }
                 let stateJSON = String(decoding: try encoder.encode(savedState), as: UTF8.self)
                 // Resolve names from current Codex task metadata rather than guessing projects from paths.
-                try db.execute(sql: "INSERT INTO threads(thread_id,device) VALUES (?,?) ON CONFLICT DO NOTHING", arguments: [threadID,device])
+                if let spawn = state.session?.source?.subagent?.thread_spawn,
+                   let parentID = spawn.parent_thread_id?.lowercased(), !parentID.isEmpty, parentID != threadID {
+                    let nickname = DesktopProjectCatalog.nonemptyName(state.session?.agent_nickname ?? spawn.agent_nickname)
+                    try db.execute(sql: """
+                        INSERT INTO threads(thread_id,device,parent_thread_id,agent_nickname,project_name)
+                        VALUES (?,?,?,?,(SELECT project_name FROM threads WHERE thread_id=? AND device=?))
+                        ON CONFLICT(thread_id,device) DO UPDATE SET parent_thread_id=COALESCE(threads.parent_thread_id,excluded.parent_thread_id),
+                            agent_nickname=COALESCE(threads.agent_nickname,excluded.agent_nickname),
+                            project_name=CASE WHEN threads.parent_thread_id IS NULL THEN excluded.project_name ELSE threads.project_name END
+                        WHERE threads.parent_thread_id IS NULL OR (threads.agent_nickname IS NULL AND excluded.agent_nickname IS NOT NULL)
+                        """, arguments: [threadID, device, parentID, nickname, parentID, device])
+                } else {
+                    try db.execute(sql: "INSERT INTO threads(thread_id,device) VALUES (?,?) ON CONFLICT DO NOTHING", arguments: [threadID,device])
+                }
                 try db.execute(sql: """
                     INSERT INTO scan_files(device, source_revision, rollout_id, thread_id, file_name, current_path, scanned_line, scanned_offset,
                                            last_scanned_at, file_state_json, parser_state_json)

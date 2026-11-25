@@ -19,6 +19,7 @@ struct UsageTableView: View {
                         Button { openRow(row) } label: {
                             HStack {
                                 Text(row.title).lineLimit(1)
+                                    .truncationMode(row.thread?.parentThreadID != nil ? .middle : .tail)
                                 Spacer(minLength: 4)
                                 Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
                             }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
