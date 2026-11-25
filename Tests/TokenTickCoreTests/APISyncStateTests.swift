@@ -28,9 +28,14 @@ struct APISyncStateTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("usage.sqlite")
         let store = try UsageStore(databaseURL: url)
-        let limits = try JSONDecoder().decode(CodexRateLimits.self, from: Data(CodexAPITests.limits.utf8))
+        let observedAt = Date()
+        let weekly = CodexRateLimits.Window(usedPercent: 23, windowDurationMins: 10_080,
+                                            resetsAt: Int64(observedAt.addingTimeInterval(86_400).timeIntervalSince1970))
+        let limits = CodexRateLimits(accountId: "account-a",
+            rateLimits: .init(limitId: "codex", limitName: nil, planType: nil, primary: nil, secondary: weekly),
+            rateLimitsByLimitId: nil)
         let daily = try JSONDecoder().decode(CodexDailyUsage.self, from: Data(CodexAPITests.daily.utf8))
-        _ = try store.saveAPIObservation(limits: limits, daily: daily, observedAt: Date(timeIntervalSince1970: 100))
+        _ = try store.saveAPIObservation(limits: limits, daily: daily, observedAt: observedAt)
         await #expect(throws: CodexAPIError.self) {
             try await CodexAPIClient.synchronize(store: store, executable: root.appendingPathComponent("missing"), codexHome: root)
         }
