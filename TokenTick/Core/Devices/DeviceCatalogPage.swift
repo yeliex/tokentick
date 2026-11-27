@@ -55,7 +55,7 @@ struct DeviceCatalogPage: Codable, Sendable {
                     throw DeviceSourceFailure.invalidPath
                 }
             }
-            source = try CodexSourceDatabase.open(url, busyTimeout: 2)
+            source = try CodexSourceDatabase.open(url, busyTimeout: 2, recoverCheckpointedWAL: true)
             desktop = try DesktopProjectCatalog.read(codexHome: root)
         }
 
