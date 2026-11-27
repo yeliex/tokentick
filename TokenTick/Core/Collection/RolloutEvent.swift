@@ -37,9 +37,13 @@ struct RolloutEvent: Decodable {
         }
         private enum CodingKeys: String, CodingKey { case subagent }
         init(from decoder: any Decoder) throws {
-            // Ordinary sessions have a string source. Only the spawn object contains lineage.
-            let values = try? decoder.container(keyedBy: CodingKeys.self)
-            subagent = try values?.decodeIfPresent(Subagent.self, forKey: .subagent)
+            // Older subagent kinds are strings. Only the spawn object contains lineage.
+            if let values = try? decoder.container(keyedBy: CodingKeys.self),
+               (try? values.decode(String.self, forKey: .subagent)) == nil {
+                subagent = try values.decodeIfPresent(Subagent.self, forKey: .subagent)
+            } else {
+                subagent = nil
+            }
         }
     }
     struct Turn: Decodable {

@@ -41,6 +41,19 @@ struct LocalUsageScannerTests {
         #expect(row?.projectName == "Project")
     }
 
+    @Test func rolloutImportsUsageForLegacySubagentKind() async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let header = fixture.header.replacingOccurrences(of: #""id":"\#(fixture.thread)""#,
+            with: #""id":"\#(fixture.thread)","source":{"subagent":"memory_consolidation"}"#)
+        _ = try fixture.write(header + fixture.turn + fixture.count(1))
+        let report = try await fixture.scan()
+        #expect(report.issueCount == 0)
+        #expect(report.insertedRequests == 1)
+        let row = try #require(try fixture.store.usageRecords().rows.first)
+        #expect(row.parentThreadID == nil)
+    }
+
     @Test func compactionLinksResponsesAcrossScansAndRemainsIndependentOfEffort() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
